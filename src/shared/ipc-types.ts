@@ -10,11 +10,11 @@ export type IpcContract = {
     res: { document: DocumentRow | null };
   };
   'documents.create': {
-    req: { title?: string; content?: string };
+    req: { title?: string; content?: string; parentId?: string | null };
     res: { document: DocumentRow };
   };
   'documents.update': {
-    req: { id: string; title?: string; content?: string };
+    req: { id: string; title?: string; content?: string; parentId?: string | null };
     res: { document: DocumentRow };
   };
   'documents.delete': {

@@ -49,8 +49,13 @@ function runMigrations(database: BetterSqlite3Database) {
     tx();
   }
 
-  // v2: add parentId for nested documents
-  if (currentVersion < 2) {
+  // v2: add parentId for nested documents (idempotent if column already exists)
+  const columns = database
+    .prepare(`PRAGMA table_info(documents)`)
+    .all() as { name: string }[];
+  const hasParentId = columns.some((col) => col.name === 'parentId');
+
+  if (!hasParentId) {
     const tx = database.transaction(() => {
       database.exec(`
         ALTER TABLE documents ADD COLUMN parentId TEXT NULL;

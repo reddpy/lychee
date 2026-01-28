@@ -30,6 +30,8 @@ function LycheeLogo() {
   return <SquareStack className="h-3 w-3" />;
 }
 
+const MAX_NESTING_DEPTH = 4; // root depth 0, deepest child depth 4 (5 levels)
+
 export function AppSidebar() {
   const { open } = useSidebar();
   const { documents, selectedId, loading, createDocument, selectDocument, loadDocuments } =
@@ -37,6 +39,7 @@ export function AppSidebar() {
 
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set());
   const [menuForId, setMenuForId] = React.useState<string | null>(null);
+   const [notesSectionOpen, setNotesSectionOpen] = React.useState(true);
 
   React.useEffect(() => {
     void loadDocuments();
@@ -79,6 +82,7 @@ export function AppSidebar() {
       const children = childrenByParent.get(doc.id) ?? [];
       const hasChildren = children.length > 0;
       const isExpanded = expandedIds.has(doc.id);
+      const canAddChild = depth < MAX_NESTING_DEPTH;
 
       return (
         <React.Fragment key={doc.id}>
@@ -137,36 +141,38 @@ export function AppSidebar() {
                       </TooltipPrimitive.Content>
                     </TooltipPrimitive.Portal>
                   </TooltipPrimitive.Root>
-                  <TooltipPrimitive.Root delayDuration={150}>
-                    <TooltipPrimitive.Trigger asChild>
-                      <button
-                        type="button"
-                        className="flex h-5 w-5 items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          // Expand this node and create a child.
-                          setExpandedIds((prev) => {
-                            const next = new Set(prev);
-                            next.add(doc.id);
-                            return next;
-                          });
-                          await createDocument(doc.id);
-                        }}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </button>
-                    </TooltipPrimitive.Trigger>
-                    <TooltipPrimitive.Portal>
-                      <TooltipPrimitive.Content
-                        side="top"
-                        sideOffset={4}
-                        className="z-50 rounded-md bg-[hsl(var(--foreground))] px-2 py-1 text-xs text-[hsl(var(--background))] shadow"
-                      >
-                        Add Page Inside
-                        <TooltipPrimitive.Arrow className="fill-[hsl(var(--foreground))]" />
-                      </TooltipPrimitive.Content>
-                    </TooltipPrimitive.Portal>
-                  </TooltipPrimitive.Root>
+                  {canAddChild && (
+                    <TooltipPrimitive.Root delayDuration={150}>
+                      <TooltipPrimitive.Trigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-5 w-5 items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            // Expand this node and create a child.
+                            setExpandedIds((prev) => {
+                              const next = new Set(prev);
+                              next.add(doc.id);
+                              return next;
+                            });
+                            await createDocument(doc.id);
+                          }}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </TooltipPrimitive.Trigger>
+                      <TooltipPrimitive.Portal>
+                        <TooltipPrimitive.Content
+                          side="top"
+                          sideOffset={4}
+                          className="z-50 rounded-md bg-[hsl(var(--foreground))] px-2 py-1 text-xs text-[hsl(var(--background))] shadow"
+                        >
+                          Add Page Inside
+                          <TooltipPrimitive.Arrow className="fill-[hsl(var(--foreground))]" />
+                        </TooltipPrimitive.Content>
+                      </TooltipPrimitive.Portal>
+                    </TooltipPrimitive.Root>
+                  )}
                 </div>
               </div>
             </SidebarMenuButton>
@@ -228,23 +234,39 @@ export function AppSidebar() {
         {open && (
           <>
             <SidebarGroup>
-              <SidebarGroupLabel>Notes</SidebarGroupLabel>
+              <SidebarGroupLabel className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="flex h-4 w-4 items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                  onClick={() => setNotesSectionOpen((prev) => !prev)}
+                  aria-label={notesSectionOpen ? 'Collapse notes' : 'Expand notes'}
+                >
+                  {notesSectionOpen ? (
+                    <ChevronDown className="h-3 w-3" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3" />
+                  )}
+                </button>
+                <span>Notes</span>
+              </SidebarGroupLabel>
             </SidebarGroup>
-            <div className="mt-1 max-h-56 overflow-y-auto pr-1">
-              <SidebarMenu>
-                {loading && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton>
-                      <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
-                      <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                        Loading…
-                      </span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
-                {!loading && rootDocs.map((doc) => renderDocNode(doc, 0))}
-              </SidebarMenu>
-            </div>
+            {notesSectionOpen && (
+              <div className="mt-1 max-h-56 overflow-y-auto pr-1">
+                <SidebarMenu>
+                  {loading && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton>
+                        <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
+                        <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                          Loading…
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {!loading && rootDocs.map((doc) => renderDocNode(doc, 0))}
+                </SidebarMenu>
+              </div>
+            )}
           </>
         )}
       </SidebarContent>
