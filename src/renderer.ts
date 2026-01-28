@@ -31,3 +31,16 @@ import './index.css';
 console.log(
   '👋 This message is being logged by "renderer.js", included via webpack',
 );
+
+async function smokeTestBackend() {
+  const { document } = await window.lychee.invoke('documents.create', {
+    title: 'Hello Lychee',
+    content: 'First note',
+  });
+
+  const { documents } = await window.lychee.invoke('documents.list', { limit: 5 });
+  console.log('[backend smoke test] created:', document);
+  console.log('[backend smoke test] list:', documents);
+}
+
+smokeTestBackend().catch((err) => console.error('[backend smoke test] failed', err));
