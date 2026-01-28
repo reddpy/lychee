@@ -81,7 +81,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'relative h-full shrink-0 border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
+        'relative flex h-full shrink-0 flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))] overflow-hidden',
         'transition-[width] duration-200 ease-out',
         open ? 'w-[var(--sidebar-width)]' : 'w-[3.25rem]',
         className,
@@ -121,11 +121,31 @@ export function SidebarHeader({
   );
 }
 
+export function SidebarFooter({
+  className,
+  children,
+}: React.PropsWithChildren<{ className?: string }>) {
+  return (
+    <div
+      className={cn(
+        'flex h-12 flex-shrink-0 items-center border-t border-[hsl(var(--sidebar-border))] px-3',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function SidebarContent({
   className,
   children,
 }: React.PropsWithChildren<{ className?: string }>) {
-  return <div className={cn('min-h-0 flex-1 p-2', className)}>{children}</div>;
+  return (
+    <div className={cn('min-h-0 flex-1 p-2 flex flex-col', className)}>
+      {children}
+    </div>
+  );
 }
 
 export function SidebarGroup({

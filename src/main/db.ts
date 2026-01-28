@@ -48,6 +48,30 @@ function runMigrations(database: BetterSqlite3Database) {
 
     tx();
   }
+
+  // v2: add parentId for nested documents (idempotent if column already exists)
+  const columns = database
+    .prepare(`PRAGMA table_info(documents)`)
+    .all() as { name: string }[];
+  const hasParentId = columns.some((col) => col.name === 'parentId');
+
+  if (!hasParentId) {
+    const tx = database.transaction(() => {
+      database.exec(`
+        ALTER TABLE documents ADD COLUMN parentId TEXT NULL;
+        CREATE INDEX IF NOT EXISTS idx_documents_parentId ON documents(parentId);
+      `);
+
+      database
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run('2');
+    });
+
+    tx();
+  }
 }
 
 export function initDatabase(): { dbPath: string } {
