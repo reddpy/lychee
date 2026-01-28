@@ -49,18 +49,17 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
   async createDocument(parentId = null) {
     try {
-      set({ loading: true, error: null });
+      set({ error: null });
       const { document } = await window.lychee.invoke('documents.create', {
         parentId,
       });
-      // Prepend new doc and select it.
+      // Prepend new doc and select it; avoid toggling loading so sidebar doesn't flash.
       set((state) => ({
         documents: [document, ...state.documents],
         selectedId: document.id,
-        loading: false,
       }));
     } catch (err) {
-      set({ loading: false, error: (err as Error).message });
+      set({ error: (err as Error).message });
     }
   },
 }));
