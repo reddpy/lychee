@@ -16,7 +16,7 @@ export function listDocuments(params: {
 
   return db
     .prepare(
-      `SELECT id, title, content, createdAt, updatedAt
+      `SELECT id, title, content, createdAt, updatedAt, parentId
        FROM documents
        ORDER BY updatedAt DESC
        LIMIT ? OFFSET ?`,
@@ -28,7 +28,7 @@ export function getDocumentById(id: string): DocumentRow | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT id, title, content, createdAt, updatedAt
+      `SELECT id, title, content, createdAt, updatedAt, parentId
        FROM documents
        WHERE id = ?`,
     )
@@ -39,6 +39,7 @@ export function getDocumentById(id: string): DocumentRow | null {
 export function createDocument(input: {
   title?: string;
   content?: string;
+  parentId?: string | null;
 }): DocumentRow {
   const db = getDb();
 
@@ -49,19 +50,20 @@ export function createDocument(input: {
     content: input.content ?? '',
     createdAt,
     updatedAt: createdAt,
+    parentId: input.parentId ?? null,
   };
 
   db.prepare(
-    `INSERT INTO documents (id, title, content, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run(doc.id, doc.title, doc.content, doc.createdAt, doc.updatedAt);
+    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(doc.id, doc.title, doc.content, doc.createdAt, doc.updatedAt, doc.parentId);
 
   return doc;
 }
 
 export function updateDocument(
   id: string,
-  patch: { title?: string; content?: string },
+  patch: { title?: string; content?: string; parentId?: string | null },
 ): DocumentRow {
   const db = getDb();
   const existing = getDocumentById(id);
@@ -74,14 +76,16 @@ export function updateDocument(
     title:
       patch.title === undefined ? existing.title : patch.title.trim() || 'Untitled',
     content: patch.content === undefined ? existing.content : patch.content,
+    parentId:
+      patch.parentId === undefined ? existing.parentId : patch.parentId ?? null,
     updatedAt: nowIso(),
   };
 
   db.prepare(
     `UPDATE documents
-     SET title = ?, content = ?, updatedAt = ?
+     SET title = ?, content = ?, updatedAt = ?, parentId = ?
      WHERE id = ?`,
-  ).run(next.title, next.content, next.updatedAt, id);
+  ).run(next.title, next.content, next.updatedAt, next.parentId, id);
 
   return next;
 }

@@ -1,24 +1,20 @@
 import * as React from 'react';
-import { FileText, Plus, Search, Settings, SquareStack } from 'lucide-react';
+import { Plus, Search, Settings, SquareStack, StickyNote } from 'lucide-react';
 
 import { cn } from '../lib/utils';
+import { useDocumentStore } from '../renderer/document-store';
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarFooter,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from './ui/sidebar';
-
-const items = [
-  { title: 'Notes', icon: FileText },
-  { title: 'Search', icon: Search },
-  { title: 'Settings', icon: Settings },
-];
 
 // Temporary logo placeholder. We'll swap this for a custom SVG later.
 function LycheeLogo() {
@@ -27,6 +23,21 @@ function LycheeLogo() {
 
 export function AppSidebar() {
   const { open } = useSidebar();
+  const { documents, selectedId, loading, createDocument, selectDocument, loadDocuments } =
+    useDocumentStore();
+
+  React.useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
+
+  const handleNewNote = React.useCallback(async () => {
+    await createDocument(null);
+  }, [createDocument]);
+
+  const rootDocs = React.useMemo(
+    () => documents.filter((d) => d.parentId == null),
+    [documents],
+  );
 
   return (
     <Sidebar>
@@ -56,27 +67,58 @@ export function AppSidebar() {
           <SidebarGroupLabel>Actions</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="New note">
+              <SidebarMenuButton tooltip="New note" onClick={handleNewNote}>
                 <Plus className="h-4 w-4 shrink-0" />
                 <span className={cn('truncate', !open && 'sr-only')}>New note</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Library</SidebarGroupLabel>
-          <SidebarMenu>
-            {items.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton tooltip={item.title}>
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  <span className={cn('truncate', !open && 'sr-only')}>{item.title}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
+        {open && (
+          <>
+            <SidebarGroup>
+              <SidebarGroupLabel>Notes</SidebarGroupLabel>
+            </SidebarGroup>
+            <div className="mt-1 max-h-56 overflow-y-auto pr-1">
+              <SidebarMenu>
+                {loading && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton>
+                      <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
+                      <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                        Loading…
+                      </span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {!loading &&
+                  rootDocs.map((doc) => (
+                    <SidebarMenuItem key={doc.id}>
+                      <SidebarMenuButton
+                        tooltip={doc.title}
+                        isActive={doc.id === selectedId}
+                        onClick={() => selectDocument(doc.id)}
+                      >
+                        <StickyNote className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{doc.title || 'Untitled'}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+              </SidebarMenu>
+            </div>
+          </>
+        )}
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu className="w-full">
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Settings">
+              <Settings className="h-4 w-4 shrink-0" />
+              {open && <span className="truncate text-xs">Settings</span>}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
