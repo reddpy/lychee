@@ -251,7 +251,7 @@ export function AppSidebar() {
               </SidebarGroupLabel>
             </SidebarGroup>
             {notesSectionOpen && (
-              <div className="mt-1 max-h-56 overflow-y-auto pr-1">
+              <div className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1">
                 <SidebarMenu>
                   {loading && (
                     <SidebarMenuItem>
