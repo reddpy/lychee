@@ -16,7 +16,7 @@ export function listDocuments(params: {
 
   return db
     .prepare(
-      `SELECT id, title, content, createdAt, updatedAt, parentId
+      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji
        FROM documents
        ORDER BY updatedAt DESC
        LIMIT ? OFFSET ?`,
@@ -28,7 +28,7 @@ export function getDocumentById(id: string): DocumentRow | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT id, title, content, createdAt, updatedAt, parentId
+      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji
        FROM documents
        WHERE id = ?`,
     )
@@ -40,6 +40,7 @@ export function createDocument(input: {
   title?: string;
   content?: string;
   parentId?: string | null;
+  emoji?: string | null;
 }): DocumentRow {
   const db = getDb();
 
@@ -51,19 +52,33 @@ export function createDocument(input: {
     createdAt,
     updatedAt: createdAt,
     parentId: input.parentId ?? null,
+    emoji: input.emoji ?? null,
   };
 
   db.prepare(
-    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(doc.id, doc.title, doc.content, doc.createdAt, doc.updatedAt, doc.parentId);
+    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId, emoji)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    doc.id,
+    doc.title,
+    doc.content,
+    doc.createdAt,
+    doc.updatedAt,
+    doc.parentId,
+    doc.emoji,
+  );
 
   return doc;
 }
 
 export function updateDocument(
   id: string,
-  patch: { title?: string; content?: string; parentId?: string | null },
+  patch: {
+    title?: string;
+    content?: string;
+    parentId?: string | null;
+    emoji?: string | null;
+  },
 ): DocumentRow {
   const db = getDb();
   const existing = getDocumentById(id);
@@ -78,14 +93,22 @@ export function updateDocument(
     content: patch.content === undefined ? existing.content : patch.content,
     parentId:
       patch.parentId === undefined ? existing.parentId : patch.parentId ?? null,
+    emoji: patch.emoji === undefined ? existing.emoji : patch.emoji ?? null,
     updatedAt: nowIso(),
   };
 
   db.prepare(
     `UPDATE documents
-     SET title = ?, content = ?, updatedAt = ?, parentId = ?
+     SET title = ?, content = ?, updatedAt = ?, parentId = ?, emoji = ?
      WHERE id = ?`,
-  ).run(next.title, next.content, next.updatedAt, next.parentId, id);
+  ).run(
+    next.title,
+    next.content,
+    next.updatedAt,
+    next.parentId,
+    next.emoji,
+    id,
+  );
 
   return next;
 }

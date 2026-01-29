@@ -72,6 +72,27 @@ function runMigrations(database: BetterSqlite3Database) {
 
     tx();
   }
+
+  // v3: add emoji for note icon
+  const columnsAfterV2 = database
+    .prepare(`PRAGMA table_info(documents)`)
+    .all() as { name: string }[];
+  const hasEmoji = columnsAfterV2.some((col) => col.name === 'emoji');
+
+  if (!hasEmoji) {
+    const tx = database.transaction(() => {
+      database.exec(`ALTER TABLE documents ADD COLUMN emoji TEXT NULL`);
+
+      database
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run('3');
+    });
+
+    tx();
+  }
 }
 
 export function initDatabase(): { dbPath: string } {

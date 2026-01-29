@@ -28,12 +28,14 @@ function getDocById(documents: DocumentRow[], id: string): DocumentRow | undefin
 function SortableTab({
   id,
   title,
+  emoji,
   isActive,
   onSelect,
   onClose,
 }: {
   id: string;
   title: string;
+  emoji: string | null;
   isActive: boolean;
   onSelect: () => void;
   onClose: (e: React.MouseEvent) => void;
@@ -69,7 +71,10 @@ function SortableTab({
       {...listeners}
     >
       <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
-        {title || 'Untitled'}
+        {emoji ? (
+          <span className="shrink-0 text-base leading-none">{emoji}</span>
+        ) : null}
+        <span className="min-w-0 truncate">{title || 'Untitled'}</span>
       </span>
       <button
         type="button"
@@ -87,7 +92,13 @@ function SortableTab({
 }
 
 /** Tab pill used inside DragOverlay (no drag handlers, same look). */
-function DragOverlayTab({ title }: { title: string }) {
+function DragOverlayTab({
+  title,
+  emoji,
+}: {
+  title: string;
+  emoji: string | null;
+}) {
   return (
     <div
       className={cn(
@@ -95,7 +106,12 @@ function DragOverlayTab({ title }: { title: string }) {
         'min-w-0 max-w-[200px] shrink-0 shadow-lg ring-2 ring-[hsl(var(--ring))]/20',
       )}
     >
-      <span className="flex-1 truncate">{title || 'Untitled'}</span>
+      <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
+        {emoji ? (
+          <span className="shrink-0 text-base leading-none">{emoji}</span>
+        ) : null}
+        <span className="min-w-0 truncate">{title || 'Untitled'}</span>
+      </span>
       <span className="flex h-5 w-5 shrink-0 items-center justify-center opacity-50">
         <X className="h-3 w-3" />
       </span>
@@ -217,6 +233,7 @@ export function TabStrip() {
                   key={tabId}
                   id={tabId}
                   title={doc.title}
+                  emoji={doc.emoji ?? null}
                   isActive={selectedId === tabId}
                   onSelect={() => handleTabSelect(tabId)}
                   onClose={(e) => handleTabClose(e, tabId)}
@@ -261,7 +278,10 @@ export function TabStrip() {
         modifiers={[restrictToHorizontalAxis]}
       >
         {activeDragDoc ? (
-          <DragOverlayTab title={activeDragDoc.title} />
+          <DragOverlayTab
+            title={activeDragDoc.title}
+            emoji={activeDragDoc.emoji ?? null}
+          />
         ) : null}
       </DragOverlay>
     </DndContext>
