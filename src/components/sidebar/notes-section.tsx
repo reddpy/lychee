@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 
 import type { DocumentRow } from '../../shared/documents';
@@ -10,6 +11,7 @@ import {
   useSidebar,
 } from '../ui/sidebar';
 import { cn } from '../../lib/utils';
+import { useDocumentStore } from '../../renderer/document-store';
 import { NoteTreeItem } from './note-tree-item';
 
 const MAX_NESTING_DEPTH = 4; // root depth 0, deepest child depth 4 (5 levels)
@@ -45,6 +47,7 @@ function NoteTreeRecursive({
   selectedId,
   onToggleExpanded,
   onAddPageInside,
+  highlightId,
 }: {
   doc: DocumentRow;
   depth: number;
@@ -53,11 +56,13 @@ function NoteTreeRecursive({
   selectedId: string | null;
   onToggleExpanded: (id: string) => void;
   onAddPageInside: (parentId: string) => void;
+  highlightId?: string | null;
 }) {
   const children = childrenByParent.get(doc.id) ?? [];
   const hasChildren = children.length > 0;
   const isExpanded = expandedIds.has(doc.id);
   const canAddChild = depth < MAX_NESTING_DEPTH;
+  const isHighlighted = highlightId === doc.id;
 
   return (
     <React.Fragment key={doc.id}>
@@ -70,23 +75,35 @@ function NoteTreeRecursive({
         isSelected={selectedId === doc.id}
         onToggleExpanded={onToggleExpanded}
         onAddPageInside={onAddPageInside}
+        isHighlighted={isHighlighted}
+        isRoot={depth === 0}
       />
-      {hasChildren && isExpanded && (
-        <div className="mt-0.5">
-          {children.map((child) => (
-            <NoteTreeRecursive
-              key={child.id}
-              doc={child}
-              depth={depth + 1}
-              childrenByParent={childrenByParent}
-              expandedIds={expandedIds}
-              selectedId={selectedId}
-              onToggleExpanded={onToggleExpanded}
-              onAddPageInside={onAddPageInside}
-            />
-          ))}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {hasChildren && isExpanded && (
+          <motion.div
+            className="mt-0.5"
+            style={{ overflow: 'hidden' }}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
+            {children.map((child) => (
+              <NoteTreeRecursive
+                key={child.id}
+                doc={child}
+                depth={depth + 1}
+                childrenByParent={childrenByParent}
+                expandedIds={expandedIds}
+                selectedId={selectedId}
+                onToggleExpanded={onToggleExpanded}
+                onAddPageInside={onAddPageInside}
+                highlightId={highlightId}
+              />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </React.Fragment>
   );
 }
@@ -101,6 +118,9 @@ export function NotesSection({
 }: NotesSectionProps) {
   const { open } = useSidebar();
   const [notesSectionOpen, setNotesSectionOpen] = React.useState(true);
+  const lastCreatedId = useDocumentStore((s) => s.lastCreatedId);
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [highlightId, setHighlightId] = React.useState<string | null>(null);
 
   const childrenByParent = React.useMemo(
     () => buildChildrenByParent(documents),
@@ -134,6 +154,30 @@ export function NotesSection({
 
   if (!open) return null;
 
+  // Scroll newly created note into view and briefly highlight it.
+  React.useEffect(() => {
+    if (!lastCreatedId) return;
+
+    const container = scrollRef.current;
+    if (container) {
+      const el = container.querySelector<HTMLElement>(
+        `[data-note-id="${lastCreatedId}"]`,
+      );
+      if (el) {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+
+    setHighlightId(lastCreatedId);
+    const timeout = window.setTimeout(() => {
+      setHighlightId(null);
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [lastCreatedId, documents]);
+
   return (
     <>
       <SidebarGroup>
@@ -160,7 +204,7 @@ export function NotesSection({
         )}
       >
         <div className="h-full">
-          <div className="notes-scroll h-full pr-1 py-1">
+          <div ref={scrollRef} className="notes-scroll h-full pr-1 py-1">
             <SidebarMenu>
               {loading && (
                 <SidebarMenuItem>
@@ -183,6 +227,7 @@ export function NotesSection({
                     selectedId={selectedId}
                     onToggleExpanded={toggleExpanded}
                     onAddPageInside={handleAddPageInside}
+                    highlightId={highlightId}
                   />
                 ))}
             </SidebarMenu>

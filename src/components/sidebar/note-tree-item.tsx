@@ -1,5 +1,6 @@
 import * as React from 'react';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import { motion } from 'framer-motion';
 import {
   ChevronRight,
   ChevronDown,
@@ -36,6 +37,8 @@ export type NoteTreeItemProps = {
   isSelected: boolean;
   onToggleExpanded: (id: string) => void;
   onAddPageInside: (parentId: string) => void;
+  isHighlighted?: boolean;
+  isRoot?: boolean;
 };
 
 export function NoteTreeItem({
@@ -47,12 +50,11 @@ export function NoteTreeItem({
   isSelected,
   onToggleExpanded,
   onAddPageInside,
+  isHighlighted,
+  isRoot,
 }: NoteTreeItemProps) {
-  const {
-    openTab,
-    navigateCurrentTab,
-    updateDocumentInStore,
-  } = useDocumentStore();
+  const { openTab, navigateCurrentTab, updateDocumentInStore } =
+    useDocumentStore();
   const hasChildren = children.length > 0;
 
   const handleAddPageInside = React.useCallback(() => {
@@ -71,7 +73,7 @@ export function NoteTreeItem({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <span className="block w-full">
+        <span className="block w-full" data-note-id={doc.id}>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip={doc.title}
@@ -91,38 +93,55 @@ export function NoteTreeItem({
               }}
               className="group"
             >
-              <div
-                className="flex w-full items-center gap-2"
-                style={{ paddingLeft: depth * 12 }}
-              >
-                {hasChildren ? (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="flex h-5 w-5 items-center justify-center rounded border border-transparent text-[hsl(var(--muted-foreground))] transition-colors hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-border))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleExpanded(doc.id);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
+              {isHighlighted ? (
+                <motion.div
+                  className="flex w-full items-center gap-2"
+                  style={{ paddingLeft: depth * 12 }}
+                  initial={isRoot ? { opacity: 0, x: -24 } : { opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={
+                    {
+                      type: 'tween',
+                      duration: 0.18,
+                      ease: 'easeOut',
+                      delay: 0.08,
+                    }
+                  }
+                >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                  {hasChildren ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="group/icon relative flex h-5 w-5 items-center justify-center rounded border border-transparent text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:border-black/60 hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
+                      onClick={(e) => {
                         e.stopPropagation();
                         onToggleExpanded(doc.id);
-                      }
-                    }}
-                    aria-label={isExpanded ? 'Collapse' : 'Expand'}
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="h-3 w-3" />
-                    ) : (
-                      <ChevronRight className="h-3 w-3" />
-                    )}
-                  </span>
-                ) : (
-                  <span className="h-5 w-5" />
-                )}
-                {iconNode}
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onToggleExpanded(doc.id);
+                        }
+                      }}
+                      aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                    >
+                      <span className="flex h-4 w-4 items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
+                        {iconNode}
+                      </span>
+                      <span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                        {isExpanded ? (
+                          <ChevronDown className="h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3" />
+                        )}
+                      </span>
+                    </span>
+                  ) : (
+                    iconNode
+                  )}
+                </span>
                 <span className="flex-1 truncate">{doc.title || 'Untitled'}</span>
                 <div className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <DropdownMenu>
@@ -151,7 +170,93 @@ export function NoteTreeItem({
                           className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
                           onClick={async (e) => {
                             e.stopPropagation();
-                            onToggleExpanded(doc.id);
+                            onAddPageInside(doc.id);
+                          }}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </span>
+                      </TooltipPrimitive.Trigger>
+                      <TooltipPrimitive.Portal>
+                        <TooltipPrimitive.Content
+                          side="top"
+                          sideOffset={4}
+                          className="z-50 rounded-md bg-[hsl(var(--foreground))] px-2 py-1 text-xs text-[hsl(var(--background))] shadow"
+                        >
+                          Add Page Inside
+                          <TooltipPrimitive.Arrow className="fill-[hsl(var(--foreground))]" />
+                        </TooltipPrimitive.Content>
+                      </TooltipPrimitive.Portal>
+                    </TooltipPrimitive.Root>
+                  )}
+                </div>
+              </motion.div>
+            ) : (
+              <div
+                className="flex w-full items-center gap-2"
+                style={{ paddingLeft: depth * 12 }}
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                  {hasChildren ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="group/icon relative flex h-5 w-5 items-center justify-center rounded border border-transparent text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:border-black/60 hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleExpanded(doc.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onToggleExpanded(doc.id);
+                        }
+                      }}
+                      aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                    >
+                      <span className="flex h-4 w-4 items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
+                        {iconNode}
+                      </span>
+                      <span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                        {isExpanded ? (
+                          <ChevronDown className="h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3" />
+                        )}
+                      </span>
+                    </span>
+                  ) : (
+                    iconNode
+                  )}
+                </span>
+                <span className="flex-1 truncate">{doc.title || 'Untitled'}</span>
+                <div className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-3 w-3" />
+                      </span>
+                    </DropdownMenuTrigger>
+                    <DocumentDropdownMenuContent
+                      docId={doc.id}
+                      canAddChild={canAddChild}
+                      onAddPageInside={handleAddPageInside}
+                    />
+                  </DropdownMenu>
+                  {canAddChild && (
+                    <TooltipPrimitive.Root delayDuration={150}>
+                      <TooltipPrimitive.Trigger asChild>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
+                          onClick={async (e) => {
+                            e.stopPropagation();
                             onAddPageInside(doc.id);
                           }}
                         >
@@ -172,6 +277,7 @@ export function NoteTreeItem({
                   )}
                 </div>
               </div>
+            )}
             </SidebarMenuButton>
           </SidebarMenuItem>
         </span>
