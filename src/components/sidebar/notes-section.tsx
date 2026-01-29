@@ -10,7 +10,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '../ui/sidebar';
-import { cn } from '../../lib/utils';
 import { useDocumentStore } from '../../renderer/document-store';
 import { NoteTreeItem } from './note-tree-item';
 
@@ -197,43 +196,49 @@ export function NotesSection({
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarGroup>
-      <div
-        className={cn(
-          'min-h-0 flex-1 overflow-hidden transition-all duration-200 ease-out',
-          notesSectionOpen ? 'mt-1 max-h-[999px] opacity-100' : 'max-h-0 opacity-0',
+      <AnimatePresence initial={false}>
+        {notesSectionOpen && (
+          <motion.div
+            key="notes-section-body"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="min-h-0 mt-1 flex-1 overflow-hidden"
+          >
+            <div className="h-full">
+              <div ref={scrollRef} className="notes-scroll h-full pr-1 py-1">
+                <SidebarMenu>
+                  {loading && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton>
+                        <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
+                        <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                          Loading…
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {!loading &&
+                    rootDocs.map((doc) => (
+                      <NoteTreeRecursive
+                        key={doc.id}
+                        doc={doc}
+                        depth={0}
+                        childrenByParent={childrenByParent}
+                        expandedIds={expandedIds}
+                        selectedId={selectedId}
+                        onToggleExpanded={toggleExpanded}
+                        onAddPageInside={handleAddPageInside}
+                        highlightId={highlightId}
+                      />
+                    ))}
+                </SidebarMenu>
+              </div>
+            </div>
+          </motion.div>
         )}
-      >
-        <div className="h-full">
-          <div ref={scrollRef} className="notes-scroll h-full pr-1 py-1">
-            <SidebarMenu>
-              {loading && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton>
-                    <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
-                    <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                      Loading…
-                    </span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-              {!loading &&
-                rootDocs.map((doc) => (
-                  <NoteTreeRecursive
-                    key={doc.id}
-                    doc={doc}
-                    depth={0}
-                    childrenByParent={childrenByParent}
-                    expandedIds={expandedIds}
-                    selectedId={selectedId}
-                    onToggleExpanded={toggleExpanded}
-                    onAddPageInside={handleAddPageInside}
-                    highlightId={highlightId}
-                  />
-                ))}
-            </SidebarMenu>
-          </div>
-        </div>
-      </div>
+      </AnimatePresence>
     </>
   );
 }
