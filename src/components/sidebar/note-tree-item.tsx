@@ -105,13 +105,14 @@ export function NoteTreeItem({
                 <div className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex h-5 w-5 items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <MoreHorizontal className="h-3 w-3" />
-                      </button>
+                      </span>
                     </DropdownMenuTrigger>
                     <DocumentDropdownMenuContent
                       docId={doc.id}
@@ -122,9 +123,10 @@ export function NoteTreeItem({
                   {canAddChild && (
                     <TooltipPrimitive.Root delayDuration={150}>
                       <TooltipPrimitive.Trigger asChild>
-                        <button
-                          type="button"
-                          className="flex h-5 w-5 items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
                           onClick={async (e) => {
                             e.stopPropagation();
                             onToggleExpanded(doc.id);
@@ -132,7 +134,7 @@ export function NoteTreeItem({
                           }}
                         >
                           <Plus className="h-3 w-3" />
-                        </button>
+                        </span>
                       </TooltipPrimitive.Trigger>
                       <TooltipPrimitive.Portal>
                         <TooltipPrimitive.Content
