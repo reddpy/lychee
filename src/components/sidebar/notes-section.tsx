@@ -137,21 +137,21 @@ export function NotesSection({
   return (
     <>
       <SidebarGroup>
-        <SidebarGroupLabel className="flex items-center gap-1">
-          <button
-            type="button"
-            className="flex h-4 w-4 items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+        <SidebarMenuItem>
+          <SidebarMenuButton
             onClick={() => setNotesSectionOpen((prev) => !prev)}
-            aria-label={notesSectionOpen ? 'Collapse notes' : 'Expand notes'}
+            className="px-2 text-xs font-medium uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))]"
           >
-            {notesSectionOpen ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-          </button>
-          <span>Notes</span>
-        </SidebarGroupLabel>
+            <span className="flex flex-1 items-center gap-1.5">
+              {notesSectionOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <span>Notes</span>
+            </span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
       </SidebarGroup>
       {notesSectionOpen && (
         <div className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1">
