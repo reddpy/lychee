@@ -2,6 +2,8 @@ import * as React from 'react';
 import {
   DndContext,
   type DragEndEvent,
+  type DragStartEvent,
+  DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
@@ -13,7 +15,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 import { cn } from '../lib/utils';
 import { useDocumentStore } from '../renderer/document-store';
@@ -47,19 +49,20 @@ function SortableTab({
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: isDragging ? transition : 'none',
   };
 
   return (
     <div
       ref={setNodeRef}
+      data-tab-id={id}
       style={style}
       className={cn(
-        'flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] min-w-0 max-w-[200px] shrink-0 transition-colors',
+        'flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] min-w-0 max-w-[200px] shrink-0 transition-all duration-150',
         isActive
-          ? 'border-b-[hsl(var(--foreground))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
+          ? 'relative z-10 tab-raised border-b-[hsl(var(--foreground))] border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
           : 'border-b-transparent bg-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/30',
-        isDragging && 'opacity-80 shadow-lg z-10 bg-[hsl(var(--background))]',
+        isDragging && 'opacity-0 pointer-events-none',
       )}
     >
       <button
@@ -75,10 +78,27 @@ function SortableTab({
         type="button"
         onClick={onClose}
         aria-label="Close tab"
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-50 hover:opacity-100 hover:bg-[hsl(var(--muted))] focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-50 hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
       >
         <X className="h-3 w-3" />
       </button>
+    </div>
+  );
+}
+
+/** Tab pill used inside DragOverlay (no drag handlers, same look). */
+function DragOverlayTab({ title }: { title: string }) {
+  return (
+    <div
+      className={cn(
+        'flex cursor-grabbing items-center gap-1.5 border-b-2 border-b-[hsl(var(--foreground))] border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-[13px] font-medium text-[hsl(var(--foreground))] tab-raised',
+        'min-w-0 max-w-[200px] shrink-0 shadow-lg ring-2 ring-[hsl(var(--ring))]/20',
+      )}
+    >
+      <span className="flex-1 truncate">{title || 'Untitled'}</span>
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center opacity-50">
+        <X className="h-3 w-3" />
+      </span>
     </div>
   );
 }
@@ -88,11 +108,12 @@ export function TabStrip() {
     documents,
     openTabs,
     selectedId,
-    openTab,
     closeTab,
     reorderTabs,
     selectDocument,
   } = useDocumentStore();
+
+  const [activeDragId, setActiveDragId] = React.useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -100,8 +121,13 @@ export function TabStrip() {
     }),
   );
 
+  const handleDragStart = React.useCallback((event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  }, []);
+
   const handleDragEnd = React.useCallback(
     (event: DragEndEvent) => {
+      setActiveDragId(null);
       const { active, over } = event;
       if (!over || active.id === over.id) return;
       const oldIndex = openTabs.indexOf(active.id as string);
@@ -111,6 +137,12 @@ export function TabStrip() {
     },
     [openTabs, reorderTabs],
   );
+
+  const handleDragCancel = React.useCallback(() => {
+    setActiveDragId(null);
+  }, []);
+
+  const activeDragDoc = activeDragId ? getDocById(documents, activeDragId) : null;
 
   const handleTabSelect = React.useCallback(
     (id: string) => {
@@ -127,6 +159,35 @@ export function TabStrip() {
     [closeTab],
   );
 
+  const activeIndex =
+    selectedId != null ? openTabs.indexOf(selectedId) : -1;
+  const canGoLeft = activeIndex > 0;
+  const canGoRight = activeIndex >= 0 && activeIndex < openTabs.length - 1;
+
+  const handlePrevTab = React.useCallback(() => {
+    if (!canGoLeft) return;
+    const prevId = openTabs[activeIndex - 1];
+    if (prevId) selectDocument(prevId);
+  }, [canGoLeft, activeIndex, openTabs, selectDocument]);
+
+  const handleNextTab = React.useCallback(() => {
+    if (!canGoRight) return;
+    const nextId = openTabs[activeIndex + 1];
+    if (nextId) selectDocument(nextId);
+  }, [canGoRight, activeIndex, openTabs, selectDocument]);
+
+  const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (selectedId == null) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const tabEl = container.querySelector(`[data-tab-id="${selectedId}"]`);
+    if (tabEl) {
+      tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }, [selectedId]);
+
   if (openTabs.length === 0) {
     return null;
   }
@@ -134,30 +195,75 @@ export function TabStrip() {
   return (
     <DndContext
       sensors={sensors}
+      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
       modifiers={[restrictToHorizontalAxis]}
     >
       <SortableContext
         items={openTabs}
         strategy={horizontalListSortingStrategy}
       >
-        <div className="flex items-stretch overflow-x-auto border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]">
-          {openTabs.map((tabId) => {
-            const doc = getDocById(documents, tabId);
-            if (!doc) return null;
-            return (
-              <SortableTab
-                key={tabId}
-                id={tabId}
-                title={doc.title}
-                isActive={selectedId === tabId}
-                onSelect={() => handleTabSelect(tabId)}
-                onClose={(e) => handleTabClose(e, tabId)}
-              />
-            );
-          })}
+        <div className="flex items-stretch border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]">
+          <div
+            ref={scrollContainerRef}
+            className="flex min-w-0 flex-1 items-stretch overflow-x-auto scrollbar-hide"
+          >
+            {openTabs.map((tabId) => {
+              const doc = getDocById(documents, tabId);
+              if (!doc) return null;
+              return (
+                <SortableTab
+                  key={tabId}
+                  id={tabId}
+                  title={doc.title}
+                  isActive={selectedId === tabId}
+                  onSelect={() => handleTabSelect(tabId)}
+                  onClose={(e) => handleTabClose(e, tabId)}
+                />
+              );
+            })}
+          </div>
+          <div className="flex shrink-0 items-center border-l border-[hsl(var(--border))] pl-0.5 pr-1">
+            <button
+              type="button"
+              onClick={handlePrevTab}
+              disabled={!canGoLeft}
+              aria-label="Previous tab"
+              className={cn(
+                'flex h-8 w-8 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors',
+                canGoLeft
+                  ? 'hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]'
+                  : 'cursor-not-allowed opacity-40',
+              )}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNextTab}
+              disabled={!canGoRight}
+              aria-label="Next tab"
+              className={cn(
+                'flex h-8 w-8 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors',
+                canGoRight
+                  ? 'hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]'
+                  : 'cursor-not-allowed opacity-40',
+              )}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </SortableContext>
+      <DragOverlay
+        dropAnimation={null}
+        modifiers={[restrictToHorizontalAxis]}
+      >
+        {activeDragDoc ? (
+          <DragOverlayTab title={activeDragDoc.title} />
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 }
