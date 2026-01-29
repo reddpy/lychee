@@ -187,17 +187,23 @@ export function SidebarMenuButton({
   className,
   children,
   onClick,
+  onAuxClick,
+  onContextMenu,
 }: React.PropsWithChildren<{
   tooltip?: string;
   isActive?: boolean;
   className?: string;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent) => void;
+  onAuxClick?: (e: React.MouseEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }>) {
   const { open } = useSidebar();
 
   const btn = (
     <button
       onClick={onClick}
+      onAuxClick={onAuxClick}
+      onContextMenu={onContextMenu}
       data-active={isActive ? 'true' : 'false'}
       className={cn(
         'group/menu-button flex w-full items-center rounded-md py-2 text-sm',
