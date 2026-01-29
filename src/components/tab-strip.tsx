@@ -58,25 +58,25 @@ function SortableTab({
       data-tab-id={id}
       style={style}
       className={cn(
-        'flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] min-w-0 max-w-[200px] shrink-0 transition-all duration-150',
+        'flex cursor-pointer select-none items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] min-w-0 max-w-[200px] shrink-0 transition-all duration-150',
         isActive
           ? 'relative z-10 tab-raised border-b-[hsl(var(--foreground))] border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
-          : 'border-b-transparent bg-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/30',
+          : 'border-b-transparent bg-transparent text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/60 hover:text-[hsl(var(--foreground))]',
         isDragging && 'opacity-0 pointer-events-none',
       )}
+      onClick={onSelect}
+      {...attributes}
+      {...listeners}
     >
+      <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
+        {title || 'Untitled'}
+      </span>
       <button
         type="button"
-        onClick={onSelect}
-        className="flex flex-1 min-w-0 items-center gap-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 rounded-sm"
-        {...attributes}
-        {...listeners}
-      >
-        <span className="truncate">{title || 'Untitled'}</span>
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose(e);
+        }}
         aria-label="Close tab"
         className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-50 hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
       >
