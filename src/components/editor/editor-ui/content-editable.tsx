@@ -1,34 +1,31 @@
-import { JSX } from "react"
-import { ContentEditable as LexicalContentEditable } from "@lexical/react/LexicalContentEditable"
+"use client"
 
-type Props = {
-  placeholder: string
-  className?: string
-  placeholderClassName?: string
-}
+import { ContentEditable as LexicalContentEditable } from "@lexical/react/LexicalContentEditable"
+import { cn } from "@/lib/utils"
 
 export function ContentEditable({
-  placeholder,
   className,
   placeholderClassName,
-}: Props): JSX.Element {
+  placeholder,
+}: {
+  className?: string
+  placeholderClassName?: string
+  placeholder?: string
+}) {
   return (
-    <LexicalContentEditable
-      className={
-        className ??
-        `ContentEditable__root relative block min-h-72 min-h-full overflow-auto px-8 py-4 focus:outline-none`
-      }
-      aria-placeholder={placeholder}
-      placeholder={
+    <div className={cn("relative", className)}>
+      <LexicalContentEditable className="min-h-[200px] outline-none" />
+      {placeholder && (
         <div
-          className={
-            placeholderClassName ??
-            `text-muted-foreground pointer-events-none absolute top-0 left-0 overflow-hidden px-8 py-[18px] text-ellipsis select-none`
-          }
+          className={cn(
+            "pointer-events-none absolute left-0 top-0 select-none overflow-hidden text-ellipsis text-muted-foreground",
+            placeholderClassName
+          )}
+          aria-hidden
         >
           {placeholder}
         </div>
-      }
-    />
+      )}
+    </div>
   )
 }

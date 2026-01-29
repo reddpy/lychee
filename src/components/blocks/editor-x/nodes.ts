@@ -1,23 +1,13 @@
 import { CodeHighlightNode, CodeNode } from "@lexical/code"
-import { LinkNode, AutoLinkNode } from "@lexical/link"
+import { AutoLinkNode, LinkNode } from "@lexical/link"
 import { ListItemNode, ListNode } from "@lexical/list"
 import { HeadingNode, QuoteNode } from "@lexical/rich-text"
 import { TableCellNode, TableNode, TableRowNode } from "@lexical/table"
-import {
-  Klass,
-  LexicalNode,
-  LexicalNodeReplacement,
-  ParagraphNode,
-  TextNode,
-} from "lexical"
+import type { Klass, LexicalNode } from "lexical"
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode"
+import { ParagraphNode, TextNode } from "lexical"
 
-import { EmojiNode } from "@/components/editor/nodes/emoji-node"
-import { ImageNode } from "@/components/editor/nodes/image-node"
-
-export const nodes: ReadonlyArray<
-  Klass<LexicalNode> | LexicalNodeReplacement
-> = [
+export const nodes: ReadonlyArray<Klass<LexicalNode>> = [
   HeadingNode,
   ParagraphNode,
   TextNode,
@@ -32,6 +22,4 @@ export const nodes: ReadonlyArray<
   TableRowNode,
   TableCellNode,
   HorizontalRuleNode,
-  ImageNode,
-  EmojiNode,
 ]

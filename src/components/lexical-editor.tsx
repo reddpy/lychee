@@ -5,7 +5,7 @@ import { useDocumentStore } from "@/renderer/document-store"
 import type { DocumentRow } from "@/shared/documents"
 import type { SerializedEditorState } from "lexical"
 
-import { Editor } from "@/components/blocks/editor-00"
+import { Editor } from "@/components/blocks/editor-x"
 
 function getSerializedState(
   content: string | undefined
