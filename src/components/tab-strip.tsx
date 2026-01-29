@@ -6,11 +6,11 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import {
   SortableContext,
   horizontalListSortingStrategy,
   useSortable,
-  arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { X } from 'lucide-react';
@@ -55,19 +55,17 @@ function SortableTab({
       ref={setNodeRef}
       style={style}
       className={cn(
-        'flex items-center gap-1.5 rounded-t-lg border border-b-0 border-[hsl(var(--border))] px-3 py-2 text-[13px] min-w-0 max-w-[180px] shrink-0',
-        'bg-[hsl(var(--muted))]/50',
-        isActive && 'border-b-0 bg-[hsl(var(--background))] -mb-px',
-        isDragging && 'opacity-80 shadow-md z-10',
+        'flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] min-w-0 max-w-[200px] shrink-0 transition-colors',
+        isActive
+          ? 'border-b-[hsl(var(--foreground))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
+          : 'border-b-transparent bg-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/30',
+        isDragging && 'opacity-80 shadow-lg z-10 bg-[hsl(var(--background))]',
       )}
     >
       <button
         type="button"
         onClick={onSelect}
-        className={cn(
-          'flex flex-1 min-w-0 items-center gap-1.5 rounded text-left outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1',
-          !isActive && 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]',
-        )}
+        className="flex flex-1 min-w-0 items-center gap-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 rounded-sm"
         {...attributes}
         {...listeners}
       >
@@ -77,7 +75,7 @@ function SortableTab({
         type="button"
         onClick={onClose}
         aria-label="Close tab"
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded opacity-60 hover:opacity-100 hover:bg-[hsl(var(--muted))] focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-50 hover:opacity-100 hover:bg-[hsl(var(--muted))] focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
       >
         <X className="h-3 w-3" />
       </button>
@@ -134,12 +132,16 @@ export function TabStrip() {
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      onDragEnd={handleDragEnd}
+      modifiers={[restrictToHorizontalAxis]}
+    >
       <SortableContext
         items={openTabs}
         strategy={horizontalListSortingStrategy}
       >
-        <div className="flex items-end gap-0.5 overflow-x-auto pl-1 pr-2">
+        <div className="flex items-stretch overflow-x-auto border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]">
           {openTabs.map((tabId) => {
             const doc = getDocById(documents, tabId);
             if (!doc) return null;
