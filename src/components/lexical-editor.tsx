@@ -74,7 +74,7 @@ function NoteHeader({
   )
 
   return (
-    <div className="group mb-2 flex flex-col gap-1">
+    <div className="mb-2 flex flex-col gap-1">
       <div className="flex items-end gap-3">
         {document.emoji ? (
           <div className="group relative inline-flex items-end rounded">
@@ -88,8 +88,8 @@ function NoteHeader({
                 <button
                   type="button"
                   className={cn(
-                  "text-7xl leading-none transition-opacity hover:opacity-80",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:rounded"
+                    "flex h-20 w-20 items-center justify-center rounded-lg bg-transparent text-6xl leading-none transition-colors",
+                    "hover:bg-[hsl(var(--muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
                   )}
                   title="Change icon"
                   aria-label="Change note icon"
@@ -110,7 +110,7 @@ function NoteHeader({
           </div>
         ) : null}
       </div>
-      <div className="flex items-center gap-3 text-sm text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="flex items-center gap-3 text-sm text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity hover:opacity-100">
         <NoteEmojiPicker
           docId={documentId}
           currentEmoji={document.emoji}
