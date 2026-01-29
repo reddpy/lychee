@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react';
+import { Settings, Trash2 } from 'lucide-react';
 
 import {
   SidebarFooter,
@@ -12,8 +12,14 @@ export function SidebarFooterContent() {
   const { open } = useSidebar();
 
   return (
-    <SidebarFooter>
+    <SidebarFooter className="h-auto items-stretch py-1">
       <SidebarMenu className="w-full">
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="Trash Bin">
+            <Trash2 className="h-4 w-4 shrink-0" />
+            {open && <span className="truncate text-xs">Trash Bin</span>}
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton tooltip="Settings">
             <Settings className="h-4 w-4 shrink-0" />

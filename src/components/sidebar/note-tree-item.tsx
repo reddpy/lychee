@@ -96,12 +96,20 @@ export function NoteTreeItem({
                 style={{ paddingLeft: depth * 12 }}
               >
                 {hasChildren ? (
-                  <button
-                    type="button"
+                  <span
+                    role="button"
+                    tabIndex={0}
                     className="flex h-5 w-5 items-center justify-center rounded border border-transparent text-[hsl(var(--muted-foreground))] transition-colors hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-border))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleExpanded(doc.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onToggleExpanded(doc.id);
+                      }
                     }}
                     aria-label={isExpanded ? 'Collapse' : 'Expand'}
                   >
@@ -110,7 +118,7 @@ export function NoteTreeItem({
                     ) : (
                       <ChevronRight className="h-3 w-3" />
                     )}
-                  </button>
+                  </span>
                 ) : (
                   <span className="h-5 w-5" />
                 )}
