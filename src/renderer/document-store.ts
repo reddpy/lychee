@@ -8,6 +8,8 @@ type DocumentState = {
   openTabs: string[];
   loading: boolean;
   error: string | null;
+  /** ID of the most recently created document (for UI effects like scroll/animation). */
+  lastCreatedId: string | null;
 };
 
 type DocumentActions = {
@@ -32,6 +34,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   openTabs: [],
   loading: false,
   error: null,
+  lastCreatedId: null,
 
   async loadDocuments() {
     try {
@@ -124,6 +127,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
         documents: [document, ...state.documents],
         selectedId: document.id,
         openTabs: [...state.openTabs, document.id],
+        lastCreatedId: document.id,
       }));
     } catch (err) {
       set({ error: (err as Error).message });
