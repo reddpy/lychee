@@ -4,12 +4,12 @@ import { ChevronRight, ChevronDown } from 'lucide-react';
 import type { DocumentRow } from '../../shared/documents';
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from '../ui/sidebar';
+import { cn } from '../../lib/utils';
 import { NoteTreeItem } from './note-tree-item';
 
 const MAX_NESTING_DEPTH = 4; // root depth 0, deepest child depth 4 (5 levels)
@@ -153,35 +153,42 @@ export function NotesSection({
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarGroup>
-      {notesSectionOpen && (
-        <div className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1">
-          <SidebarMenu>
-            {loading && (
-              <SidebarMenuItem>
-                <SidebarMenuButton>
-                  <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
-                  <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                    Loading…
-                  </span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-            {!loading &&
-              rootDocs.map((doc) => (
-                <NoteTreeRecursive
-                  key={doc.id}
-                  doc={doc}
-                  depth={0}
-                  childrenByParent={childrenByParent}
-                  expandedIds={expandedIds}
-                  selectedId={selectedId}
-                  onToggleExpanded={toggleExpanded}
-                  onAddPageInside={handleAddPageInside}
-                />
-              ))}
-          </SidebarMenu>
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-hidden transition-all duration-200 ease-out',
+          notesSectionOpen ? 'mt-1 max-h-[999px] opacity-100' : 'max-h-0 opacity-0',
+        )}
+      >
+        <div className="h-full">
+          <div className="notes-scroll h-full pr-1 py-1">
+            <SidebarMenu>
+              {loading && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton>
+                    <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
+                    <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                      Loading…
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {!loading &&
+                rootDocs.map((doc) => (
+                  <NoteTreeRecursive
+                    key={doc.id}
+                    doc={doc}
+                    depth={0}
+                    childrenByParent={childrenByParent}
+                    expandedIds={expandedIds}
+                    selectedId={selectedId}
+                    onToggleExpanded={toggleExpanded}
+                    onAddPageInside={handleAddPageInside}
+                  />
+                ))}
+            </SidebarMenu>
+          </div>
         </div>
-      )}
+      </div>
     </>
   );
 }
