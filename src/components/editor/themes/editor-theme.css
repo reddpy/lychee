@@ -1,0 +1,4 @@
+/* Lexical editor theme – shadcn-aligned */
+.ContentEditable__root {
+  outline: none;
+}
