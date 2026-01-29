@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { AppSidebar } from '../components/app-sidebar';
+import { LexicalEditor } from '../components/lexical-editor';
 import { TabStrip } from '../components/tab-strip';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '../components/ui/sidebar';
 import { useDocumentStore } from '../renderer/document-store';
@@ -49,24 +50,27 @@ function Header() {
   );
 }
 
-function EditorPlaceholder() {
+function EditorArea() {
   const selectedId = useDocumentStore((s) => s.selectedId);
   const documents = useDocumentStore((s) => s.documents);
-  const selected = documents.find((d) => d.id === selectedId);
+  const selected = selectedId
+    ? documents.find((d) => d.id === selectedId)
+    : undefined;
+
+  if (!selectedId || !selected) {
+    return (
+      <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0">
+        <div className="mx-auto max-w-[900px] px-8 py-10">
+          <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--muted-foreground))]">
+            Select a document or create one to start editing.
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0">
-      <div className="mx-auto max-w-[900px] px-8 py-10">
-        <div className="text-3xl font-semibold tracking-tight">
-          {selected?.title || 'Untitled'}
-        </div>
-        <div className="mt-6 text-[15px] leading-7 text-[hsl(var(--muted-foreground))]">
-          This is the initial UI skeleton. Next we’ll wire the sidebar to your SQLite
-          documents and replace this area with the Lexical editor.
-        </div>
-        <div className="mt-8 h-48 rounded-lg border border-[hsl(var(--border))] bg-white/50" />
-      </div>
-    </main>
+    <LexicalEditor key={selectedId} documentId={selected.id} document={selected} />
   );
 }
 
@@ -80,7 +84,7 @@ export function App() {
           <SidebarInset>
             <Header />
             <div className="flex min-h-0 flex-1 flex-col">
-              <EditorPlaceholder />
+              <EditorArea />
             </div>
           </SidebarInset>
         </div>
@@ -88,4 +92,3 @@ export function App() {
     </SidebarProvider>
   );
 }
-

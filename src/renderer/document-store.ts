@@ -20,6 +20,8 @@ type DocumentActions = {
   closeTab: (id: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   createDocument: (parentId?: string | null) => Promise<void>;
+  /** Merge updated fields for a document (e.g. after save). */
+  updateDocumentInStore: (id: string, patch: Partial<DocumentRow>) => void;
 };
 
 type DocumentStore = DocumentState & DocumentActions;
@@ -126,6 +128,14 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     } catch (err) {
       set({ error: (err as Error).message });
     }
+  },
+
+  updateDocumentInStore(id, patch) {
+    set((state) => ({
+      documents: state.documents.map((d) =>
+        d.id === id ? { ...d, ...patch } : d,
+      ),
+    }));
   },
 }));
 
