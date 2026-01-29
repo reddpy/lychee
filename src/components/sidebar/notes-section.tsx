@@ -4,12 +4,12 @@ import { ChevronRight, ChevronDown } from 'lucide-react';
 import type { DocumentRow } from '../../shared/documents';
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from '../ui/sidebar';
+import { cn } from '../../lib/utils';
 import { NoteTreeItem } from './note-tree-item';
 
 const MAX_NESTING_DEPTH = 4; // root depth 0, deepest child depth 4 (5 levels)
@@ -153,8 +153,13 @@ export function NotesSection({
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarGroup>
-      {notesSectionOpen && (
-        <div className="mt-1 min-h-0 flex-1">
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-hidden transition-all duration-200 ease-out',
+          notesSectionOpen ? 'mt-1 max-h-[999px] opacity-100' : 'max-h-0 opacity-0',
+        )}
+      >
+        <div className="h-full">
           <div className="notes-scroll h-full pr-1 py-1">
             <SidebarMenu>
               {loading && (
@@ -183,7 +188,7 @@ export function NotesSection({
             </SidebarMenu>
           </div>
         </div>
-      )}
+      </div>
     </>
   );
 }
