@@ -48,13 +48,25 @@ export function NoteTreeItem({
   onToggleExpanded,
   onAddPageInside,
 }: NoteTreeItemProps) {
-  const { openTab, navigateCurrentTab } = useDocumentStore();
+  const {
+    openTab,
+    navigateCurrentTab,
+    updateDocumentInStore,
+  } = useDocumentStore();
   const hasChildren = children.length > 0;
 
   const handleAddPageInside = React.useCallback(() => {
     onToggleExpanded(doc.id);
     onAddPageInside(doc.id);
   }, [doc.id, onToggleExpanded, onAddPageInside]);
+
+  const iconNode = doc.emoji ? (
+    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base leading-none">
+      {doc.emoji}
+    </span>
+  ) : (
+    <StickyNote className="h-4 w-4 shrink-0" />
+  );
 
   return (
     <ContextMenu>
@@ -100,7 +112,7 @@ export function NoteTreeItem({
                 ) : (
                   <span className="h-4 w-4" />
                 )}
-                <StickyNote className="h-4 w-4 shrink-0" />
+                {iconNode}
                 <span className="flex-1 truncate">{doc.title || 'Untitled'}</span>
                 <div className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <DropdownMenu>
