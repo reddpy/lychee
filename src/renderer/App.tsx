@@ -1,7 +1,9 @@
 import * as React from 'react';
 
 import { AppSidebar } from '../components/app-sidebar';
+import { TabStrip } from '../components/tab-strip';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '../components/ui/sidebar';
+import { useDocumentStore } from '../renderer/document-store';
 
 function Titlebar() {
   return (
@@ -20,26 +22,44 @@ function Titlebar() {
   );
 }
 
+/** Header contains the tabs bar (Notion-style: tabs blend into editor). Same bg as editor when tabs present. */
 function Header() {
+  const openTabs = useDocumentStore((s) => s.openTabs);
+  const hasTabs = openTabs.length > 0;
+
   return (
     <header
-      className="h-12 w-full border-b border-[hsl(var(--border))] bg-white/70 backdrop-blur flex items-center pl-4"
+      className={
+        hasTabs
+          ? 'w-full border-b-0 bg-[hsl(var(--background))] pt-1'
+          : 'h-12 w-full border-b border-[hsl(var(--border))] bg-white/70 backdrop-blur flex items-center pl-4'
+      }
     >
-      <div className="flex-1">
-        <div className="text-[13px] font-semibold tracking-tight">Lychee</div>
-        <div className="text-[11px] text-[hsl(var(--muted-foreground))]">
-          Local-first workspace
+      {hasTabs ? (
+        <TabStrip />
+      ) : (
+        <div className="flex-1">
+          <div className="text-[13px] font-semibold tracking-tight">Lychee</div>
+          <div className="text-[11px] text-[hsl(var(--muted-foreground))]">
+            Local-first workspace
+          </div>
         </div>
-      </div>
+      )}
     </header>
   );
 }
 
 function EditorPlaceholder() {
+  const selectedId = useDocumentStore((s) => s.selectedId);
+  const documents = useDocumentStore((s) => s.documents);
+  const selected = documents.find((d) => d.id === selectedId);
+
   return (
-    <main className="h-full flex-1 bg-[hsl(var(--background))]">
+    <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0">
       <div className="mx-auto max-w-[900px] px-8 py-10">
-        <div className="text-3xl font-semibold tracking-tight">Untitled</div>
+        <div className="text-3xl font-semibold tracking-tight">
+          {selected?.title || 'Untitled'}
+        </div>
         <div className="mt-6 text-[15px] leading-7 text-[hsl(var(--muted-foreground))]">
           This is the initial UI skeleton. Next we’ll wire the sidebar to your SQLite
           documents and replace this area with the Lexical editor.
@@ -59,7 +79,7 @@ export function App() {
           <AppSidebar />
           <SidebarInset>
             <Header />
-            <div className="flex h-[calc(100vh-3rem-2rem)]">
+            <div className="flex min-h-0 flex-1 flex-col">
               <EditorPlaceholder />
             </div>
           </SidebarInset>
