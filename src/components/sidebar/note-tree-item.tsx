@@ -96,21 +96,23 @@ export function NoteTreeItem({
                 style={{ paddingLeft: depth * 12 }}
               >
                 {hasChildren ? (
-                  <span
-                    className="flex h-4 w-4 items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                  <button
+                    type="button"
+                    className="flex h-5 w-5 items-center justify-center rounded border border-transparent text-[hsl(var(--muted-foreground))] transition-colors hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-border))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleExpanded(doc.id);
                     }}
+                    aria-label={isExpanded ? 'Collapse' : 'Expand'}
                   >
                     {isExpanded ? (
                       <ChevronDown className="h-3 w-3" />
                     ) : (
                       <ChevronRight className="h-3 w-3" />
                     )}
-                  </span>
+                  </button>
                 ) : (
-                  <span className="h-4 w-4" />
+                  <span className="h-5 w-5" />
                 )}
                 {iconNode}
                 <span className="flex-1 truncate">{doc.title || 'Untitled'}</span>
