@@ -12,16 +12,10 @@ const SUPPORTED_TYPES = new Set([
   "text",
   "heading",
   "quote",
-  "list",
-  "listitem",
   "code",
   "code-highlight",
   "link",
   "autolink",
-  "table",
-  "tablerow",
-  "tablecell",
-  "horizontalrule",
 ])
 
 type SerializedLexicalNode = SerializedEditorState["root"] & {
@@ -49,7 +43,7 @@ function createFallbackParagraph(text: string): SerializedLexicalNode {
         style: "",
         detail: 0,
       },
-    ],
+    ] as unknown as SerializedLexicalNode[],
   }
 }
 

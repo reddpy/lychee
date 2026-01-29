@@ -1,22 +1,9 @@
 "use client"
 
-import {
-  CHECK_LIST,
-  ELEMENT_TRANSFORMERS,
-  MULTILINE_ELEMENT_TRANSFORMERS,
-  TEXT_FORMAT_TRANSFORMERS,
-  TEXT_MATCH_TRANSFORMERS,
-} from "@lexical/markdown"
-import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin"
 import { AutoLinkPlugin } from "@lexical/react/LexicalAutoLinkPlugin"
 import { ClickableLinkPlugin } from "@lexical/react/LexicalClickableLinkPlugin"
-import { ListPlugin } from "@lexical/react/LexicalListPlugin"
-import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin"
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin"
-import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin"
-import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin"
-import { TablePlugin } from "@lexical/react/LexicalTablePlugin"
 import { TabIndentationPlugin } from "@lexical/react/LexicalTabIndentationPlugin"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
 import { createLinkMatcherWithRegExp } from "@lexical/link"
@@ -36,14 +23,6 @@ const autoLinkMatchers = [
     text.startsWith("http") ? text : `https://${text}`
   ),
   createLinkMatcherWithRegExp(EMAIL_REGEX, (text) => `mailto:${text}`),
-]
-
-const markdownTransformers = [
-  CHECK_LIST,
-  ...ELEMENT_TRANSFORMERS,
-  ...MULTILINE_ELEMENT_TRANSFORMERS,
-  ...TEXT_FORMAT_TRANSFORMERS,
-  ...TEXT_MATCH_TRANSFORMERS,
 ]
 
 export function Plugins() {
@@ -66,13 +45,7 @@ export function Plugins() {
         }
       />
       <HistoryPlugin />
-      <ListPlugin />
-      <CheckListPlugin />
       <TabIndentationPlugin />
-      <MarkdownShortcutPlugin transformers={markdownTransformers} />
-      <TablePlugin />
-      <HorizontalRulePlugin />
-      <LinkPlugin />
       <AutoLinkPlugin matchers={autoLinkMatchers} />
       <ClickableLinkPlugin />
     </div>
