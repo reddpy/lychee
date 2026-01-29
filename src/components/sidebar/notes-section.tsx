@@ -154,32 +154,34 @@ export function NotesSection({
         </SidebarMenuItem>
       </SidebarGroup>
       {notesSectionOpen && (
-        <div className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1">
-          <SidebarMenu>
-            {loading && (
-              <SidebarMenuItem>
-                <SidebarMenuButton>
-                  <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
-                  <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                    Loading…
-                  </span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-            {!loading &&
-              rootDocs.map((doc) => (
-                <NoteTreeRecursive
-                  key={doc.id}
-                  doc={doc}
-                  depth={0}
-                  childrenByParent={childrenByParent}
-                  expandedIds={expandedIds}
-                  selectedId={selectedId}
-                  onToggleExpanded={toggleExpanded}
-                  onAddPageInside={handleAddPageInside}
-                />
-              ))}
-          </SidebarMenu>
+        <div className="mt-1 min-h-0 flex-1">
+          <div className="notes-scroll h-full pr-1 py-1">
+            <SidebarMenu>
+              {loading && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton>
+                    <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
+                    <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                      Loading…
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {!loading &&
+                rootDocs.map((doc) => (
+                  <NoteTreeRecursive
+                    key={doc.id}
+                    doc={doc}
+                    depth={0}
+                    childrenByParent={childrenByParent}
+                    expandedIds={expandedIds}
+                    selectedId={selectedId}
+                    onToggleExpanded={toggleExpanded}
+                    onAddPageInside={handleAddPageInside}
+                  />
+                ))}
+            </SidebarMenu>
+          </div>
         </div>
       )}
     </>
