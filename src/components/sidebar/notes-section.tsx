@@ -151,9 +151,7 @@ export function NotesSection({
     [setExpandedIds, createDocument],
   );
 
-  if (!open) return null;
-
-  // Scroll newly created note into view and briefly highlight it.
+  // Scroll newly created note into view and briefly highlight it. Must run unconditionally (no early return before hooks).
   React.useEffect(() => {
     if (!lastCreatedId) return;
 
@@ -176,6 +174,8 @@ export function NotesSection({
       window.clearTimeout(timeout);
     };
   }, [lastCreatedId, documents]);
+
+  if (!open) return null;
 
   return (
     <>
