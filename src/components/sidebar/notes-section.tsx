@@ -190,7 +190,7 @@ export function NotesSection({
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [lastCreatedId, documents]);
+  }, [lastCreatedId]);
 
   if (!open) return null;
 

@@ -48,7 +48,10 @@ export function createDocument(input: {
   const createdAt = nowIso();
   const doc: DocumentRow = {
     id: randomUUID(),
-    title: input.title?.trim() || 'Untitled',
+    title: (() => {
+      const t = (input.title?.trim() ?? '') || ''
+      return t === 'Untitled' ? '' : t
+    })(),
     content: input.content ?? '',
     createdAt,
     updatedAt: createdAt,
@@ -92,7 +95,7 @@ export function updateDocument(
   const next: DocumentRow = {
     ...existing,
     title:
-      patch.title === undefined ? existing.title : patch.title.trim() || 'Untitled',
+      patch.title === undefined ? existing.title : patch.title.trim(),
     content: patch.content === undefined ? existing.content : patch.content,
     parentId:
       patch.parentId === undefined ? existing.parentId : patch.parentId ?? null,

@@ -74,7 +74,7 @@ function SortableTab({
         {emoji ? (
           <span className="shrink-0 text-base leading-none">{emoji}</span>
         ) : null}
-        <span className="min-w-0 truncate">{title || 'Untitled'}</span>
+        <span className="min-w-0 truncate">{title && title !== 'Untitled' ? title : 'New Page'}</span>
       </span>
       <button
         type="button"
@@ -110,7 +110,7 @@ function DragOverlayTab({
         {emoji ? (
           <span className="shrink-0 text-base leading-none">{emoji}</span>
         ) : null}
-        <span className="min-w-0 truncate">{title || 'Untitled'}</span>
+        <span className="min-w-0 truncate">{title && title !== 'Untitled' ? title : 'New Page'}</span>
       </span>
       <span className="flex h-5 w-5 shrink-0 items-center justify-center opacity-50">
         <X className="h-3 w-3" />

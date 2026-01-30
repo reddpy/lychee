@@ -17,6 +17,8 @@ type DocumentActions = {
   selectDocument: (id: string | null) => void;
   /** Open a tab for document id; adds to end if not open, and selects it. */
   openTab: (id: string) => void;
+  /** Like openTab but for normal click: if doc is already open, just select that tab; else navigate current tab to it (no duplicate). */
+  openOrSelectTab: (id: string) => void;
   /** Navigate the current tab to document id (replaces content). If no tabs open, opens first tab. */
   navigateCurrentTab: (id: string) => void;
   closeTab: (id: string) => void;
@@ -67,6 +69,25 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     set((state) => {
       const exists = state.openTabs.includes(id);
       const nextTabs = exists ? [...state.openTabs] : [...state.openTabs, id];
+      return { openTabs: nextTabs, selectedId: id };
+    });
+  },
+
+  openOrSelectTab(id) {
+    set((state) => {
+      const exists = state.openTabs.includes(id);
+      if (exists) {
+        return { selectedId: id };
+      }
+      if (state.openTabs.length === 0) {
+        return { openTabs: [id], selectedId: id };
+      }
+      const activeIndex =
+        state.openTabs.indexOf(state.selectedId ?? '') >= 0
+          ? state.openTabs.indexOf(state.selectedId!)
+          : 0;
+      const nextTabs = [...state.openTabs];
+      nextTabs[activeIndex] = id;
       return { openTabs: nextTabs, selectedId: id };
     });
   },
@@ -124,12 +145,13 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       const { document } = await window.lychee.invoke('documents.create', {
         parentId,
       });
+      const doc = document.title === 'Untitled' ? { ...document, title: '' } : document;
       // Prepend new doc, select it, and open in a tab.
       set((state) => ({
-        documents: [document, ...state.documents],
-        selectedId: document.id,
-        openTabs: [...state.openTabs, document.id],
-        lastCreatedId: document.id,
+        documents: [doc, ...state.documents],
+        selectedId: doc.id,
+        openTabs: [...state.openTabs, doc.id],
+        lastCreatedId: doc.id,
       }));
     } catch (err) {
       set({ error: (err as Error).message });
