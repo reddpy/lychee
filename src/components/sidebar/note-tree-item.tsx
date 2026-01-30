@@ -15,15 +15,11 @@ import {
   SidebarMenuItem,
 } from '../ui/sidebar';
 import {
-  ContextMenu,
-  ContextMenuTrigger,
-} from '../ui/context-menu';
-import {
   DropdownMenu,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import {
-  DocumentContextMenuContent,
+  DocumentContextMenu,
   DocumentDropdownMenuContent,
 } from './document-command-menu';
 import { useDocumentStore } from '../../renderer/document-store';
@@ -71,9 +67,12 @@ export function NoteTreeItem({
   );
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <span className="block w-full" data-note-id={doc.id}>
+    <DocumentContextMenu
+      docId={doc.id}
+      canAddChild={canAddChild}
+      onAddPageInside={handleAddPageInside}
+    >
+      <span className="block w-full" data-note-id={doc.id}>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip={doc.title}
@@ -281,12 +280,6 @@ export function NoteTreeItem({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </span>
-      </ContextMenuTrigger>
-      <DocumentContextMenuContent
-        docId={doc.id}
-        canAddChild={canAddChild}
-        onAddPageInside={handleAddPageInside}
-      />
-    </ContextMenu>
+    </DocumentContextMenu>
   );
 }
