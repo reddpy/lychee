@@ -7,5 +7,7 @@ export interface DocumentRow {
   parentId: string | null;
   /** Native emoji character for note icon (e.g. "📄"). Null = use default icon. */
   emoji: string | null;
+  /** When set, document is in trash (ISO date). Null = not trashed. */
+  deletedAt: string | null;
 }
 

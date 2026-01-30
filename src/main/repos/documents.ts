@@ -16,8 +16,9 @@ export function listDocuments(params: {
 
   return db
     .prepare(
-      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji
+      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt
        FROM documents
+       WHERE deletedAt IS NULL
        ORDER BY updatedAt DESC
        LIMIT ? OFFSET ?`,
     )
@@ -28,7 +29,7 @@ export function getDocumentById(id: string): DocumentRow | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji
+      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt
        FROM documents
        WHERE id = ?`,
     )
@@ -53,11 +54,12 @@ export function createDocument(input: {
     updatedAt: createdAt,
     parentId: input.parentId ?? null,
     emoji: input.emoji ?? null,
+    deletedAt: null,
   };
 
   db.prepare(
-    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId, emoji)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     doc.id,
     doc.title,
@@ -66,6 +68,7 @@ export function createDocument(input: {
     doc.updatedAt,
     doc.parentId,
     doc.emoji,
+    doc.deletedAt,
   );
 
   return doc;
@@ -94,6 +97,7 @@ export function updateDocument(
     parentId:
       patch.parentId === undefined ? existing.parentId : patch.parentId ?? null,
     emoji: patch.emoji === undefined ? existing.emoji : patch.emoji ?? null,
+    deletedAt: existing.deletedAt,
     updatedAt: nowIso(),
   };
 
@@ -116,5 +120,55 @@ export function updateDocument(
 export function deleteDocument(id: string): void {
   const db = getDb();
   db.prepare(`DELETE FROM documents WHERE id = ?`).run(id);
+}
+
+/** Trash a document and all its nested descendants (cascade to trash). Returns doc + list of all trashed ids for UI. */
+export function trashDocument(id: string): { document: DocumentRow; trashedIds: string[] } {
+  const db = getDb();
+  const existing = getDocumentById(id);
+  if (!existing) {
+    throw new Error(`Document not found: ${id}`);
+  }
+  const deletedAt = nowIso();
+  // Get id + all descendant ids before updating
+  const trashedRows = db
+    .prepare(
+      `WITH RECURSIVE descendants(descId) AS (
+         SELECT ? AS descId
+         UNION ALL
+         SELECT d.id FROM documents d INNER JOIN descendants dec ON d.parentId = dec.descId
+       )
+       SELECT descId FROM descendants`,
+    )
+    .all(id) as { descId: string }[];
+  const trashedIds = trashedRows.map((r) => r.descId);
+  // Trash this document and all descendants
+  db.prepare(
+    `WITH RECURSIVE descendants(descId) AS (
+       SELECT id FROM documents WHERE parentId = ?
+       UNION ALL
+       SELECT d.id FROM documents d INNER JOIN descendants dec ON d.parentId = dec.descId
+     )
+     UPDATE documents SET deletedAt = ?, updatedAt = ?
+     WHERE id = ? OR id IN (SELECT descId FROM descendants)`,
+  ).run(id, deletedAt, deletedAt, id);
+  return {
+    document: { ...existing, deletedAt, updatedAt: deletedAt },
+    trashedIds,
+  };
+}
+
+export function restoreDocument(id: string): DocumentRow {
+  const db = getDb();
+  const existing = getDocumentById(id);
+  if (!existing) {
+    throw new Error(`Document not found: ${id}`);
+  }
+  const updatedAt = nowIso();
+  db.prepare(`UPDATE documents SET deletedAt = NULL, updatedAt = ? WHERE id = ?`).run(
+    updatedAt,
+    id,
+  );
+  return { ...existing, deletedAt: null, updatedAt };
 }
 

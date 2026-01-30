@@ -32,6 +32,14 @@ export type IpcContract = {
     req: { id: string };
     res: { ok: true };
   };
+  'documents.trash': {
+    req: { id: string };
+    res: { document: DocumentRow; trashedIds: string[] };
+  };
+  'documents.restore': {
+    req: { id: string };
+    res: { document: DocumentRow };
+  };
 };
 
 export type IpcChannel = keyof IpcContract;

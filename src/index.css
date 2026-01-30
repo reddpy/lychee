@@ -6,6 +6,7 @@
   --color-popover-foreground: hsl(var(--popover-foreground));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
 }
 
 /* shadcn-style design tokens (light only for now) */
@@ -36,6 +37,9 @@
   /* accent (highlighted menu item, etc.) */
   --accent: 210 40% 96.1%;
   --accent-foreground: 222.2 47.4% 11.2%;
+
+  /* destructive (trash, delete, danger) */
+  --destructive: 0 84% 60%;
 
   /* shadcn sidebar tokens */
   --sidebar-background: 0 0% 98%;

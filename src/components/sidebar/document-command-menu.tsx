@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ExternalLink, Plus } from 'lucide-react';
+import { ExternalLink, Plus, Trash2 } from 'lucide-react';
 
 import { useDocumentStore } from '../../renderer/document-store';
 import {
@@ -28,6 +28,7 @@ export function DocumentContextMenu({
   children,
 }: DocumentMenuProps & { children: React.ReactNode }) {
   const openTab = useDocumentStore((s) => s.openTab);
+  const trashDocument = useDocumentStore((s) => s.trashDocument);
 
   return (
     <ContextMenu>
@@ -44,6 +45,10 @@ export function DocumentContextMenu({
             <span>Add page inside</span>
           </ContextMenuItem>
         )}
+        <ContextMenuItem variant="destructive" onSelect={() => trashDocument(docId)}>
+          <Trash2 className="h-3.5 w-3.5" />
+          <span>Move to Trash Bin</span>
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -55,6 +60,7 @@ export function DocumentDropdownMenuContent({
   onAddPageInside,
 }: DocumentMenuProps) {
   const openTab = useDocumentStore((s) => s.openTab);
+  const trashDocument = useDocumentStore((s) => s.trashDocument);
 
   return (
     <DropdownMenuContent align="start">
@@ -69,6 +75,13 @@ export function DocumentDropdownMenuContent({
           <span>Add page inside</span>
         </DropdownMenuItem>
       )}
+      <DropdownMenuItem
+        className="text-destructive focus:text-destructive"
+        onSelect={() => trashDocument(docId)}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        <span>Move to Trash Bin</span>
+      </DropdownMenuItem>
     </DropdownMenuContent>
   );
 }

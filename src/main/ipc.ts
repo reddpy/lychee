@@ -5,6 +5,8 @@ import {
   deleteDocument,
   getDocumentById,
   listDocuments,
+  restoreDocument,
+  trashDocument,
   updateDocument,
 } from './repos/documents';
 
@@ -37,5 +39,11 @@ export function registerIpcHandlers() {
     deleteDocument(payload.id);
     return { ok: true };
   });
+
+  handle('documents.trash', (payload) => trashDocument(payload.id));
+
+  handle('documents.restore', (payload) => ({
+    document: restoreDocument(payload.id),
+  }));
 }
 

@@ -26,6 +26,17 @@ export function AppSidebar() {
     void loadDocuments();
   }, [loadDocuments]);
 
+  // Keep expandedIds in sync when documents change (e.g. after trash: remove ids that no longer exist)
+  React.useEffect(() => {
+    const docIds = new Set(documents.map((d) => d.id));
+    setExpandedIds((prev) => {
+      const next = new Set([...prev].filter((id) => docIds.has(id)));
+      return next.size === prev.size && [...next].every((id) => prev.has(id))
+        ? prev
+        : next;
+    });
+  }, [documents]);
+
   const handleNewNote = React.useCallback(async () => {
     await createDocument(null);
   }, [createDocument]);
