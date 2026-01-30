@@ -15,6 +15,14 @@ import { NoteTreeItem } from './note-tree-item';
 
 const MAX_NESTING_DEPTH = 4; // root depth 0, deepest child depth 4 (5 levels)
 
+/** Poof/pop exit animation when a note is trashed (framer-motion). */
+const noteExitTransition = { duration: 0.2, ease: 'easeIn' as const };
+const noteExit = {
+  scale: 0.96,
+  opacity: 0,
+  transition: noteExitTransition,
+};
+
 export type NotesSectionProps = {
   documents: DocumentRow[];
   selectedId: string | null;
@@ -64,7 +72,7 @@ function NoteTreeRecursive({
   const isHighlighted = highlightId === doc.id;
 
   return (
-    <React.Fragment key={doc.id}>
+    <>
       <NoteTreeItem
         doc={doc}
         depth={depth}
@@ -87,23 +95,32 @@ function NoteTreeRecursive({
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
           >
-            {children.map((child) => (
-              <NoteTreeRecursive
-                key={child.id}
-                doc={child}
-                depth={depth + 1}
-                childrenByParent={childrenByParent}
-                expandedIds={expandedIds}
-                selectedId={selectedId}
-                onToggleExpanded={onToggleExpanded}
-                onAddPageInside={onAddPageInside}
-                highlightId={highlightId}
-              />
-            ))}
+            <AnimatePresence initial={false}>
+              {children.map((child) => (
+                <motion.div
+                  key={child.id}
+                  layout
+                  initial={false}
+                  exit={noteExit}
+                  transition={noteExitTransition}
+                >
+                  <NoteTreeRecursive
+                    doc={child}
+                    depth={depth + 1}
+                    childrenByParent={childrenByParent}
+                    expandedIds={expandedIds}
+                    selectedId={selectedId}
+                    onToggleExpanded={onToggleExpanded}
+                    onAddPageInside={onAddPageInside}
+                    highlightId={highlightId}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
-    </React.Fragment>
+    </>
   );
 }
 
@@ -191,7 +208,7 @@ export function NotesSection({
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
-              <span>Notes</span>
+              <span className='capitalize'>Notes</span>
             </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -204,10 +221,10 @@ export function NotesSection({
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="min-h-0 mt-1 flex-1 overflow-hidden"
+            className="min-h-0 mt-1 flex-1 overflow-hidden flex flex-col"
           >
-            <div className="h-full">
-              <div ref={scrollRef} className="notes-scroll h-full pr-1 py-1">
+            <div className="min-h-0 flex-1 flex flex-col">
+              <div ref={scrollRef} className="notes-scroll min-h-0 flex-1 pr-1 py-1">
                 <SidebarMenu>
                   {loading && (
                     <SidebarMenuItem>
@@ -219,20 +236,30 @@ export function NotesSection({
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
-                  {!loading &&
-                    rootDocs.map((doc) => (
-                      <NoteTreeRecursive
-                        key={doc.id}
-                        doc={doc}
-                        depth={0}
-                        childrenByParent={childrenByParent}
-                        expandedIds={expandedIds}
-                        selectedId={selectedId}
-                        onToggleExpanded={toggleExpanded}
-                        onAddPageInside={handleAddPageInside}
-                        highlightId={highlightId}
-                      />
-                    ))}
+                  {!loading && (
+                    <AnimatePresence initial={false}>
+                      {rootDocs.map((doc) => (
+                        <motion.div
+                          key={doc.id}
+                          layout
+                          initial={false}
+                          exit={noteExit}
+                          transition={noteExitTransition}
+                        >
+                          <NoteTreeRecursive
+                            doc={doc}
+                            depth={0}
+                            childrenByParent={childrenByParent}
+                            expandedIds={expandedIds}
+                            selectedId={selectedId}
+                            onToggleExpanded={toggleExpanded}
+                            onAddPageInside={handleAddPageInside}
+                            highlightId={highlightId}
+                          />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  )}
                 </SidebarMenu>
               </div>
             </div>

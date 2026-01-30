@@ -22,6 +22,8 @@ type DocumentActions = {
   closeTab: (id: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   createDocument: (parentId?: string | null) => Promise<void>;
+  /** Move document to trash (soft delete). Removes from list and closes tab. */
+  trashDocument: (id: string) => Promise<void>;
   /** Merge updated fields for a document (e.g. after save). */
   updateDocumentInStore: (id: string, patch: Partial<DocumentRow>) => void;
 };
@@ -129,6 +131,29 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
         openTabs: [...state.openTabs, document.id],
         lastCreatedId: document.id,
       }));
+    } catch (err) {
+      set({ error: (err as Error).message });
+    }
+  },
+
+  async trashDocument(id) {
+    try {
+      set({ error: null });
+      const { trashedIds } = await window.lychee.invoke('documents.trash', { id });
+      const trashedSet = new Set(trashedIds);
+      set((state) => {
+        const nextDocs = state.documents.filter((d) => !trashedSet.has(d.id));
+        const nextTabs = state.openTabs.filter((t) => !trashedSet.has(t));
+        const nextSelected =
+          state.selectedId && !trashedSet.has(state.selectedId)
+            ? state.selectedId
+            : nextTabs[0] ?? null;
+        return {
+          documents: nextDocs,
+          openTabs: nextTabs,
+          selectedId: nextSelected,
+        };
+      });
     } catch (err) {
       set({ error: (err as Error).message });
     }

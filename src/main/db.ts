@@ -93,6 +93,26 @@ function runMigrations(database: BetterSqlite3Database) {
 
     tx();
   }
+
+  // v4: add deletedAt for trash (soft delete)
+  const columnsAfterV3 = database
+    .prepare(`PRAGMA table_info(documents)`)
+    .all() as { name: string }[];
+  const hasDeletedAt = columnsAfterV3.some((col) => col.name === 'deletedAt');
+
+  if (!hasDeletedAt) {
+    const tx = database.transaction(() => {
+      database.exec(`ALTER TABLE documents ADD COLUMN deletedAt TEXT NULL`);
+      database
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run('4');
+    });
+
+    tx();
+  }
 }
 
 export function initDatabase(): { dbPath: string } {
