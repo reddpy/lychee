@@ -110,7 +110,7 @@ function NoteHeader({
           </div>
         ) : null}
       </div>
-      <div className="flex items-center gap-3 text-sm text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity hover:opacity-100">
+      <div className="flex items-center gap-3 text-sm text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity group-hover/title-area:opacity-100">
         <NoteEmojiPicker
           docId={documentId}
           currentEmoji={document.emoji}
@@ -140,6 +140,9 @@ function NoteHeader({
   )
 }
 
+const EMPTY_TITLE = ''
+const LEGACY_UNTITLED = 'Untitled'
+
 function EditorTitle({
   documentId,
   title,
@@ -149,17 +152,19 @@ function EditorTitle({
   title: string
   className?: string
 }) {
-  const [localTitle, setLocalTitle] = React.useState(title)
+  const normalizedTitle =
+    title == null || title === '' || title === LEGACY_UNTITLED ? EMPTY_TITLE : title
+  const [localTitle, setLocalTitle] = React.useState(normalizedTitle)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const updateDocumentInStore = useDocumentStore((s) => s.updateDocumentInStore)
 
   React.useEffect(() => {
-    setLocalTitle(title)
-  }, [documentId, title])
+    setLocalTitle(normalizedTitle)
+  }, [documentId, normalizedTitle])
 
   const handleBlur = React.useCallback(() => {
-    const trimmed = localTitle.trim() || "Untitled"
-    if (trimmed === title) return
+    const trimmed = localTitle.trim()
+    if (trimmed === normalizedTitle) return
     setLocalTitle(trimmed)
     window.lychee
       .invoke("documents.update", { id: documentId, title: trimmed })
@@ -167,7 +172,7 @@ function EditorTitle({
         updateDocumentInStore(doc.id, { title: doc.title })
       })
       .catch((err) => console.error("Title save failed:", err))
-  }, [documentId, title, localTitle, updateDocumentInStore])
+  }, [documentId, normalizedTitle, localTitle, updateDocumentInStore])
 
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent) => {
@@ -179,19 +184,28 @@ function EditorTitle({
     []
   )
 
+  const handleChange = React.useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value
+      setLocalTitle(value)
+      updateDocumentInStore(documentId, { title: value })
+    },
+    [documentId, updateDocumentInStore]
+  )
+
   return (
     <input
       ref={inputRef}
       type="text"
       value={localTitle}
-      onChange={(e) => setLocalTitle(e.target.value)}
+      onChange={handleChange}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       className={cn(
         "w-full bg-transparent text-3xl font-semibold tracking-tight outline-none placeholder:text-[hsl(var(--muted-foreground))]",
         className
       )}
-      placeholder="Untitled"
+      placeholder="New Page"
       aria-label="Document title"
     />
   )
@@ -250,12 +264,14 @@ export function LexicalEditor({
   return (
     <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto">
       <div className="mx-auto max-w-[900px] px-8 py-10">
-        <NoteHeader documentId={documentId} document={document} />
-        <EditorTitle
-          documentId={documentId}
-          title={document.title}
-          className="mb-6"
-        />
+        <div className="group/title-area">
+          <NoteHeader documentId={documentId} document={document} />
+          <EditorTitle
+            documentId={documentId}
+            title={document.title ?? ''}
+            className="mb-6"
+          />
+        </div>
         <Editor
           key={documentId}
           editorSerializedState={editorSerializedState}

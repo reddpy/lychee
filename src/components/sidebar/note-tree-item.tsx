@@ -6,7 +6,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   Plus,
-  StickyNote,
+  FileText,
 } from 'lucide-react';
 
 import type { DocumentRow } from '../../shared/documents';
@@ -49,7 +49,7 @@ export function NoteTreeItem({
   isHighlighted,
   isRoot,
 }: NoteTreeItemProps) {
-  const { openTab, navigateCurrentTab, updateDocumentInStore } =
+  const { openTab, openOrSelectTab, updateDocumentInStore } =
     useDocumentStore();
   const hasChildren = children.length > 0;
 
@@ -63,7 +63,7 @@ export function NoteTreeItem({
       {doc.emoji}
     </span>
   ) : (
-    <StickyNote className="h-4 w-4 shrink-0" />
+    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
   );
 
   return (
@@ -75,13 +75,13 @@ export function NoteTreeItem({
       <span className="block w-full" data-note-id={doc.id}>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip={doc.title}
+              tooltip={doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}
               isActive={isSelected}
               onClick={(e: React.MouseEvent) => {
                 if (e.metaKey) {
                   openTab(doc.id);
                 } else {
-                  navigateCurrentTab(doc.id);
+                  openOrSelectTab(doc.id);
                 }
               }}
               onAuxClick={(e: React.MouseEvent) => {
@@ -141,7 +141,7 @@ export function NoteTreeItem({
                     iconNode
                   )}
                 </span>
-                <span className="flex-1 truncate">{doc.title || 'Untitled'}</span>
+                <span className="flex-1 truncate">{doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}</span>
                 <div className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -228,7 +228,7 @@ export function NoteTreeItem({
                     iconNode
                   )}
                 </span>
-                <span className="flex-1 truncate">{doc.title || 'Untitled'}</span>
+                <span className="flex-1 truncate">{doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}</span>
                 <div className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

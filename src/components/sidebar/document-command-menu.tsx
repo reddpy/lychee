@@ -6,13 +6,11 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuShortcut,
   ContextMenuTrigger,
 } from '../ui/context-menu';
 import {
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuShortcut,
 } from '../ui/dropdown-menu';
 
 export type DocumentMenuProps = {
@@ -37,7 +35,6 @@ export function DocumentContextMenu({
         <ContextMenuItem onSelect={() => openTab(docId)}>
           <ExternalLink className="h-3.5 w-3.5" />
           <span>Open in new tab</span>
-          <ContextMenuShortcut>⌘↵</ContextMenuShortcut>
         </ContextMenuItem>
         {canAddChild && onAddPageInside && (
           <ContextMenuItem onSelect={onAddPageInside}>
@@ -67,7 +64,6 @@ export function DocumentDropdownMenuContent({
       <DropdownMenuItem onSelect={() => openTab(docId)}>
         <ExternalLink className="h-3.5 w-3.5" />
         <span>Open in new tab</span>
-        <DropdownMenuShortcut>⌘↵</DropdownMenuShortcut>
       </DropdownMenuItem>
       {canAddChild && onAddPageInside && (
         <DropdownMenuItem onSelect={onAddPageInside}>
