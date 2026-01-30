@@ -38,7 +38,15 @@ export type IpcContract = {
   };
   'documents.restore': {
     req: { id: string };
-    res: { document: DocumentRow };
+    res: { document: DocumentRow; restoredIds: string[] };
+  };
+  'documents.listTrashed': {
+    req: { limit?: number; offset?: number };
+    res: { documents: DocumentRow[] };
+  };
+  'documents.permanentDelete': {
+    req: { id: string };
+    res: { deletedIds: string[] };
   };
 };
 
