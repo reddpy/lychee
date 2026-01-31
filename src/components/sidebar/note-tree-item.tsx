@@ -112,13 +112,14 @@ export function NoteTreeItem({
         {...attributes}
         {...listeners}
       >
-        {/* Sibling drop line: horizontal line = "insert as same-level sibling" */}
+        {/* Sibling drop line: horizontal line = "insert as same-level sibling". Indent by depth so line width cues placement level. */}
         {showDropLine && (
           <div
             className={cn(
               'absolute left-0 right-0 z-30 flex items-center pointer-events-none px-2 -translate-y-1/2',
               linePosition === 'top' ? 'top-0' : 'bottom-0 translate-y-1/2',
             )}
+            style={{ paddingLeft: depth * 12 }}
             title="Insert as sibling"
           >
             <div className="h-2 w-2 rounded-full border-2 border-blue-500 shrink-0 bg-[hsl(var(--background))]" />

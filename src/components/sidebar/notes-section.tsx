@@ -176,7 +176,7 @@ export function NotesSection({
   const [overId, setOverId] = React.useState<UniqueIdentifier | null>(null);
   const [dropPosition, setDropPosition] = React.useState<DropPosition | null>(null);
 
-  // Track current pointer position for accurate drop zone detection
+  // Track current pointer position for accurate drop zone detection (accumulate delta each move)
   const pointerPositionRef = React.useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const sensors = useSensors(
@@ -246,7 +246,7 @@ export function NotesSection({
   const handleDragMove = React.useCallback((event: DragMoveEvent) => {
     const { over, active, delta } = event;
 
-    // Update pointer position using delta from start
+    // Pointer position: delta from dnd-kit is relative to drag start
     const activatorEvent = event.activatorEvent as PointerEvent;
     const currentY = activatorEvent.clientY + delta.y;
     const currentX = activatorEvent.clientX + delta.x;
