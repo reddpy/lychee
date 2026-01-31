@@ -112,16 +112,17 @@ export function NoteTreeItem({
         {...attributes}
         {...listeners}
       >
-        {/* Drop line indicator - centered between items */}
+        {/* Sibling drop line: horizontal line = "insert as same-level sibling" */}
         {showDropLine && (
           <div
             className={cn(
-              "absolute left-0 right-0 z-30 flex items-center pointer-events-none px-2 -translate-y-1/2",
-              linePosition === 'top' ? "top-0" : "bottom-0 translate-y-1/2"
+              'absolute left-0 right-0 z-30 flex items-center pointer-events-none px-2 -translate-y-1/2',
+              linePosition === 'top' ? 'top-0' : 'bottom-0 translate-y-1/2',
             )}
+            title="Insert as sibling"
           >
-            <div className="h-2.5 w-2.5 rounded-full bg-blue-500 shrink-0" />
-            <div className="h-[3px] flex-1 bg-blue-500 rounded-full" />
+            <div className="h-2 w-2 rounded-full border-2 border-blue-500 shrink-0 bg-[hsl(var(--background))]" />
+            <div className="h-0.5 flex-1 bg-blue-500 rounded-full" />
           </div>
         )}
 
@@ -132,7 +133,7 @@ export function NoteTreeItem({
             onClick={handleClick}
             onAuxClick={handleAuxClick}
             className={cn(
-              'group cursor-grab active:cursor-grabbing',
+              'group cursor-pointer',
               showNestIndicator && 'bg-blue-500/20 !text-blue-600 dark:!text-blue-400 rounded-md',
             )}
           >

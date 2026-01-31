@@ -15,7 +15,7 @@ export function DragOverlayItem({ doc }: DragOverlayItemProps) {
   );
 
   return (
-    <div className="flex items-center gap-2 rounded-md bg-[hsl(var(--sidebar-accent))]/70 px-3 py-2 text-sm shadow-lg border border-[hsl(var(--border))] opacity-70 backdrop-blur-sm">
+    <div className="flex cursor-pointer items-center gap-2 rounded-md bg-[hsl(var(--sidebar-accent))]/70 px-3 py-2 text-sm shadow-lg border border-[hsl(var(--border))] opacity-70 backdrop-blur-sm">
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">
         {iconNode}
       </span>

@@ -285,23 +285,6 @@ export function NotesSection({
     const rect = overElement.getBoundingClientRect();
     const position = getDropPosition(rect, currentY, canNestInside);
 
-    // Fix visual indicator for edge case: when showing "before" an item at a shallower depth,
-    // check if the previous item in the flat list is at a deeper depth.
-    // If so, show as "after" on the previous item to preserve nesting visual.
-    if (position === 'before') {
-      const overIndex = flatList.findIndex(({ doc }) => doc.id === over.id);
-      if (overIndex > 0) {
-        const prevItem = flatList[overIndex - 1];
-        const prevDepth = prevItem.depth;
-        if (prevDepth > overDepth && prevItem.doc.id !== active.id) {
-          // Show indicator on the previous (deeper) item as "after"
-          setOverId(prevItem.doc.id);
-          setDropPosition('after');
-          return;
-        }
-      }
-    }
-
     setOverId(over.id);
     setDropPosition(position);
   }, [docsById, depthById, childrenByParent, flatList]);
@@ -309,54 +292,38 @@ export function NotesSection({
   const handleDragEnd = React.useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event;
-      let currentDropPosition = dropPosition;
+      const effectiveOverId = (overId ?? over?.id) as string | null;
+      const currentDropPosition = dropPosition;
 
       setActiveId(null);
       setOverId(null);
       setDropPosition(null);
 
-      if (!over || active.id === over.id || !currentDropPosition) return;
+      if (!over || active.id === over.id || !currentDropPosition || !effectiveOverId) return;
 
       const activeDoc = docsById.get(active.id as string);
-      let overDoc = docsById.get(over.id as string);
+      const overDoc = docsById.get(effectiveOverId);
       if (!activeDoc || !overDoc) return;
 
       // Prevent dropping into descendants (circular reference)
       const activeDescendants = getDescendantIds(childrenByParent, active.id as string);
-      if (activeDescendants.has(over.id as string)) return;
+      if (activeDescendants.has(effectiveOverId)) return;
 
       // Check depth constraint for nesting
-      const overDepth = depthById.get(over.id as string) ?? 0;
+      const overDepth = depthById.get(effectiveOverId) ?? 0;
       if (currentDropPosition === 'inside' && overDepth >= MAX_NESTING_DEPTH) return;
-
-      // Fix for edge case: when dropping "before" an item at a shallower depth,
-      // check if the previous item in the flat list is at a deeper depth.
-      // If so, treat it as dropping "after" the previous item to preserve nesting.
-      if (currentDropPosition === 'before') {
-        const overIndex = flatList.findIndex(({ doc }) => doc.id === over.id);
-        if (overIndex > 0) {
-          const prevItem = flatList[overIndex - 1];
-          const prevDepth = prevItem.depth;
-          // If previous item is nested deeper than the over item,
-          // dropping "before" over would unnest. Instead, drop "after" previous.
-          if (prevDepth > overDepth && prevItem.doc.id !== active.id) {
-            overDoc = prevItem.doc;
-            currentDropPosition = 'after';
-          }
-        }
-      }
 
       let newParentId: string | null;
       let newSortOrder: number;
 
       if (currentDropPosition === 'inside') {
-        // Nest inside the target
-        newParentId = over.id as string;
+        // Nest inside the target (becomes child)
+        newParentId = effectiveOverId;
         // Add to the end of children
         const existingChildren = childrenByParent.get(newParentId) ?? [];
         newSortOrder = existingChildren.length;
         // Expand parent to show the moved item
-        setExpandedIds((prev) => new Set([...prev, over.id as string]));
+        setExpandedIds((prev) => new Set([...prev, effectiveOverId]));
       } else {
         // Reorder as sibling (before or after)
         newParentId = overDoc.parentId;
@@ -376,7 +343,7 @@ export function NotesSection({
 
       await moveDocument(active.id as string, newParentId, newSortOrder);
     },
-    [docsById, childrenByParent, depthById, dropPosition, moveDocument, setExpandedIds, flatList],
+    [docsById, childrenByParent, depthById, dropPosition, overId, moveDocument, setExpandedIds, flatList],
   );
 
   const handleDragCancel = React.useCallback(() => {
