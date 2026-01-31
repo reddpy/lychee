@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { FileText, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { FileText, RotateCcw, Search, Trash2, X } from 'lucide-react';
 
 import type { DocumentRow } from '../../shared/documents';
 import { useDocumentStore } from '../../renderer/document-store';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { cn } from '../../lib/utils';
 import { SidebarMenuItem, useSidebar } from '../ui/sidebar';
 
@@ -53,29 +54,41 @@ function TrashItemRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="h-7 w-7 shrink-0 border-[hsl(var(--border))] text-muted-foreground hover:bg-accent hover:text-foreground"
-          onClick={() => onRestore(doc.id)}
-          aria-label="Restore"
-          title="Restore"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="h-7 w-7 shrink-0 border-[hsl(var(--border))] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          aria-label="Permanently delete"
-          title="Permanently delete"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRequestDelete(doc);
-          }}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="h-7 w-7 shrink-0 border-[hsl(var(--border))] text-muted-foreground hover:bg-[hsl(var(--accent))] hover:border-[hsl(var(--muted-foreground))]/25 hover:text-foreground"
+              onClick={() => onRestore(doc.id)}
+              aria-label="Restore"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Restore</p>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="h-7 w-7 shrink-0 border-[hsl(var(--border))] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              aria-label="Permanently delete"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestDelete(doc);
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Permanently delete</p>
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -83,6 +96,7 @@ function TrashItemRow({
 
 export function TrashBinPopover() {
   const { open } = useSidebar();
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [popoverOpen, setPopoverOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [pendingDeleteDoc, setPendingDeleteDoc] = React.useState<{
@@ -254,28 +268,45 @@ export function TrashBinPopover() {
             </button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-80 p-0"
+            className="w-[21rem] p-0"
             align="start"
             side={open ? 'right' : 'top'}
             sideOffset={8}
           >
             <div className="flex h-[20rem] flex-col gap-2 p-2">
               <div className="relative shrink-0">
-                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 <Input
+                  ref={searchInputRef}
                   placeholder="Search trash..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-8 pl-8"
+                  className={cn(
+                    'h-8 border pl-8 border-transparent focus:border-[1.5px] focus:border-[hsl(var(--ring))] focus:ring-0 focus-visible:border-[1.5px] focus-visible:border-[hsl(var(--ring))] focus-visible:ring-0 focus-visible:outline-none',
+                    search.length > 0 && 'pr-8',
+                  )}
                 />
+                {search.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch('');
+                      searchInputRef.current?.focus();
+                    }}
+                    aria-label="Clear search"
+                    className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-md border">
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[hsl(var(--border))]">
                 {filtered.length === 0 ? (
                   <div className="py-6 text-center text-sm text-muted-foreground">
                     {trashedDocuments.length === 0 ? 'Trash is empty' : 'No matching items'}
                   </div>
                 ) : (
-                  <div className="p-1">
+                  <div className="p-1 pr-4">
                     {filtered.map((doc) => {
                       const parent = doc.parentId
                         ? trashedById.get(doc.parentId)
