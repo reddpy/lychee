@@ -16,16 +16,25 @@ function displayTitle(doc: DocumentRow): string {
 
 function TrashItemRow({
   doc,
+  parentTitle,
+  isChild,
   onRestore,
   onRequestDelete,
 }: {
   doc: DocumentRow;
+  parentTitle?: string | null;
+  isChild?: boolean;
   onRestore: (id: string) => void;
   onRequestDelete: (doc: DocumentRow) => void;
 }) {
   const title = displayTitle(doc);
   return (
-    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent/50">
+    <div
+      className={cn(
+        'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent/50',
+        isChild && 'pl-7',
+      )}
+    >
       {doc.emoji ? (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base">
           {doc.emoji}
@@ -33,9 +42,16 @@ function TrashItemRow({
       ) : (
         <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
       )}
-      <span className="min-w-0 flex-1 truncate" title={title}>
-        {title}
-      </span>
+      <div className="min-w-0 flex-1 truncate">
+        <span className="block truncate" title={title}>
+          {title}
+        </span>
+        {parentTitle != null && (
+          <span className="block truncate text-xs text-muted-foreground" title={parentTitle}>
+            in: {parentTitle}
+          </span>
+        )}
+      </div>
       <div className="flex shrink-0 items-center gap-1">
         <Button
           variant="outline"
@@ -87,13 +103,41 @@ export function TrashBinPopover() {
     }
   }, [popoverOpen, loadTrashedDocuments]);
 
+  const trashedById = React.useMemo(() => {
+    const m = new Map<string, DocumentRow>();
+    trashedDocuments.forEach((d) => m.set(d.id, d));
+    return m;
+  }, [trashedDocuments]);
+
+  const orderedTrashed = React.useMemo(() => {
+    const ids = new Set(trashedDocuments.map((d) => d.id));
+    const parents = trashedDocuments.filter(
+      (d) => d.parentId === null || !ids.has(d.parentId),
+    );
+    const sortedParents = [...parents].sort(
+      (a, b) => new Date(b.deletedAt!).getTime() - new Date(a.deletedAt!).getTime(),
+    );
+    const out: DocumentRow[] = [];
+    for (const p of sortedParents) {
+      out.push(p);
+      const children = trashedDocuments
+        .filter((d) => d.parentId === p.id)
+        .sort(
+          (a, b) =>
+            new Date(b.deletedAt!).getTime() - new Date(a.deletedAt!).getTime(),
+        );
+      out.push(...children);
+    }
+    return out;
+  }, [trashedDocuments]);
+
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return trashedDocuments;
-    return trashedDocuments.filter((d) =>
+    if (!q) return orderedTrashed;
+    return orderedTrashed.filter((d) =>
       displayTitle(d).toLowerCase().includes(q),
     );
-  }, [trashedDocuments, search]);
+  }, [orderedTrashed, search]);
 
   const handleRestore = React.useCallback(
     async (id: string) => {
@@ -232,14 +276,25 @@ export function TrashBinPopover() {
                   </div>
                 ) : (
                   <div className="p-1">
-                    {filtered.map((doc) => (
-                      <TrashItemRow
-                        key={doc.id}
-                        doc={doc}
-                        onRestore={handleRestore}
-                        onRequestDelete={handleRequestDelete}
-                      />
-                    ))}
+                    {filtered.map((doc) => {
+                      const parent = doc.parentId
+                        ? trashedById.get(doc.parentId)
+                        : null;
+                      const parentTitle = parent
+                        ? displayTitle(parent)
+                        : null;
+                      const isChild = !!doc.parentId;
+                      return (
+                        <TrashItemRow
+                          key={doc.id}
+                          doc={doc}
+                          parentTitle={parentTitle ?? undefined}
+                          isChild={isChild}
+                          onRestore={handleRestore}
+                          onRequestDelete={handleRequestDelete}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>

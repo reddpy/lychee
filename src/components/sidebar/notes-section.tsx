@@ -142,7 +142,12 @@ export function NotesSection({
     () => buildChildrenByParent(documents),
     [documents],
   );
-  const rootDocs = childrenByParent.get(null) ?? [];
+  const rootDocs = React.useMemo(() => {
+    const ids = new Set(documents.map((d) => d.id));
+    return documents.filter(
+      (d) => d.parentId === null || !ids.has(d.parentId),
+    );
+  }, [documents]);
 
   const toggleExpanded = React.useCallback((id: string) => {
     setExpandedIds((prev) => {
