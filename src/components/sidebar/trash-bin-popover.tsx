@@ -287,10 +287,11 @@ export function TrashBinPopover() {
             </button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-[21rem] p-0"
-            align="start"
+            className="w-[21rem] p-0 shadow-xl"
+            align="end"
+            alignOffset={10}
             side={open ? 'right' : 'top'}
-            sideOffset={8}
+            sideOffset={24}
           >
             <div className="flex h-[20rem] flex-col gap-2 p-2">
               <div className="relative shrink-0">
