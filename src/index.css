@@ -118,4 +118,4 @@ body {
     0 0 0 1px hsl(var(--sidebar-border));
 }
 
-/* Per-note creation animation: framer-motion in NotesSection. */
+/* Note tree: delete exit, section expand/collapse, chevron rotation (Framer Motion in NotesSection / NoteTreeItem). */
