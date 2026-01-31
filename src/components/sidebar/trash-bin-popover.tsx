@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { FileText, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import { FileText, Loader2, RotateCcw, Search, Trash2, X } from 'lucide-react';
 
 import type { DocumentRow } from '../../shared/documents';
 import { useDocumentStore } from '../../renderer/document-store';
@@ -47,9 +47,9 @@ function TrashItemRow({
         <span className="block truncate" title={title}>
           {title}
         </span>
-        {parentTitle != null && (
-          <span className="block truncate text-xs text-muted-foreground" title={parentTitle}>
-            in: {parentTitle}
+        {(parentTitle != null || isChild) && (
+          <span className="block truncate text-xs text-muted-foreground" title={parentTitle ?? undefined}>
+            in: {parentTitle ?? '…'}
           </span>
         )}
       </div>
@@ -98,6 +98,7 @@ export function TrashBinPopover() {
   const { open } = useSidebar();
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [popoverOpen, setPopoverOpen] = React.useState(false);
+  const [trashLoading, setTrashLoading] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [pendingDeleteDoc, setPendingDeleteDoc] = React.useState<{
     id: string;
@@ -111,11 +112,29 @@ export function TrashBinPopover() {
     permanentDeleteDocument,
   } = useDocumentStore();
 
+  const TRASH_LOAD_MIN_MS = 120;
+  const loadTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   React.useEffect(() => {
-    if (popoverOpen) {
-      void loadTrashedDocuments();
-    }
+    if (!popoverOpen) return;
+    setTrashLoading(true);
+    const start = Date.now();
+    loadTrashedDocuments().finally(() => {
+      const elapsed = Date.now() - start;
+      const remaining = Math.max(0, TRASH_LOAD_MIN_MS - elapsed);
+      loadTimeoutRef.current = setTimeout(() => {
+        setTrashLoading(false);
+      }, remaining);
+    });
+    return () => {
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
+    };
   }, [popoverOpen, loadTrashedDocuments]);
+
+  const deferredSearch = React.useDeferredValue(search);
 
   const trashedById = React.useMemo(() => {
     const m = new Map<string, DocumentRow>();
@@ -145,13 +164,13 @@ export function TrashBinPopover() {
     return out;
   }, [trashedDocuments]);
 
+  const searchQuery = deferredSearch.trim().toLowerCase();
   const filtered = React.useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return orderedTrashed;
+    if (!searchQuery) return orderedTrashed;
     return orderedTrashed.filter((d) =>
-      displayTitle(d).toLowerCase().includes(q),
+      displayTitle(d).toLowerCase().includes(searchQuery),
     );
-  }, [orderedTrashed, search]);
+  }, [orderedTrashed, searchQuery]);
 
   const handleRestore = React.useCallback(
     async (id: string) => {
@@ -301,7 +320,12 @@ export function TrashBinPopover() {
                 )}
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[hsl(var(--border))]">
-                {filtered.length === 0 ? (
+                {trashLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground" aria-busy>
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span className="text-xs">Loading trash…</span>
+                  </div>
+                ) : filtered.length === 0 ? (
                   <div className="py-6 text-center text-sm text-muted-foreground">
                     {trashedDocuments.length === 0 ? 'Trash is empty' : 'No matching items'}
                   </div>
