@@ -37,6 +37,8 @@ type DocumentActions = {
   permanentDeleteDocument: (id: string) => Promise<void>;
   /** Merge updated fields for a document (e.g. after save). */
   updateDocumentInStore: (id: string, patch: Partial<DocumentRow>) => void;
+  /** Move document to new parent and/or position. */
+  moveDocument: (id: string, parentId: string | null, sortOrder: number) => Promise<void>;
 };
 
 type DocumentStore = DocumentState & DocumentActions;
@@ -243,6 +245,19 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
         d.id === id ? { ...d, ...patch } : d,
       ),
     }));
+  },
+
+  async moveDocument(id, parentId, sortOrder) {
+    try {
+      set({ error: null });
+      await window.lychee.invoke('documents.move', { id, parentId, sortOrder });
+      // Reload documents to get the updated sort order for all affected items
+      await get().loadDocuments(true);
+    } catch (err) {
+      set({ error: (err as Error).message });
+      // Reload on error to ensure consistent state
+      await get().loadDocuments(true);
+    }
   },
 }));
 

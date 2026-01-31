@@ -113,6 +113,35 @@ function runMigrations(database: BetterSqlite3Database) {
 
     tx();
   }
+
+  // v5: add sortOrder for manual ordering within siblings
+  const columnsAfterV4 = database
+    .prepare(`PRAGMA table_info(documents)`)
+    .all() as { name: string }[];
+  const hasSortOrder = columnsAfterV4.some((col) => col.name === 'sortOrder');
+
+  if (!hasSortOrder) {
+    const tx = database.transaction(() => {
+      database.exec(`ALTER TABLE documents ADD COLUMN sortOrder INTEGER DEFAULT 0`);
+      database.exec(`CREATE INDEX IF NOT EXISTS idx_documents_sortOrder ON documents(parentId, sortOrder)`);
+      // Initialize sortOrder for existing documents based on updatedAt (newer = lower sortOrder = appears first)
+      database.exec(`
+        UPDATE documents SET sortOrder = (
+          SELECT COUNT(*) FROM documents d2
+          WHERE d2.parentId IS documents.parentId
+          AND d2.updatedAt > documents.updatedAt
+        )
+      `);
+      database
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run('5');
+    });
+
+    tx();
+  }
 }
 
 export function initDatabase(): { dbPath: string } {
