@@ -1,6 +1,7 @@
 import * as React from 'react';
+import { flushSync } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 import type { DocumentRow } from '../../shared/documents';
 import {
@@ -15,13 +16,27 @@ import { NoteTreeItem } from './note-tree-item';
 
 const MAX_NESTING_DEPTH = 4; // root depth 0, deepest child depth 4 (5 levels)
 
-/** Poof/pop exit animation when a note is trashed (framer-motion). */
-const noteExitTransition = { duration: 0.2, ease: 'easeIn' as const };
-const noteExit = {
-  scale: 0.96,
+/**
+ * Note tree: exit animation (delete/trash). When a nested note is added, expand parent so the new note is visible.
+ * Collapse is instant (no animation).
+ */
+const treeItemExit = {
   opacity: 0,
-  transition: noteExitTransition,
+  transition: { duration: 0.2, ease: 'easeOut' },
 };
+
+/** Instant hide when collapsing (item still in tree, just hidden). */
+const treeItemExitCollapse = {
+  opacity: 0,
+  transition: { duration: 0 },
+};
+
+type PresenceCustom = { documentIds?: Set<string> };
+
+function getExitVariant(docId: string) {
+  return (custom: PresenceCustom) =>
+    custom?.documentIds?.has(docId) ? treeItemExitCollapse : treeItemExit;
+}
 
 export type NotesSectionProps = {
   documents: DocumentRow[];
@@ -46,82 +61,35 @@ function buildChildrenByParent(documents: DocumentRow[]) {
   return map;
 }
 
-function NoteTreeRecursive({
-  doc,
-  depth,
-  childrenByParent,
-  expandedIds,
-  selectedId,
-  onToggleExpanded,
-  onAddPageInside,
-  highlightId,
-}: {
-  doc: DocumentRow;
-  depth: number;
-  childrenByParent: Map<string | null, DocumentRow[]>;
-  expandedIds: Set<string>;
-  selectedId: string | null;
-  onToggleExpanded: (id: string) => void;
-  onAddPageInside: (parentId: string) => void;
-  highlightId?: string | null;
-}) {
-  const children = childrenByParent.get(doc.id) ?? [];
-  const hasChildren = children.length > 0;
-  const isExpanded = expandedIds.has(doc.id);
-  const canAddChild = depth < MAX_NESTING_DEPTH;
-  const isHighlighted = highlightId === doc.id;
+function getAncestorIds(documents: DocumentRow[], docId: string): string[] {
+  const byId = new Map(documents.map((d) => [d.id, d]));
+  const ids: string[] = [];
+  let doc = byId.get(docId);
+  while (doc?.parentId) {
+    ids.push(doc.parentId);
+    doc = byId.get(doc.parentId);
+  }
+  return ids;
+}
 
-  return (
-    <>
-      <NoteTreeItem
-        doc={doc}
-        depth={depth}
-        children={children}
-        isExpanded={isExpanded}
-        canAddChild={canAddChild}
-        isSelected={selectedId === doc.id}
-        onToggleExpanded={onToggleExpanded}
-        onAddPageInside={onAddPageInside}
-        isHighlighted={isHighlighted}
-        isRoot={depth === 0}
-      />
-      <AnimatePresence initial={false}>
-        {hasChildren && isExpanded && (
-          <motion.div
-            className="mt-0.5"
-            style={{ overflow: 'hidden' }}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-          >
-            <AnimatePresence initial={false}>
-              {children.map((child) => (
-                <motion.div
-                  key={child.id}
-                  layout
-                  initial={false}
-                  exit={noteExit}
-                  transition={noteExitTransition}
-                >
-                  <NoteTreeRecursive
-                    doc={child}
-                    depth={depth + 1}
-                    childrenByParent={childrenByParent}
-                    expandedIds={expandedIds}
-                    selectedId={selectedId}
-                    onToggleExpanded={onToggleExpanded}
-                    onAddPageInside={onAddPageInside}
-                    highlightId={highlightId}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
-  );
+/** Flat list in preorder so one AnimatePresence tracks all rows for delete exit animation. */
+function buildFlatList(
+  rootDocs: DocumentRow[],
+  childrenByParent: Map<string | null, DocumentRow[]>,
+  expandedIds: Set<string>,
+): { doc: DocumentRow; depth: number }[] {
+  const result: { doc: DocumentRow; depth: number }[] = [];
+  function visit(docs: DocumentRow[], depth: number) {
+    for (const doc of docs) {
+      result.push({ doc, depth });
+      if (expandedIds.has(doc.id)) {
+        const children = childrenByParent.get(doc.id) ?? [];
+        visit(children, depth + 1);
+      }
+    }
+  }
+  visit(rootDocs, 0);
+  return result;
 }
 
 export function NotesSection({
@@ -135,8 +103,6 @@ export function NotesSection({
   const { open } = useSidebar();
   const [notesSectionOpen, setNotesSectionOpen] = React.useState(true);
   const lastCreatedId = useDocumentStore((s) => s.lastCreatedId);
-  const scrollRef = React.useRef<HTMLDivElement | null>(null);
-  const [highlightId, setHighlightId] = React.useState<string | null>(null);
 
   const childrenByParent = React.useMemo(
     () => buildChildrenByParent(documents),
@@ -148,6 +114,11 @@ export function NotesSection({
       (d) => d.parentId === null || !ids.has(d.parentId),
     );
   }, [documents]);
+
+  const flatList = React.useMemo(
+    () => buildFlatList(rootDocs, childrenByParent, expandedIds),
+    [rootDocs, childrenByParent, expandedIds],
+  );
 
   const toggleExpanded = React.useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -163,39 +134,24 @@ export function NotesSection({
 
   const handleAddPageInside = React.useCallback(
     (parentId: string) => {
-      setExpandedIds((prev) => {
-        const next = new Set(prev);
-        next.add(parentId);
-        return next;
-      });
       void createDocument(parentId);
     },
-    [setExpandedIds, createDocument],
+    [createDocument],
   );
 
-  // Scroll newly created note into view and briefly highlight it. Must run unconditionally (no early return before hooks).
-  React.useEffect(() => {
-    if (!lastCreatedId) return;
-
-    const container = scrollRef.current;
-    if (container) {
-      const el = container.querySelector<HTMLElement>(
-        `[data-note-id="${lastCreatedId}"]`,
-      );
-      if (el) {
-        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    }
-
-    setHighlightId(lastCreatedId);
-    const timeout = window.setTimeout(() => {
-      setHighlightId(null);
-    }, 350);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [lastCreatedId]);
+  // When a nested note is created, expand its parent (and ancestors) so the tree "opens" to show it.
+  React.useLayoutEffect(() => {
+    if (!lastCreatedId || documents.length === 0) return;
+    const ancestorIds = getAncestorIds(documents, lastCreatedId);
+    if (ancestorIds.length === 0) return;
+    flushSync(() => {
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        ancestorIds.forEach((a) => next.add(a));
+        return next;
+      });
+    });
+  }, [lastCreatedId, documents, setExpandedIds]);
 
   if (!open) return null;
 
@@ -208,11 +164,17 @@ export function NotesSection({
             className="px-2 text-xs font-medium uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))]"
           >
             <span className="flex flex-1 items-center gap-1.5">
-              {notesSectionOpen ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
+              <motion.span
+                className="flex shrink-0 items-center justify-center"
+                animate={{ rotate: notesSectionOpen ? 90 : 0 }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 400,
+                  damping: 30,
+                }}
+              >
                 <ChevronRight className="h-3 w-3" />
-              )}
+              </motion.span>
               <span className='capitalize'>Notes</span>
             </span>
           </SidebarMenuButton>
@@ -221,17 +183,22 @@ export function NotesSection({
       <AnimatePresence initial={false}>
         {notesSectionOpen && (
           <motion.div
-            key="notes-section-body"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
             className="min-h-0 mt-1 flex-1 overflow-hidden flex flex-col"
+            initial={{ opacity: 0, scaleY: 0.97 }}
+            animate={{ opacity: 1, scaleY: 1 }}
+            exit={{ opacity: 0, scaleY: 0.97 }}
+            transition={{
+              type: 'spring',
+              stiffness: 500,
+              damping: 35,
+              mass: 0.8,
+            }}
+            style={{ transformOrigin: 'top' }}
           >
             <div className="min-h-0 flex-1 flex flex-col">
-              <div ref={scrollRef} className="notes-scroll min-h-0 flex-1 pr-1 py-1">
+              <div className="notes-scroll min-h-0 flex-1 pr-2 py-1">
                 <SidebarMenu>
-                  {loading && (
+                  {loading ? (
                     <SidebarMenuItem>
                       <SidebarMenuButton>
                         <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
@@ -240,29 +207,36 @@ export function NotesSection({
                         </span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )}
-                  {!loading && (
-                    <AnimatePresence initial={false}>
-                      {rootDocs.map((doc) => (
-                        <motion.div
-                          key={doc.id}
-                          layout
-                          initial={false}
-                          exit={noteExit}
-                          transition={noteExitTransition}
-                        >
-                          <NoteTreeRecursive
-                            doc={doc}
-                            depth={0}
-                            childrenByParent={childrenByParent}
-                            expandedIds={expandedIds}
-                            selectedId={selectedId}
-                            onToggleExpanded={toggleExpanded}
-                            onAddPageInside={handleAddPageInside}
-                            highlightId={highlightId}
-                          />
-                        </motion.div>
-                      ))}
+                  ) : (
+                    <AnimatePresence
+                      initial={false}
+                      custom={{ documentIds: new Set(documents.map((d) => d.id)) }}
+                    >
+                      {flatList.map(({ doc, depth }) => {
+                        const children = childrenByParent.get(doc.id) ?? [];
+                        const isExpanded = expandedIds.has(doc.id);
+                        const canAddChild = depth < MAX_NESTING_DEPTH;
+                        return (
+                          <motion.div
+                            key={doc.id}
+                            initial={false}
+                            variants={{ exit: getExitVariant(doc.id) }}
+                            exit="exit"
+                          >
+                            <NoteTreeItem
+                              doc={doc}
+                              depth={depth}
+                              children={children}
+                              isExpanded={isExpanded}
+                              canAddChild={canAddChild}
+                              isSelected={selectedId === doc.id}
+                              onToggleExpanded={toggleExpanded}
+                              onAddPageInside={handleAddPageInside}
+                              isRoot={depth === 0}
+                            />
+                          </motion.div>
+                        );
+                      })}
                     </AnimatePresence>
                   )}
                 </SidebarMenu>

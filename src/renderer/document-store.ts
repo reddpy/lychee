@@ -10,12 +10,13 @@ type DocumentState = {
   openTabs: string[];
   loading: boolean;
   error: string | null;
-  /** ID of the most recently created document (for UI effects like scroll/animation). */
+  /** ID of the most recently created document (used to auto-expand parent when a nested note is added). */
   lastCreatedId: string | null;
 };
 
 type DocumentActions = {
-  loadDocuments: () => Promise<void>;
+  /** If silent is true, does not set loading state (avoids tree flash on restore). */
+  loadDocuments: (silent?: boolean) => Promise<void>;
   selectDocument: (id: string | null) => void;
   /** Open a tab for document id; adds to end if not open, and selects it. */
   openTab: (id: string) => void;
@@ -49,9 +50,9 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   error: null,
   lastCreatedId: null,
 
-  async loadDocuments() {
+  async loadDocuments(silent = false) {
     try {
-      set({ loading: true, error: null });
+      if (!silent) set({ loading: true, error: null });
       const { documents } = await window.lychee.invoke('documents.list', {
         limit: 500,
         offset: 0,
@@ -206,7 +207,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     try {
       set({ error: null });
       await window.lychee.invoke('documents.restore', { id });
-      await get().loadDocuments();
+      await get().loadDocuments(true);
       await get().loadTrashedDocuments();
     } catch (err) {
       set({ error: (err as Error).message });
