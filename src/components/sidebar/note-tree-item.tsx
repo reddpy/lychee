@@ -1,8 +1,12 @@
 import * as React from 'react';
+import * as ReactDOM from 'react-dom/client';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { ChevronRight, MoreHorizontal, Plus, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useSortable } from '@dnd-kit/sortable';
+import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
+import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
+import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview';
+import { pointerOutsideOfPreview } from '@atlaskit/pragmatic-drag-and-drop/element/pointer-outside-of-preview';
 
 import type { DocumentRow } from '../../shared/documents';
 import {
@@ -18,7 +22,8 @@ import {
   DocumentDropdownMenuContent,
 } from './document-command-menu';
 import { useDocumentStore } from '../../renderer/document-store';
-import type { DropPosition } from './notes-section';
+import { useTreeDnd, type DropPosition } from './tree-dnd-context';
+import { DragOverlayItem } from './drag-overlay-item';
 import { cn } from '../../lib/utils';
 
 export type NoteTreeItemProps = {
@@ -31,10 +36,11 @@ export type NoteTreeItemProps = {
   onToggleExpanded: (id: string) => void;
   onAddPageInside: (parentId: string) => void;
   isRoot?: boolean;
-  isDragging?: boolean;
-  isOver?: boolean;
-  dropPosition?: DropPosition | null;
-  showDropLine?: boolean;
+  canNestInside: boolean;
+  /** Map from doc id to its descendants - used for circular drop prevention */
+  allDescendantsMap: Map<string, Set<string>>;
+  /** True if this is the first item in the visible flat list */
+  isFirstInList?: boolean;
 };
 
 export function NoteTreeItem({
@@ -46,23 +52,122 @@ export function NoteTreeItem({
   isSelected,
   onToggleExpanded,
   onAddPageInside,
-  isDragging,
-  isOver,
-  dropPosition,
-  showDropLine,
+  canNestInside,
+  allDescendantsMap,
+  isFirstInList = false,
 }: NoteTreeItemProps) {
+  const ref = React.useRef<HTMLDivElement>(null);
   const { openTab, openOrSelectTab } = useDocumentStore();
+  const { draggingId, dropTargetId, dropPosition, nestAsFirst, setDraggingId, setDropTarget } = useTreeDnd();
   const hasChildren = children.length > 0;
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    isDragging: isSortableDragging,
-  } = useSortable({ id: doc.id });
+  const [isDragging, setIsDragging] = React.useState(false);
 
-  // Don't apply transform - we don't want items to shift during drag
-  // We handle drop indicators manually instead
+  // Register as draggable and drop target
+  React.useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    return combine(
+      // Register as draggable
+      draggable({
+        element,
+        getInitialData: () => ({
+          id: doc.id,
+          type: 'tree-item',
+          parentId: doc.parentId,
+        }),
+        onGenerateDragPreview({ nativeSetDragImage }) {
+          setCustomNativeDragPreview({
+            nativeSetDragImage,
+            getOffset: pointerOutsideOfPreview({
+              x: '16px',
+              y: '8px',
+            }),
+            render({ container }) {
+              const root = ReactDOM.createRoot(container);
+              root.render(<DragOverlayItem doc={doc} />);
+              return () => root.unmount();
+            },
+          });
+        },
+        onDragStart() {
+          setIsDragging(true);
+          setDraggingId(doc.id);
+        },
+        onDrop() {
+          setIsDragging(false);
+        },
+      }),
+
+      // Register as drop target
+      dropTargetForElements({
+        element,
+        getData({ input, element: el }) {
+          // Calculate drop position based on pointer position
+          const rect = el.getBoundingClientRect();
+          const relativeY = input.clientY - rect.top;
+          const height = rect.height;
+          const edgeThreshold = Math.min(8, height * 0.25);
+
+          let position: DropPosition;
+          let nestAsFirst = false;
+
+          if (canNestInside) {
+            if (relativeY < edgeThreshold) {
+              position = 'before';
+            } else if (relativeY > height - edgeThreshold) {
+              if (isExpanded) {
+                // Bottom edge of expanded parent: insert as first child
+                position = 'inside';
+                nestAsFirst = true;
+              } else {
+                position = 'after';
+              }
+            } else {
+              // Middle zone: nest as last child
+              position = 'inside';
+            }
+          } else {
+            position = relativeY < height * 0.5 ? 'before' : 'after';
+          }
+
+          return { id: doc.id, type: 'tree-item', dropPosition: position, isExpanded, nestAsFirst };
+        },
+        canDrop({ source }) {
+          const draggedId = source.data.id as string;
+          // Can't drop on self
+          if (draggedId === doc.id) {
+            return false;
+          }
+          // Can't drop into own descendants (prevent circular reference)
+          const draggedDescendants = allDescendantsMap.get(draggedId) ?? new Set();
+          if (draggedDescendants.has(doc.id)) {
+            return false;
+          }
+          return true;
+        },
+        onDragEnter({ self }) {
+          const position = self.data.dropPosition as DropPosition;
+          const asFirst = self.data.nestAsFirst as boolean;
+          setDropTarget(doc.id, position, asFirst);
+        },
+        onDrag({ self }) {
+          // Update position as pointer moves within element
+          // getData recalculates position each time, so always update
+          const position = self.data.dropPosition as DropPosition;
+          const asFirst = self.data.nestAsFirst as boolean;
+          setDropTarget(doc.id, position, asFirst);
+        },
+        onDragLeave() {
+          setDropTarget(null, null, false);
+        },
+        onDrop() {
+          // Drop handled by monitor in provider
+        },
+      })
+    );
+  }, [doc, canNestInside, isExpanded, allDescendantsMap, setDraggingId, setDropTarget]);
 
   const handleAddPageInside = React.useCallback(() => {
     onToggleExpanded(doc.id);
@@ -92,8 +197,15 @@ export function NoteTreeItem({
     <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
   );
 
-  const isBeingDragged = isDragging || isSortableDragging;
-  const showNestIndicator = isOver && dropPosition === 'inside';
+  // Derive visual state from context
+  const isOver = dropTargetId === doc.id && draggingId !== doc.id;
+  // Blue background highlight for nesting inside parent (last child) - not when nest-as-first
+  const showNestIndicator = isOver && dropPosition === 'inside' && !nestAsFirst;
+  // Indented line for nesting as first child (bottom edge of expanded parent)
+  const showFirstChildLine = isOver && dropPosition === 'inside' && nestAsFirst;
+  // Show drop line: "after" always shows at bottom, "before" only shows at top for first item
+  // This prevents double indicators when pointer is between two items
+  const showDropLine = isOver && (dropPosition === 'after' || (dropPosition === 'before' && isFirstInList));
   const linePosition = dropPosition === 'before' ? 'top' : 'bottom';
 
   return (
@@ -103,14 +215,12 @@ export function NoteTreeItem({
       onAddPageInside={handleAddPageInside}
     >
       <div
-        ref={setNodeRef}
+        ref={ref}
         className={cn(
           'relative',
-          isBeingDragged && 'opacity-5',
+          isDragging && 'opacity-5',
         )}
         data-note-id={doc.id}
-        {...attributes}
-        {...listeners}
       >
         {/* Sibling drop line: horizontal line = "insert as same-level sibling". Indent by depth so line width cues placement level. */}
         {showDropLine && (
@@ -121,6 +231,18 @@ export function NoteTreeItem({
             )}
             style={{ paddingLeft: depth * 12 }}
             title="Insert as sibling"
+          >
+            <div className="h-2 w-2 rounded-full border-2 border-blue-500 shrink-0 bg-[hsl(var(--background))]" />
+            <div className="h-0.5 flex-1 bg-blue-500 rounded-full" />
+          </div>
+        )}
+
+        {/* First child drop line: shows below expanded parent, indented to child level */}
+        {showFirstChildLine && (
+          <div
+            className="absolute left-0 right-0 z-30 flex items-center pointer-events-none px-2 bottom-0 translate-y-1/2"
+            style={{ paddingLeft: (depth + 1) * 12 }}
+            title="Insert as first child"
           >
             <div className="h-2 w-2 rounded-full border-2 border-blue-500 shrink-0 bg-[hsl(var(--background))]" />
             <div className="h-0.5 flex-1 bg-blue-500 rounded-full" />
