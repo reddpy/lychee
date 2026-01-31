@@ -5,6 +5,8 @@ import {
   deleteDocument,
   getDocumentById,
   listDocuments,
+  listTrashedDocuments,
+  permanentDeleteDocument,
   restoreDocument,
   trashDocument,
   updateDocument,
@@ -42,8 +44,14 @@ export function registerIpcHandlers() {
 
   handle('documents.trash', (payload) => trashDocument(payload.id));
 
-  handle('documents.restore', (payload) => ({
-    document: restoreDocument(payload.id),
+  handle('documents.restore', (payload) => restoreDocument(payload.id));
+
+  handle('documents.listTrashed', (payload) => ({
+    documents: listTrashedDocuments(payload),
   }));
+
+  handle('documents.permanentDelete', (payload) =>
+    permanentDeleteDocument(payload.id),
+  );
 }
 

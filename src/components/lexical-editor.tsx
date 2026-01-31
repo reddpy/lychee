@@ -157,10 +157,40 @@ function EditorTitle({
   const [localTitle, setLocalTitle] = React.useState(normalizedTitle)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const updateDocumentInStore = useDocumentStore((s) => s.updateDocumentInStore)
+  const pendingSaveRef = React.useRef({ documentId, title: localTitle })
+  pendingSaveRef.current = { documentId, title: localTitle }
 
   React.useEffect(() => {
     setLocalTitle(normalizedTitle)
   }, [documentId, normalizedTitle])
+
+  React.useEffect(() => {
+    return () => {
+      const { documentId: id, title: t } = pendingSaveRef.current
+      const trimmed = (t ?? "").trim()
+      window.lychee
+        .invoke("documents.update", { id, title: trimmed })
+        .then(({ document: doc }) =>
+          updateDocumentInStore(doc.id, { title: doc.title })
+        )
+        .catch(() => {})
+    }
+  }, [documentId, updateDocumentInStore])
+
+  React.useEffect(() => {
+    const trimmed = localTitle.trim()
+    if (trimmed === normalizedTitle) return
+    const t = window.setTimeout(() => {
+      setLocalTitle(trimmed)
+      window.lychee
+        .invoke("documents.update", { id: documentId, title: trimmed })
+        .then(({ document: doc }) => {
+          updateDocumentInStore(doc.id, { title: doc.title })
+        })
+        .catch((err) => console.error("Title save failed:", err))
+    }, 500)
+    return () => window.clearTimeout(t)
+  }, [localTitle, documentId, normalizedTitle, updateDocumentInStore])
 
   const handleBlur = React.useCallback(() => {
     const trimmed = localTitle.trim()

@@ -25,6 +25,25 @@ export function listDocuments(params: {
     .all(limit, offset) as DocumentRow[];
 }
 
+export function listTrashedDocuments(params: {
+  limit?: number;
+  offset?: number;
+}): DocumentRow[] {
+  const db = getDb();
+  const limit = Math.min(Math.max(params.limit ?? 200, 1), 500);
+  const offset = Math.max(params.offset ?? 0, 0);
+
+  return db
+    .prepare(
+      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt
+       FROM documents
+       WHERE deletedAt IS NOT NULL
+       ORDER BY deletedAt DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(limit, offset) as DocumentRow[];
+}
+
 export function getDocumentById(id: string): DocumentRow | null {
   const db = getDb();
   const row = db
@@ -161,17 +180,59 @@ export function trashDocument(id: string): { document: DocumentRow; trashedIds: 
   };
 }
 
-export function restoreDocument(id: string): DocumentRow {
+/** Restore a document and all its trashed descendants. Returns the restored document and all restored ids. */
+export function restoreDocument(id: string): { document: DocumentRow; restoredIds: string[] } {
   const db = getDb();
   const existing = getDocumentById(id);
   if (!existing) {
     throw new Error(`Document not found: ${id}`);
   }
+  if (!existing.deletedAt) {
+    return { document: existing, restoredIds: [id] };
+  }
   const updatedAt = nowIso();
-  db.prepare(`UPDATE documents SET deletedAt = NULL, updatedAt = ? WHERE id = ?`).run(
-    updatedAt,
-    id,
-  );
-  return { ...existing, deletedAt: null, updatedAt };
+  // Restore this doc and all trashed descendants (recursive: same parent chain, all currently trashed)
+  const tree = db
+    .prepare(
+      `WITH RECURSIVE tree(id) AS (
+         SELECT ? AS id WHERE (SELECT deletedAt FROM documents WHERE id = ?) IS NOT NULL
+         UNION ALL
+         SELECT d.id FROM documents d INNER JOIN tree t ON d.parentId = t.id WHERE d.deletedAt IS NOT NULL
+       )
+       SELECT id FROM tree WHERE id IS NOT NULL`,
+    )
+    .all(id, id) as { id: string }[];
+  const restoredIds = tree.map((r) => r.id);
+  if (restoredIds.length > 0) {
+    const placeholders = restoredIds.map(() => '?').join(',');
+    db.prepare(
+      `UPDATE documents SET deletedAt = NULL, updatedAt = ? WHERE id IN (${placeholders})`,
+    ).run(updatedAt, ...restoredIds);
+  }
+  const doc: DocumentRow = { ...existing, deletedAt: null, updatedAt };
+  return { document: doc, restoredIds };
+}
+
+/** Permanently delete a document and all its descendants from the database. */
+export function permanentDeleteDocument(id: string): { deletedIds: string[] } {
+  const db = getDb();
+  const existing = getDocumentById(id);
+  if (!existing) {
+    throw new Error(`Document not found: ${id}`);
+  }
+  const tree = db
+    .prepare(
+      `WITH RECURSIVE tree(id) AS (
+         SELECT ?
+         UNION ALL
+         SELECT d.id FROM documents d INNER JOIN tree t ON d.parentId = t.id
+       )
+       SELECT id FROM tree`,
+    )
+    .all(id) as { id: string }[];
+  const deletedIds = tree.map((r) => r.id);
+  const placeholders = deletedIds.map(() => '?').join(',');
+  db.prepare(`DELETE FROM documents WHERE id IN (${placeholders})`).run(...deletedIds);
+  return { deletedIds };
 }
 

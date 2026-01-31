@@ -3,6 +3,8 @@ import type { DocumentRow } from '../shared/documents';
 
 type DocumentState = {
   documents: DocumentRow[];
+  /** Trashed documents (deletedAt set), for trash bin UI. */
+  trashedDocuments: DocumentRow[];
   selectedId: string | null;
   /** Ordered list of open tab document IDs (first = leftmost tab). */
   openTabs: string[];
@@ -26,6 +28,12 @@ type DocumentActions = {
   createDocument: (parentId?: string | null) => Promise<void>;
   /** Move document to trash (soft delete). Removes from list and closes tab. */
   trashDocument: (id: string) => Promise<void>;
+  /** Load trashed documents for trash bin UI. */
+  loadTrashedDocuments: () => Promise<void>;
+  /** Restore a document (and its nested notes) from trash; refreshes documents and trash list. */
+  restoreDocument: (id: string) => Promise<void>;
+  /** Permanently delete a document and all descendants; removes from trash list and closes tabs. */
+  permanentDeleteDocument: (id: string) => Promise<void>;
   /** Merge updated fields for a document (e.g. after save). */
   updateDocumentInStore: (id: string, patch: Partial<DocumentRow>) => void;
 };
@@ -34,6 +42,7 @@ type DocumentStore = DocumentState & DocumentActions;
 
 export const useDocumentStore = create<DocumentStore>((set, get) => ({
   documents: [],
+  trashedDocuments: [],
   selectedId: null,
   openTabs: [],
   loading: false,
@@ -172,6 +181,52 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
             : nextTabs[0] ?? null;
         return {
           documents: nextDocs,
+          openTabs: nextTabs,
+          selectedId: nextSelected,
+        };
+      });
+    } catch (err) {
+      set({ error: (err as Error).message });
+    }
+  },
+
+  async loadTrashedDocuments() {
+    try {
+      const { documents } = await window.lychee.invoke('documents.listTrashed', {
+        limit: 200,
+        offset: 0,
+      });
+      set({ trashedDocuments: documents });
+    } catch (err) {
+      set({ trashedDocuments: [], error: (err as Error).message });
+    }
+  },
+
+  async restoreDocument(id) {
+    try {
+      set({ error: null });
+      await window.lychee.invoke('documents.restore', { id });
+      await get().loadDocuments();
+      await get().loadTrashedDocuments();
+    } catch (err) {
+      set({ error: (err as Error).message });
+    }
+  },
+
+  async permanentDeleteDocument(id) {
+    try {
+      set({ error: null });
+      const { deletedIds } = await window.lychee.invoke('documents.permanentDelete', { id });
+      const deletedSet = new Set(deletedIds);
+      set((state) => {
+        const nextTrashed = state.trashedDocuments.filter((d) => !deletedSet.has(d.id));
+        const nextTabs = state.openTabs.filter((t) => !deletedSet.has(t));
+        const nextSelected =
+          state.selectedId && !deletedSet.has(state.selectedId)
+            ? state.selectedId
+            : nextTabs[0] ?? null;
+        return {
+          trashedDocuments: nextTrashed,
           openTabs: nextTabs,
           selectedId: nextSelected,
         };
