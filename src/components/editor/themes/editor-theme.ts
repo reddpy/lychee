@@ -123,7 +123,7 @@ export const editorTheme: EditorThemeClasses = {
     base: "user-select-none",
     focus: "ring-2 ring-primary ring-offset-2",
   },
-  hr: 'p-0.5 border-none my-1 mx-0 cursor-pointer after:content-[""] after:block after:h-0.5 after:bg-muted selected:ring-2 selected:ring-primary selected:ring-offset-2 selected:user-select-none',
+  hr: "",
   indent: "[--lexical-indent-base-value:40px]",
   mark: "",
   markOverlap: "",

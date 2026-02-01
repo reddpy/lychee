@@ -90,3 +90,30 @@
 .Collapsible__container[open] >.Collapsible__title {
   list-style-type: disclosure-open;
 }
+
+/* Horizontal Rule styles */
+hr {
+  padding: 12px 0;
+  border: none;
+  margin: 8px 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+hr:after {
+  content: "";
+  display: block;
+  height: 2px;
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+}
+
+hr.selected {
+  outline: none;
+  background-color: hsl(210 100% 96%);
+  box-shadow: 0 0 0 2px hsl(210 100% 50% / 0.3);
+}
+
+hr.selected:after {
+  background-color: hsl(210 100% 50%);
+}
