@@ -1,4 +1,6 @@
-import { JSX, useRef, useCallback } from "react"
+"use client"
+
+import { JSX, useRef, useCallback, useState } from "react"
 import { DraggableBlockPlugin_EXPERIMENTAL } from "@lexical/react/LexicalDraggableBlockPlugin"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $setSelection } from "lexical"
@@ -18,19 +20,27 @@ export function DraggableBlockPlugin({
   const [editor] = useLexicalComposerContext()
   const menuRef = useRef<HTMLDivElement>(null)
   const targetLineRef = useRef<HTMLDivElement>(null)
+  const [hideMenu, setHideMenu] = useState(false)
 
   // Clear selection and blur editor when clicking drag handle to prevent scroll-back on drop
   const handleMouseDown = useCallback(() => {
-    // Clear Lexical selection
     editor.update(() => {
       $setSelection(null)
     })
-    // Blur the DOM element
     const rootElement = editor.getRootElement()
     if (rootElement) {
       rootElement.blur()
     }
   }, [editor])
+
+  // Called when the target block element changes - hide menu if it's the title
+  const handleElementChanged = useCallback((element: HTMLElement | null) => {
+    if (element && element.getAttribute("data-lexical-no-drag") === "true") {
+      setHideMenu(true)
+    } else {
+      setHideMenu(false)
+    }
+  }, [])
 
   if (!anchorElem) {
     return null
@@ -45,6 +55,7 @@ export function DraggableBlockPlugin({
         <div
           ref={menuRef}
           className="draggable-block-menu absolute top-0 left-0 flex items-center justify-center cursor-grab rounded-md px-0.5 py-0.5 opacity-0 will-change-transform hover:bg-blue-50 active:cursor-grabbing active:bg-blue-100"
+          style={hideMenu ? { visibility: "hidden", pointerEvents: "none" } : undefined}
           onMouseDown={handleMouseDown}
         >
           <GripVerticalIcon className="size-4 text-gray-400 hover:text-blue-500" />
@@ -58,6 +69,7 @@ export function DraggableBlockPlugin({
         />
       }
       isOnMenu={isOnMenu}
+      onElementChanged={handleElementChanged}
     />
   )
 }

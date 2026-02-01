@@ -6,7 +6,7 @@ export const editorTheme: EditorThemeClasses = {
   ltr: "text-left",
   rtl: "text-right",
   heading: {
-    h1: "scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl [&:not(:first-child)]:mt-10 mb-4",
+    h1: "scroll-m-20 text-4xl font-bold tracking-tight [&:not(:first-child)]:mt-10 mb-4",
     h2: "scroll-m-20 text-3xl font-semibold tracking-tight [&:not(:first-child)]:mt-8 mb-4",
     h3: "scroll-m-20 text-2xl font-semibold tracking-tight [&:not(:first-child)]:mt-6 mb-3",
     h4: "scroll-m-20 text-xl font-semibold tracking-tight [&:not(:first-child)]:mt-4 mb-2",

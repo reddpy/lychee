@@ -140,106 +140,7 @@ function NoteHeader({
   )
 }
 
-const EMPTY_TITLE = ''
-const LEGACY_UNTITLED = 'Untitled'
-
-function EditorTitle({
-  documentId,
-  title,
-  className,
-}: {
-  documentId: string
-  title: string
-  className?: string
-}) {
-  const normalizedTitle =
-    title == null || title === '' || title === LEGACY_UNTITLED ? EMPTY_TITLE : title
-  const [localTitle, setLocalTitle] = React.useState(normalizedTitle)
-  const inputRef = React.useRef<HTMLInputElement>(null)
-  const updateDocumentInStore = useDocumentStore((s) => s.updateDocumentInStore)
-  const pendingSaveRef = React.useRef({ documentId, title: localTitle })
-  pendingSaveRef.current = { documentId, title: localTitle }
-
-  React.useEffect(() => {
-    setLocalTitle(normalizedTitle)
-  }, [documentId, normalizedTitle])
-
-  React.useEffect(() => {
-    return () => {
-      const { documentId: id, title: t } = pendingSaveRef.current
-      const trimmed = (t ?? "").trim()
-      window.lychee
-        .invoke("documents.update", { id, title: trimmed })
-        .then(({ document: doc }) =>
-          updateDocumentInStore(doc.id, { title: doc.title })
-        )
-        .catch(() => {})
-    }
-  }, [documentId, updateDocumentInStore])
-
-  React.useEffect(() => {
-    const trimmed = localTitle.trim()
-    if (trimmed === normalizedTitle) return
-    const t = window.setTimeout(() => {
-      setLocalTitle(trimmed)
-      window.lychee
-        .invoke("documents.update", { id: documentId, title: trimmed })
-        .then(({ document: doc }) => {
-          updateDocumentInStore(doc.id, { title: doc.title })
-        })
-        .catch((err) => console.error("Title save failed:", err))
-    }, 500)
-    return () => window.clearTimeout(t)
-  }, [localTitle, documentId, normalizedTitle, updateDocumentInStore])
-
-  const handleBlur = React.useCallback(() => {
-    const trimmed = localTitle.trim()
-    if (trimmed === normalizedTitle) return
-    setLocalTitle(trimmed)
-    window.lychee
-      .invoke("documents.update", { id: documentId, title: trimmed })
-      .then(({ document: doc }) => {
-        updateDocumentInStore(doc.id, { title: doc.title })
-      })
-      .catch((err) => console.error("Title save failed:", err))
-  }, [documentId, normalizedTitle, localTitle, updateDocumentInStore])
-
-  const handleKeyDown = React.useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault()
-        inputRef.current?.blur()
-      }
-    },
-    []
-  )
-
-  const handleChange = React.useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value
-      setLocalTitle(value)
-      updateDocumentInStore(documentId, { title: value })
-    },
-    [documentId, updateDocumentInStore]
-  )
-
-  return (
-    <input
-      ref={inputRef}
-      type="text"
-      value={localTitle}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
-      className={cn(
-        "w-full bg-transparent text-3xl font-semibold tracking-tight outline-none placeholder:text-[hsl(var(--muted-foreground))]",
-        className
-      )}
-      placeholder="New Page"
-      aria-label="Document title"
-    />
-  )
-}
+const LEGACY_UNTITLED = "Untitled"
 
 export function LexicalEditor({
   documentId,
@@ -255,7 +156,15 @@ export function LexicalEditor({
     [documentId, document.content]
   )
 
-  const save = React.useMemo(
+  const initialTitle = React.useMemo(() => {
+    const title = document.title
+    if (title == null || title === "" || title === LEGACY_UNTITLED) {
+      return ""
+    }
+    return title
+  }, [document.title])
+
+  const saveContent = React.useMemo(
     () =>
       debounce(
         (
@@ -280,32 +189,53 @@ export function LexicalEditor({
     [updateDocumentInStore]
   )
 
+  const saveTitle = React.useMemo(
+    () =>
+      debounce((id: string, newTitle: string) => {
+        window.lychee
+          .invoke("documents.update", { id, title: newTitle })
+          .then(({ document: doc }) => {
+            updateDocumentInStore(doc.id, { title: doc.title })
+          })
+          .catch((err) => console.error("Title save failed:", err))
+      }, 500),
+    [updateDocumentInStore]
+  )
+
   React.useEffect(() => {
-    return () => save.cancel()
-  }, [save])
+    return () => {
+      saveContent.cancel()
+      saveTitle.cancel()
+    }
+  }, [saveContent, saveTitle])
 
   const handleSerializedChange = React.useCallback(
     (value: SerializedEditorState) => {
-      save(documentId, value)
+      saveContent(documentId, value)
     },
-    [documentId, save]
+    [documentId, saveContent]
+  )
+
+  const handleTitleChange = React.useCallback(
+    (title: string) => {
+      updateDocumentInStore(documentId, { title })
+      saveTitle(documentId, title)
+    },
+    [documentId, updateDocumentInStore, saveTitle]
   )
 
   return (
     <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto">
       <div className="mx-auto max-w-[900px] px-8 py-10">
-        <div className="group/title-area">
+        <div className="group/title-area pl-8 mb-4">
           <NoteHeader documentId={documentId} document={document} />
-          <EditorTitle
-            documentId={documentId}
-            title={document.title ?? ''}
-            className="mb-6"
-          />
         </div>
         <Editor
           key={documentId}
           editorSerializedState={editorSerializedState}
           onSerializedChange={handleSerializedChange}
+          initialTitle={initialTitle}
+          onTitleChange={handleTitleChange}
         />
       </div>
     </main>

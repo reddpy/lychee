@@ -32,6 +32,7 @@ import { $isCodeNode, $createCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
+import { $isTitleNode } from "@/components/editor/nodes/title-node";
 import {
   Bold,
   Italic,
@@ -254,7 +255,8 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
           : focusNode.getTopLevelElementOrThrow();
 
       // Simple: same block = show selector, different blocks = hide it
-      singleBlock = anchorElement === focusElement;
+      // Also hide for title node since it can't be transformed
+      singleBlock = anchorElement === focusElement && !$isTitleNode(anchorElement);
 
       const element = anchorElement;
 

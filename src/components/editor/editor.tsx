@@ -17,26 +17,38 @@ const editorConfig: InitialConfigType = {
   },
 }
 
-// Sanitize the serialized state to handle version mismatches
+// Sanitize the serialized state to handle empty states
 function sanitizeSerializedState(
   state: SerializedEditorState
-): SerializedEditorState {
+): SerializedEditorState | null {
   // Clone to avoid mutating the original
   const cloned = JSON.parse(JSON.stringify(state))
+
+  // Ensure root has at least one child (Lexical requires this)
+  if (!cloned.root?.children?.length) {
+    return null // Let Lexical create default state
+  }
+
   return cloned
 }
 
 export function Editor({
   editorSerializedState,
   onSerializedChange,
+  initialTitle,
+  onTitleChange,
 }: {
   editorSerializedState?: SerializedEditorState
   onSerializedChange?: (editorSerializedState: SerializedEditorState) => void
+  initialTitle?: string
+  onTitleChange?: (title: string) => void
 }) {
-  const initialState =
-    editorSerializedState != null
-      ? JSON.stringify(sanitizeSerializedState(editorSerializedState))
-      : undefined
+  const initialState = (() => {
+    if (editorSerializedState == null) return undefined
+    const sanitized = sanitizeSerializedState(editorSerializedState)
+    if (sanitized == null) return undefined
+    return JSON.stringify(sanitized)
+  })()
 
   return (
     <div className="bg-background overflow-hidden">
@@ -46,7 +58,7 @@ export function Editor({
           ...(initialState != null ? { editorState: initialState } : {}),
         }}
       >
-        <Plugins />
+        <Plugins initialTitle={initialTitle} onTitleChange={onTitleChange} />
 
         <OnChangePlugin
           ignoreSelectionChange={true}

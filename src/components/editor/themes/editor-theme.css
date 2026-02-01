@@ -117,3 +117,22 @@ hr.selected {
 hr.selected:after {
   background-color: hsl(210 100% 50%);
 }
+
+/* Title styles */
+.editor-title {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  min-height: 1.1em;
+}
+
+.editor-title:empty::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+}

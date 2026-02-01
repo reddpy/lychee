@@ -24,6 +24,7 @@ import { FloatingToolbarPlugin } from "@/components/editor/plugins/floating-tool
 import { CodeHighlightPlugin } from "@/components/editor/plugins/code-highlight-plugin"
 import { CodeLanguagePlugin } from "@/components/editor/plugins/code-language-plugin"
 import { LinkEditorPlugin } from "@/components/editor/plugins/link-editor-plugin"
+import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
 
 // Use linkifyjs for robust URL/email detection
 const MATCHERS: LinkMatcher[] = [
@@ -41,7 +42,12 @@ const MATCHERS: LinkMatcher[] = [
   },
 ]
 
-export function Plugins() {
+interface PluginsProps {
+  initialTitle?: string
+  onTitleChange?: (title: string) => void
+}
+
+export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null)
 
   return (
@@ -52,6 +58,9 @@ export function Plugins() {
         }
         ErrorBoundary={LexicalErrorBoundary}
       />
+
+      {/* Title plugin */}
+      <TitlePlugin initialTitle={initialTitle} onTitleChange={onTitleChange} />
 
       {/* Core plugins */}
       <HistoryPlugin />
