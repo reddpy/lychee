@@ -52,6 +52,10 @@ export type IpcContract = {
     req: { id: string; parentId: string | null; sortOrder: number };
     res: { document: DocumentRow };
   };
+  'shell.openExternal': {
+    req: { url: string };
+    res: { ok: true };
+  };
 };
 
 export type IpcChannel = keyof IpcContract;

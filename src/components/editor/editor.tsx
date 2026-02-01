@@ -1,17 +1,12 @@
 "use client"
 
-import {
-  type InitialConfigType,
-  LexicalComposer,
-} from "@lexical/react/LexicalComposer"
+import { InitialConfigType, LexicalComposer } from "@lexical/react/LexicalComposer"
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin"
-import type { EditorState, SerializedEditorState } from "lexical"
+import { EditorState, SerializedEditorState } from "lexical"
 
 import { editorTheme } from "@/components/editor/themes/editor-theme"
-
-import { nodes } from "./nodes"
-import { Plugins } from "./plugins"
-import { sanitizeSerializedState } from "./sanitize-state"
+import { nodes } from "@/components/editor/nodes"
+import { Plugins } from "@/components/editor/plugins"
 
 const editorConfig: InitialConfigType = {
   namespace: "Editor",
@@ -22,12 +17,21 @@ const editorConfig: InitialConfigType = {
   },
 }
 
+// Sanitize the serialized state to handle version mismatches
+function sanitizeSerializedState(
+  state: SerializedEditorState
+): SerializedEditorState {
+  // Clone to avoid mutating the original
+  const cloned = JSON.parse(JSON.stringify(state))
+  return cloned
+}
+
 export function Editor({
   editorSerializedState,
   onSerializedChange,
 }: {
   editorSerializedState?: SerializedEditorState
-  onSerializedChange?: (state: SerializedEditorState) => void
+  onSerializedChange?: (editorSerializedState: SerializedEditorState) => void
 }) {
   const initialState =
     editorSerializedState != null
@@ -43,8 +47,9 @@ export function Editor({
         }}
       >
         <Plugins />
+
         <OnChangePlugin
-          ignoreSelectionChange
+          ignoreSelectionChange={true}
           onChange={(editorState: EditorState) => {
             onSerializedChange?.(editorState.toJSON())
           }}
