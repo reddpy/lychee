@@ -62,6 +62,8 @@ export function NoteTreeItem({
   const hasChildren = children.length > 0;
 
   const [isDragging, setIsDragging] = React.useState(false);
+  // Track when drag just ended to prevent click-after-drag
+  const justDraggedRef = React.useRef(false);
 
   // Register as draggable and drop target
   React.useEffect(() => {
@@ -97,6 +99,11 @@ export function NoteTreeItem({
         },
         onDrop() {
           setIsDragging(false);
+          // Prevent click-after-drag for a short window
+          justDraggedRef.current = true;
+          setTimeout(() => {
+            justDraggedRef.current = false;
+          }, 100);
         },
       }),
 
@@ -175,19 +182,23 @@ export function NoteTreeItem({
   }, [doc.id, onToggleExpanded, onAddPageInside]);
 
   const handleClick = React.useCallback((e: React.MouseEvent) => {
+    // Don't open note if any drag is in progress or just ended
+    if (draggingId || justDraggedRef.current) return;
     if (e.metaKey) {
       openTab(doc.id);
     } else {
       openOrSelectTab(doc.id);
     }
-  }, [doc.id, openTab, openOrSelectTab]);
+  }, [doc.id, draggingId, openTab, openOrSelectTab]);
 
   const handleAuxClick = React.useCallback((e: React.MouseEvent) => {
+    // Don't open note if any drag is in progress or just ended
+    if (draggingId || justDraggedRef.current) return;
     if (e.button === 1) {
       e.preventDefault();
       openTab(doc.id);
     }
-  }, [doc.id, openTab]);
+  }, [doc.id, draggingId, openTab]);
 
   const iconNode = doc.emoji ? (
     <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base leading-none">
