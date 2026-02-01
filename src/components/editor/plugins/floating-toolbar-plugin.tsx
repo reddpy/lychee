@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { createPortal } from "react-dom"
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
   $getSelection,
   $isRangeSelection,
@@ -10,10 +10,10 @@ import {
   SELECTION_CHANGE_COMMAND,
   COMMAND_PRIORITY_LOW,
   LexicalEditor,
-} from "lexical"
-import { $isLinkNode } from "@lexical/link"
-import { mergeRegister } from "@lexical/utils"
-import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin"
+} from "lexical";
+import { $isLinkNode } from "@lexical/link";
+import { mergeRegister } from "@lexical/utils";
+import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
 import {
   Bold,
   Italic,
@@ -21,131 +21,176 @@ import {
   Strikethrough,
   Code,
   Link,
-} from "lucide-react"
-import { Toggle } from "@/components/ui/toggle"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-function FloatingToolbar({
-  editor,
-}: {
-  editor: LexicalEditor
-}) {
-  const toolbarRef = useRef<HTMLDivElement>(null)
-  const [isVisible, setIsVisible] = useState(false)
-  const [position, setPosition] = useState({ top: 0, left: 0 })
-  const [isBold, setIsBold] = useState(false)
-  const [isItalic, setIsItalic] = useState(false)
-  const [isUnderline, setIsUnderline] = useState(false)
-  const [isStrikethrough, setIsStrikethrough] = useState(false)
-  const [isCode, setIsCode] = useState(false)
-  const [isLink, setIsLink] = useState(false)
+function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [isBold, setIsBold] = useState(false);
+  const [isItalic, setIsItalic] = useState(false);
+  const [isUnderline, setIsUnderline] = useState(false);
+  const [isStrikethrough, setIsStrikethrough] = useState(false);
+  const [isCode, setIsCode] = useState(false);
+  const [isLink, setIsLink] = useState(false);
 
   const updateToolbar = useCallback(() => {
-    editor.getEditorState().read(() => {
-      const selection = $getSelection()
+    const editorState = editor.getEditorState();
+
+    let shouldShow = false;
+    let bold = false;
+    let italic = false;
+    let underline = false;
+    let strikethrough = false;
+    let code = false;
+    let link = false;
+    let pos = { top: 0, left: 0 };
+
+    editorState.read(() => {
+      const selection = $getSelection();
       if (!$isRangeSelection(selection)) {
-        setIsVisible(false)
-        return
+        return;
       }
 
-      const text = selection.getTextContent()
+      const text = selection.getTextContent();
       if (!text || text.length === 0 || selection.isCollapsed()) {
-        setIsVisible(false)
-        return
+        return;
       }
 
       // Update format states
-      setIsBold(selection.hasFormat("bold"))
-      setIsItalic(selection.hasFormat("italic"))
-      setIsUnderline(selection.hasFormat("underline"))
-      setIsStrikethrough(selection.hasFormat("strikethrough"))
-      setIsCode(selection.hasFormat("code"))
+      bold = selection.hasFormat("bold");
+      italic = selection.hasFormat("italic");
+      underline = selection.hasFormat("underline");
+      strikethrough = selection.hasFormat("strikethrough");
+      code = selection.hasFormat("code");
 
       // Check for link
-      const nodes = selection.getNodes()
-      const isLinkActive = nodes.some((node) => {
-        const parent = node.getParent()
-        return $isLinkNode(parent)
-      })
-      setIsLink(isLinkActive)
+      const nodes = selection.getNodes();
+      link = nodes.some((node) => {
+        const parent = node.getParent();
+        return $isLinkNode(parent);
+      });
 
       // Get position from native selection
-      const nativeSelection = window.getSelection()
+      const nativeSelection = window.getSelection();
       if (!nativeSelection || nativeSelection.rangeCount === 0) {
-        setIsVisible(false)
-        return
+        return;
       }
 
-      const range = nativeSelection.getRangeAt(0)
-      const rect = range.getBoundingClientRect()
+      const range = nativeSelection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
 
       if (rect.width === 0 || rect.height === 0) {
-        setIsVisible(false)
-        return
+        return;
       }
 
       // Position above the selection
-      const toolbarWidth = 250 // approximate width
-      const left = rect.left + rect.width / 2 - toolbarWidth / 2
-      const top = rect.top - 45
+      const toolbarWidth = 250;
+      const toolbarHeight = 45;
+      const gap = 8;
+      const left = rect.left + rect.width / 2 - toolbarWidth / 2;
+      const top = rect.top - toolbarHeight - gap;
 
-      setPosition({
+      pos = {
         top: Math.max(top, 10),
         left: Math.max(left, 10),
-      })
-      setIsVisible(true)
-    })
-  }, [editor])
+      };
+      shouldShow = true;
+    });
+
+    // Update state outside of read callback
+    setIsBold(bold);
+    setIsItalic(italic);
+    setIsUnderline(underline);
+    setIsStrikethrough(strikethrough);
+    setIsCode(code);
+    setIsLink(link);
+    setPosition(pos);
+    setIsVisible(shouldShow);
+  }, [editor]);
 
   useEffect(() => {
     return mergeRegister(
       editor.registerUpdateListener(({ editorState }) => {
         editorState.read(() => {
-          updateToolbar()
-        })
+          updateToolbar();
+        });
       }),
       editor.registerCommand(
         SELECTION_CHANGE_COMMAND,
         () => {
-          updateToolbar()
-          return false
+          updateToolbar();
+          return false;
         },
-        COMMAND_PRIORITY_LOW
-      )
-    )
-  }, [editor, updateToolbar])
+        COMMAND_PRIORITY_LOW,
+      ),
+    );
+  }, [editor, updateToolbar]);
 
-  // Hide on click outside
+  // Update toolbar position on scroll and hide/show based on visibility
   useEffect(() => {
-    const handleMouseDown = (e: MouseEvent) => {
-      if (
-        toolbarRef.current &&
-        !toolbarRef.current.contains(e.target as Node)
-      ) {
-        // Don't hide immediately - let selection change handle it
+    const handleScroll = () => {
+      const nativeSelection = window.getSelection();
+      if (!nativeSelection || nativeSelection.rangeCount === 0) {
+        return;
       }
-    }
 
-    document.addEventListener("mousedown", handleMouseDown)
-    return () => document.removeEventListener("mousedown", handleMouseDown)
-  }, [])
+      // Check if there's actually a selection with content
+      const selectionText = nativeSelection.toString();
+      if (!selectionText || selectionText.length === 0) {
+        return;
+      }
+
+      const range = nativeSelection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+
+      // Hide if selected text exits the viewport
+      const tabBarHeight = 120;
+      const toolbarHeight = 45;
+      const isAboveView = rect.bottom < tabBarHeight;
+      const isBelowView = rect.top > window.innerHeight;
+
+      if (isAboveView || isBelowView) {
+        setIsVisible(false);
+      } else {
+        // Update position and show
+        const toolbarWidth = 250;
+        const gap = 8; // Space between toolbar and selected text
+        const left = rect.left + rect.width / 2 - toolbarWidth / 2;
+        const top = rect.top - toolbarHeight - gap;
+
+        setPosition({
+          top: Math.max(top, tabBarHeight),
+          left: Math.max(left, 10),
+        });
+        setIsVisible(true);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, []);
 
   const handleFormat = useCallback(
     (format: "bold" | "italic" | "underline" | "strikethrough" | "code") => {
-      editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)
+      editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
     },
-    [editor]
-  )
+    [editor],
+  );
 
   const handleLink = useCallback(() => {
-    editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined)
-  }, [editor])
+    editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined);
+  }, [editor]);
 
-  if (!isVisible) return null
+  if (!isVisible) return null;
 
   return createPortal(
     <div
-      ref={toolbarRef}
       className="fixed z-50 flex items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
       style={{
         top: position.top,
@@ -154,14 +199,19 @@ function FloatingToolbar({
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <Toggle
-            size="sm"
-            pressed={isBold}
-            onPressedChange={() => handleFormat("bold")}
+          <button
+            type="button"
+            onClick={() => handleFormat("bold")}
+            className={cn(
+              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+              isBold
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted text-foreground",
+            )}
             aria-label="Bold"
           >
             <Bold className="h-4 w-4" />
-          </Toggle>
+          </button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>
           Bold <kbd className="ml-1.5 opacity-60">⌘B</kbd>
@@ -170,14 +220,19 @@ function FloatingToolbar({
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Toggle
-            size="sm"
-            pressed={isItalic}
-            onPressedChange={() => handleFormat("italic")}
+          <button
+            type="button"
+            onClick={() => handleFormat("italic")}
+            className={cn(
+              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+              isItalic
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted text-foreground",
+            )}
             aria-label="Italic"
           >
             <Italic className="h-4 w-4" />
-          </Toggle>
+          </button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>
           Italic <kbd className="ml-1.5 opacity-60">⌘I</kbd>
@@ -186,14 +241,19 @@ function FloatingToolbar({
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Toggle
-            size="sm"
-            pressed={isUnderline}
-            onPressedChange={() => handleFormat("underline")}
+          <button
+            type="button"
+            onClick={() => handleFormat("underline")}
+            className={cn(
+              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+              isUnderline
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted text-foreground",
+            )}
             aria-label="Underline"
           >
             <Underline className="h-4 w-4" />
-          </Toggle>
+          </button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>
           Underline <kbd className="ml-1.5 opacity-60">⌘U</kbd>
@@ -202,14 +262,19 @@ function FloatingToolbar({
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Toggle
-            size="sm"
-            pressed={isStrikethrough}
-            onPressedChange={() => handleFormat("strikethrough")}
+          <button
+            type="button"
+            onClick={() => handleFormat("strikethrough")}
+            className={cn(
+              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+              isStrikethrough
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted text-foreground",
+            )}
             aria-label="Strikethrough"
           >
             <Strikethrough className="h-4 w-4" />
-          </Toggle>
+          </button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>
           Strikethrough <kbd className="ml-1.5 opacity-60">⌘⇧S</kbd>
@@ -218,17 +283,22 @@ function FloatingToolbar({
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Toggle
-            size="sm"
-            pressed={isCode}
-            onPressedChange={() => handleFormat("code")}
-            aria-label="Code"
+          <button
+            type="button"
+            onClick={() => handleFormat("code")}
+            className={cn(
+              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+              isCode
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted text-foreground",
+            )}
+            aria-label="Inline code"
           >
             <Code className="h-4 w-4" />
-          </Toggle>
+          </button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>
-          Code <kbd className="ml-1.5 opacity-60">⌘E</kbd>
+          Inline code <kbd className="ml-1.5 opacity-60">⌘E</kbd>
         </TooltipContent>
       </Tooltip>
 
@@ -236,37 +306,42 @@ function FloatingToolbar({
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Toggle
-            size="sm"
-            pressed={isLink}
-            onPressedChange={handleLink}
+          <button
+            type="button"
+            onClick={handleLink}
+            className={cn(
+              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+              isLink
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted text-foreground",
+            )}
             aria-label="Link"
           >
             <Link className="h-4 w-4" />
-          </Toggle>
+          </button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>
           Link <kbd className="ml-1.5 opacity-60">⌘K</kbd>
         </TooltipContent>
       </Tooltip>
     </div>,
-    document.body
-  )
+    document.body,
+  );
 }
 
 export function FloatingToolbarPlugin() {
-  const [editor] = useLexicalComposerContext()
-  const [rootElement, setRootElement] = useState<HTMLElement | null>(null)
+  const [editor] = useLexicalComposerContext();
+  const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const updateRootElement = () => {
-      setRootElement(editor.getRootElement())
-    }
-    updateRootElement()
-    return editor.registerRootListener(updateRootElement)
-  }, [editor])
+      setRootElement(editor.getRootElement());
+    };
+    updateRootElement();
+    return editor.registerRootListener(updateRootElement);
+  }, [editor]);
 
-  if (!rootElement) return null
+  if (!rootElement) return null;
 
-  return <FloatingToolbar editor={editor} />
+  return <FloatingToolbar editor={editor} />;
 }
