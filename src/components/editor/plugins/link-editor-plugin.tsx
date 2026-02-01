@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { createPortal } from "react-dom"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
   $getSelection,
@@ -9,30 +8,25 @@ import {
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   KEY_ESCAPE_COMMAND,
-  LexicalEditor,
   createCommand,
 } from "lexical"
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link"
 import { mergeRegister } from "@lexical/utils"
 import { Link, X } from "lucide-react"
 
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+
 export const OPEN_LINK_EDITOR_COMMAND = createCommand<void>("OPEN_LINK_EDITOR_COMMAND")
 
-function LinkEditorPopover({
-  editor,
-  isOpen,
-  onClose,
-  initialUrl,
-  position,
-}: {
-  editor: LexicalEditor
-  isOpen: boolean
-  onClose: () => void
-  initialUrl: string
-  position: { top: number; left: number }
-}) {
+export function LinkEditorPlugin() {
+  const [editor] = useLexicalComposerContext()
+  const [isOpen, setIsOpen] = useState(false)
+  const [initialUrl, setInitialUrl] = useState("")
+  const [url, setUrl] = useState("")
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [url, setUrl] = useState(initialUrl)
 
   useEffect(() => {
     setUrl(initialUrl)
@@ -40,88 +34,12 @@ function LinkEditorPopover({
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
+      setTimeout(() => {
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }, 0)
     }
   }, [isOpen])
-
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-      if (url.trim()) {
-        const finalUrl = url.startsWith("http://") || url.startsWith("https://") || url.startsWith("mailto:")
-          ? url
-          : `https://${url}`
-        editor.dispatchCommand(TOGGLE_LINK_COMMAND, finalUrl)
-      }
-      onClose()
-    },
-    [editor, url, onClose]
-  )
-
-  const handleRemove = useCallback(() => {
-    editor.dispatchCommand(TOGGLE_LINK_COMMAND, null)
-    onClose()
-  }, [editor, onClose])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        onClose()
-      }
-    },
-    [onClose]
-  )
-
-  if (!isOpen) return null
-
-  return createPortal(
-    <div
-      className="fixed z-[100] flex items-center gap-1 rounded-lg border bg-popover p-1.5 shadow-lg"
-      style={{
-        top: position.top,
-        left: position.left,
-      }}
-    >
-      <Link className="h-4 w-4 text-muted-foreground ml-1" />
-      <form onSubmit={handleSubmit} className="flex items-center gap-1">
-        <input
-          ref={inputRef}
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Enter URL..."
-          className="w-[200px] bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"
-        />
-        <button
-          type="submit"
-          className="rounded px-2 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          Apply
-        </button>
-        {initialUrl && (
-          <button
-            type="button"
-            onClick={handleRemove}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Remove link"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </form>
-    </div>,
-    document.body
-  )
-}
-
-export function LinkEditorPlugin() {
-  const [editor] = useLexicalComposerContext()
-  const [isOpen, setIsOpen] = useState(false)
-  const [position, setPosition] = useState({ top: 0, left: 0 })
-  const [initialUrl, setInitialUrl] = useState("")
 
   const openLinkEditor = useCallback(() => {
     editor.getEditorState().read(() => {
@@ -146,11 +64,7 @@ export function LinkEditorPlugin() {
 
       const range = nativeSelection.getRangeAt(0)
       const rect = range.getBoundingClientRect()
-
-      setPosition({
-        top: rect.bottom + 8,
-        left: rect.left,
-      })
+      setAnchorRect(rect)
       setIsOpen(true)
     })
   }, [editor])
@@ -179,13 +93,70 @@ export function LinkEditorPlugin() {
     )
   }, [editor, openLinkEditor, isOpen])
 
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault()
+      if (url.trim()) {
+        const finalUrl = url.startsWith("http://") || url.startsWith("https://") || url.startsWith("mailto:")
+          ? url
+          : `https://${url}`
+        editor.dispatchCommand(TOGGLE_LINK_COMMAND, finalUrl)
+      }
+      setIsOpen(false)
+    },
+    [editor, url]
+  )
+
+  const handleRemove = useCallback(() => {
+    editor.dispatchCommand(TOGGLE_LINK_COMMAND, null)
+    setIsOpen(false)
+  }, [editor])
+
   return (
-    <LinkEditorPopover
-      editor={editor}
-      isOpen={isOpen}
-      onClose={() => setIsOpen(false)}
-      initialUrl={initialUrl}
-      position={position}
-    />
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverAnchor
+        style={{
+          position: "fixed",
+          top: anchorRect?.bottom ?? 0,
+          left: anchorRect?.left ?? 0,
+          width: anchorRect?.width ?? 0,
+          height: 0,
+        }}
+      />
+      <PopoverContent
+        className="w-auto p-2"
+        side="bottom"
+        align="start"
+        sideOffset={8}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <form onSubmit={handleSubmit} className="flex items-center gap-2">
+          <Link className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Input
+            ref={inputRef}
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Enter URL..."
+            className="h-8 w-[220px] text-sm"
+          />
+          <Button type="submit" size="sm" className="h-8">
+            Apply
+          </Button>
+          {initialUrl && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={handleRemove}
+              title="Remove link"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </form>
+      </PopoverContent>
+    </Popover>
   )
 }

@@ -23,6 +23,7 @@ import {
   Link,
 } from "lucide-react"
 import { Toggle } from "@/components/ui/toggle"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 function FloatingToolbar({
   editor,
@@ -145,61 +146,109 @@ function FloatingToolbar({
   return createPortal(
     <div
       ref={toolbarRef}
-      className="fixed z-50 flex items-center gap-0.5 rounded-lg border bg-popover p-1 shadow-md"
+      className="fixed z-50 flex items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
       style={{
         top: position.top,
         left: position.left,
       }}
     >
-      <Toggle
-        size="sm"
-        pressed={isBold}
-        onPressedChange={() => handleFormat("bold")}
-        aria-label="Bold"
-      >
-        <Bold className="h-4 w-4" />
-      </Toggle>
-      <Toggle
-        size="sm"
-        pressed={isItalic}
-        onPressedChange={() => handleFormat("italic")}
-        aria-label="Italic"
-      >
-        <Italic className="h-4 w-4" />
-      </Toggle>
-      <Toggle
-        size="sm"
-        pressed={isUnderline}
-        onPressedChange={() => handleFormat("underline")}
-        aria-label="Underline"
-      >
-        <Underline className="h-4 w-4" />
-      </Toggle>
-      <Toggle
-        size="sm"
-        pressed={isStrikethrough}
-        onPressedChange={() => handleFormat("strikethrough")}
-        aria-label="Strikethrough"
-      >
-        <Strikethrough className="h-4 w-4" />
-      </Toggle>
-      <Toggle
-        size="sm"
-        pressed={isCode}
-        onPressedChange={() => handleFormat("code")}
-        aria-label="Code"
-      >
-        <Code className="h-4 w-4" />
-      </Toggle>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Toggle
+            size="sm"
+            pressed={isBold}
+            onPressedChange={() => handleFormat("bold")}
+            aria-label="Bold"
+          >
+            <Bold className="h-4 w-4" />
+          </Toggle>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={8}>
+          Bold <kbd className="ml-1.5 opacity-60">⌘B</kbd>
+        </TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Toggle
+            size="sm"
+            pressed={isItalic}
+            onPressedChange={() => handleFormat("italic")}
+            aria-label="Italic"
+          >
+            <Italic className="h-4 w-4" />
+          </Toggle>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={8}>
+          Italic <kbd className="ml-1.5 opacity-60">⌘I</kbd>
+        </TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Toggle
+            size="sm"
+            pressed={isUnderline}
+            onPressedChange={() => handleFormat("underline")}
+            aria-label="Underline"
+          >
+            <Underline className="h-4 w-4" />
+          </Toggle>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={8}>
+          Underline <kbd className="ml-1.5 opacity-60">⌘U</kbd>
+        </TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Toggle
+            size="sm"
+            pressed={isStrikethrough}
+            onPressedChange={() => handleFormat("strikethrough")}
+            aria-label="Strikethrough"
+          >
+            <Strikethrough className="h-4 w-4" />
+          </Toggle>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={8}>
+          Strikethrough <kbd className="ml-1.5 opacity-60">⌘⇧S</kbd>
+        </TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Toggle
+            size="sm"
+            pressed={isCode}
+            onPressedChange={() => handleFormat("code")}
+            aria-label="Code"
+          >
+            <Code className="h-4 w-4" />
+          </Toggle>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={8}>
+          Code <kbd className="ml-1.5 opacity-60">⌘E</kbd>
+        </TooltipContent>
+      </Tooltip>
+
       <div className="mx-1 h-6 w-px bg-border" />
-      <Toggle
-        size="sm"
-        pressed={isLink}
-        onPressedChange={handleLink}
-        aria-label="Link"
-      >
-        <Link className="h-4 w-4" />
-      </Toggle>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Toggle
+            size="sm"
+            pressed={isLink}
+            onPressedChange={handleLink}
+            aria-label="Link"
+          >
+            <Link className="h-4 w-4" />
+          </Toggle>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={8}>
+          Link <kbd className="ml-1.5 opacity-60">⌘K</kbd>
+        </TooltipContent>
+      </Tooltip>
     </div>,
     document.body
   )

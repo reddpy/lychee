@@ -22,6 +22,7 @@ import { SlashCommandPlugin } from "@/components/editor/plugins/slash-command-pl
 import { KeyboardShortcutsPlugin } from "@/components/editor/plugins/keyboard-shortcuts-plugin"
 import { FloatingToolbarPlugin } from "@/components/editor/plugins/floating-toolbar-plugin"
 import { CodeHighlightPlugin } from "@/components/editor/plugins/code-highlight-plugin"
+import { CodeLanguagePlugin } from "@/components/editor/plugins/code-language-plugin"
 import { LinkEditorPlugin } from "@/components/editor/plugins/link-editor-plugin"
 
 // Use linkifyjs for robust URL/email detection
@@ -63,6 +64,7 @@ export function Plugins() {
       <AutoLinkPlugin matchers={MATCHERS} />
       <LinkClickPlugin />
       <CodeHighlightPlugin />
+      <CodeLanguagePlugin />
 
       {/* Keyboard shortcuts */}
       <KeyboardShortcutsPlugin />

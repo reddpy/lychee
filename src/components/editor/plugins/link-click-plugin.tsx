@@ -13,15 +13,15 @@ function openExternalUrl(url: string) {
 function LinkTooltip({ position, url }: { position: { x: number; y: number }; url: string }) {
   return createPortal(
     <div
-      className="fixed z-[200] px-2 py-1 text-xs bg-popover border rounded shadow-md text-popover-foreground pointer-events-none"
+      className="fixed z-50 px-3 py-1.5 text-xs bg-popover text-popover-foreground border rounded-md shadow-md pointer-events-none animate-in fade-in-0 zoom-in-95"
       style={{
         left: position.x,
-        top: position.y + 20,
+        top: position.y + 8,
       }}
     >
       <span className="text-muted-foreground">⌘+click to open </span>
-      <span className="font-medium max-w-[200px] truncate inline-block align-bottom">
-        {url.length > 30 ? url.slice(0, 30) + "..." : url}
+      <span className="font-medium">
+        {url.length > 35 ? url.slice(0, 35) + "..." : url}
       </span>
     </div>,
     document.body

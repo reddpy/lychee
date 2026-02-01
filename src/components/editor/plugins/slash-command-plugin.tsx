@@ -237,7 +237,7 @@ export function SlashCommandPlugin() {
       ) =>
         anchorElementRef.current && options.length
           ? createPortal(
-              <div className="fixed z-50 w-[200px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+              <div className="fixed z-50 w-[200px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95">
                 {options.map((option, i) => (
                   <SlashCommandMenuItem
                     key={option.key}
