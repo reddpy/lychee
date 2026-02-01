@@ -221,9 +221,11 @@ export function TabStrip() {
 
   const handleTabSelect = React.useCallback(
     (id: string) => {
+      // Don't select tab if a tab drag is in progress
+      if (draggingId) return;
       selectDocument(id);
     },
-    [selectDocument],
+    [draggingId, selectDocument],
   );
 
   const handleTabClose = React.useCallback(

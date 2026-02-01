@@ -59,15 +59,18 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
         limit: 500,
         offset: 0,
       });
-      set((state) => ({
-        documents,
-        loading: false,
-        // Keep selection if it still exists.
-        selectedId:
-          state.selectedId && documents.some((d) => d.id === state.selectedId)
-            ? state.selectedId
-            : documents[0]?.id ?? null,
-      }));
+      set((state) => {
+        // Keep selection only if it still exists AND has an open tab
+        const selectionValid =
+          state.selectedId &&
+          documents.some((d) => d.id === state.selectedId) &&
+          state.openTabs.includes(state.selectedId);
+        return {
+          documents,
+          loading: false,
+          selectedId: selectionValid ? state.selectedId : (state.openTabs[0] ?? null),
+        };
+      });
     } catch (err) {
       set({ loading: false, error: (err as Error).message });
     }

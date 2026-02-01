@@ -52,12 +52,14 @@ function Header() {
 
 function EditorArea() {
   const selectedId = useDocumentStore((s) => s.selectedId);
+  const openTabs = useDocumentStore((s) => s.openTabs);
   const documents = useDocumentStore((s) => s.documents);
   const selected = selectedId
     ? documents.find((d) => d.id === selectedId)
     : undefined;
 
-  if (!selectedId || !selected) {
+  // Only show editor if selectedId has a corresponding open tab
+  if (!selectedId || !selected || !openTabs.includes(selectedId)) {
     return (
       <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0">
         <div className="mx-auto max-w-[900px] px-8 py-10">
