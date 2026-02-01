@@ -44,7 +44,7 @@ export function DraggableBlockPlugin({
       menuComponent={
         <div
           ref={menuRef}
-          className="draggable-block-menu absolute top-0 left-0 cursor-grab rounded-md px-0.5 py-0.5 opacity-0 will-change-transform hover:bg-blue-50 active:cursor-grabbing active:bg-blue-100"
+          className="draggable-block-menu absolute top-0 left-0 flex items-center justify-center cursor-grab rounded-md px-0.5 py-0.5 opacity-0 will-change-transform hover:bg-blue-50 active:cursor-grabbing active:bg-blue-100"
           onMouseDown={handleMouseDown}
         >
           <GripVerticalIcon className="size-4 text-gray-400 hover:text-blue-500" />

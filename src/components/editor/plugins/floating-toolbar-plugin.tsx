@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
@@ -201,6 +201,8 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   const [isCode, setIsCode] = useState(false);
   const [isLink, setIsLink] = useState(false);
   const [blockType, setBlockType] = useState<BlockType>("paragraph");
+  const [isSingleBlock, setIsSingleBlock] = useState(true);
+  const isMouseDownRef = useRef(false);
 
   const updateToolbar = useCallback(() => {
     const editorState = editor.getEditorState();
@@ -213,6 +215,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
     let code = false;
     let link = false;
     let currentBlockType: BlockType = "paragraph";
+    let singleBlock = true;
     let pos = { top: 0, left: 0 };
 
     editorState.read(() => {
@@ -233,19 +236,27 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
       strikethrough = selection.hasFormat("strikethrough");
       code = selection.hasFormat("code");
 
-      // Check for link
-      const nodes = selection.getNodes();
-      link = nodes.some((node) => {
-        const parent = node.getParent();
-        return $isLinkNode(parent);
-      });
+      // Check for link - only check anchor node's parent
+      const anchorParent = selection.anchor.getNode().getParent();
+      link = $isLinkNode(anchorParent);
 
-      // Detect block type
+      // Detect block type - simple check: anchor and focus in same block
       const anchorNode = selection.anchor.getNode();
-      const element =
+      const focusNode = selection.focus.getNode();
+
+      const anchorElement =
         anchorNode.getKey() === "root"
           ? anchorNode
           : anchorNode.getTopLevelElementOrThrow();
+      const focusElement =
+        focusNode.getKey() === "root"
+          ? focusNode
+          : focusNode.getTopLevelElementOrThrow();
+
+      // Simple: same block = show selector, different blocks = hide it
+      singleBlock = anchorElement === focusElement;
+
+      const element = anchorElement;
 
       if ($isHeadingNode(element)) {
         const tag = element.getTag();
@@ -317,9 +328,37 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
     setIsCode(code);
     setIsLink(link);
     setBlockType(currentBlockType);
+    setIsSingleBlock(singleBlock);
     setPosition(pos);
-    setIsVisible(shouldShow);
+
+    // Only show toolbar when mouse is up and there's a selection
+    if (shouldShow && !isMouseDownRef.current) {
+      setIsVisible(true);
+    } else if (!shouldShow) {
+      setIsVisible(false);
+    }
   }, [editor]);
+
+  // Track mouse state to only show toolbar after mouseup (within editor only)
+  useEffect(() => {
+    const rootElement = editor.getRootElement();
+    if (!rootElement) return;
+
+    const handleMouseDown = () => {
+      isMouseDownRef.current = true;
+    };
+    const handleMouseUp = () => {
+      isMouseDownRef.current = false;
+      updateToolbar();
+    };
+
+    rootElement.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      rootElement.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [editor, updateToolbar]);
 
   useEffect(() => {
     return mergeRegister(
@@ -339,17 +378,13 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
     );
   }, [editor, updateToolbar]);
 
-  // Update toolbar position on scroll and hide/show based on visibility
+  // Update toolbar position on scroll
   useEffect(() => {
     const handleScroll = () => {
+      if (!isVisible) return;
+
       const nativeSelection = window.getSelection();
       if (!nativeSelection || nativeSelection.rangeCount === 0) {
-        return;
-      }
-
-      // Check if there's actually a selection with content
-      const selectionText = nativeSelection.toString();
-      if (!selectionText || selectionText.length === 0) {
         return;
       }
 
@@ -365,9 +400,8 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
       if (isAboveView || isBelowView) {
         setIsVisible(false);
       } else {
-        // Update position and show
         const toolbarWidth = 380;
-        const gap = 8; // Space between toolbar and selected text
+        const gap = 8;
         const left = rect.left + rect.width / 2 - toolbarWidth / 2;
         const top = rect.top - toolbarHeight - gap;
 
@@ -375,16 +409,16 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
           top: Math.max(top, tabBarHeight),
           left: Math.max(left, 10),
         });
-        setIsVisible(true);
       }
     };
 
     window.addEventListener("scroll", handleScroll, true);
     return () => window.removeEventListener("scroll", handleScroll, true);
-  }, []);
+  }, [isVisible]);
 
   const handleFormat = useCallback(
     (format: "bold" | "italic" | "underline" | "strikethrough" | "code") => {
+      editor.focus();
       editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
     },
     [editor]
@@ -398,15 +432,18 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
 
   return createPortal(
     <div
-      className="fixed z-50 flex items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
+      className="floating-toolbar fixed z-50 flex items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
       style={{
         top: position.top,
         left: position.left,
       }}
     >
-      <BlockTypeSelector editor={editor} blockType={blockType} />
-
-      <div className="mx-1 h-6 w-px bg-border" />
+      {isSingleBlock && (
+        <>
+          <BlockTypeSelector editor={editor} blockType={blockType} />
+          <div className="mx-1 h-6 w-px bg-border" />
+        </>
+      )}
 
       <Tooltip>
         <TooltipTrigger asChild>
