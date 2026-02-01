@@ -6,6 +6,7 @@ import {
   getDocumentById,
   listDocuments,
   listTrashedDocuments,
+  moveDocument,
   permanentDeleteDocument,
   restoreDocument,
   trashDocument,
@@ -53,5 +54,9 @@ export function registerIpcHandlers() {
   handle('documents.permanentDelete', (payload) =>
     permanentDeleteDocument(payload.id),
   );
+
+  handle('documents.move', (payload) => ({
+    document: moveDocument(payload.id, payload.parentId, payload.sortOrder),
+  }));
 }
 

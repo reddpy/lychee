@@ -9,5 +9,7 @@ export interface DocumentRow {
   emoji: string | null;
   /** When set, document is in trash (ISO date). Null = not trashed. */
   deletedAt: string | null;
+  /** Sort order within siblings (lower = earlier). */
+  sortOrder: number;
 }
 

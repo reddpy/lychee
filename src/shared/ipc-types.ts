@@ -48,6 +48,10 @@ export type IpcContract = {
     req: { id: string };
     res: { deletedIds: string[] };
   };
+  'documents.move': {
+    req: { id: string; parentId: string | null; sortOrder: number };
+    res: { document: DocumentRow };
+  };
 };
 
 export type IpcChannel = keyof IpcContract;

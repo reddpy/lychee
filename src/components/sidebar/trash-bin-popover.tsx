@@ -106,6 +106,7 @@ export function TrashBinPopover() {
   } | null>(null);
 
   const {
+    documents,
     trashedDocuments,
     loadTrashedDocuments,
     restoreDocument,
@@ -136,11 +137,13 @@ export function TrashBinPopover() {
 
   const deferredSearch = React.useDeferredValue(search);
 
-  const trashedById = React.useMemo(() => {
+  // Map of all documents (active + trashed) for parent lookups
+  const allDocsById = React.useMemo(() => {
     const m = new Map<string, DocumentRow>();
+    documents.forEach((d) => m.set(d.id, d));
     trashedDocuments.forEach((d) => m.set(d.id, d));
     return m;
-  }, [trashedDocuments]);
+  }, [documents, trashedDocuments]);
 
   const orderedTrashed = React.useMemo(() => {
     const ids = new Set(trashedDocuments.map((d) => d.id));
@@ -334,12 +337,12 @@ export function TrashBinPopover() {
                   <div className="p-1 pr-4">
                     {filtered.map((doc) => {
                       const parent = doc.parentId
-                        ? trashedById.get(doc.parentId)
+                        ? allDocsById.get(doc.parentId)
                         : null;
                       const parentTitle = parent
                         ? displayTitle(parent)
                         : null;
-                      const isChild = !!doc.parentId;
+                      const isChild = !!doc.parentId && !!parent;
                       return (
                         <TrashItemRow
                           key={doc.id}

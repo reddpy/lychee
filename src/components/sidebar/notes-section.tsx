@@ -13,6 +13,7 @@ import {
 } from '../ui/sidebar';
 import { useDocumentStore } from '../../renderer/document-store';
 import { NoteTreeItem } from './note-tree-item';
+import { TreeDndProvider } from './tree-dnd-provider';
 
 const MAX_NESTING_DEPTH = 4; // root depth 0, deepest child depth 4 (5 levels)
 
@@ -58,6 +59,10 @@ function buildChildrenByParent(documents: DocumentRow[]) {
       map.set(key, [doc]);
     }
   }
+  // Sort children by sortOrder
+  for (const [, children] of map) {
+    children.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
   return map;
 }
 
@@ -70,6 +75,24 @@ function getAncestorIds(documents: DocumentRow[], docId: string): string[] {
     doc = byId.get(doc.parentId);
   }
   return ids;
+}
+
+/** Get all descendant IDs of a document (for preventing circular drops). */
+function getDescendantIds(
+  childrenByParent: Map<string | null, DocumentRow[]>,
+  docId: string,
+): Set<string> {
+  const descendants = new Set<string>();
+  const stack = [docId];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    const children = childrenByParent.get(id) ?? [];
+    for (const child of children) {
+      descendants.add(child.id);
+      stack.push(child.id);
+    }
+  }
+  return descendants;
 }
 
 /** Flat list in preorder so one AnimatePresence tracks all rows for delete exit animation. */
@@ -92,6 +115,8 @@ function buildFlatList(
   return result;
 }
 
+export type DropPosition = 'before' | 'inside' | 'after';
+
 export function NotesSection({
   documents,
   selectedId,
@@ -103,22 +128,33 @@ export function NotesSection({
   const { open } = useSidebar();
   const [notesSectionOpen, setNotesSectionOpen] = React.useState(true);
   const lastCreatedId = useDocumentStore((s) => s.lastCreatedId);
+  const moveDocument = useDocumentStore((s) => s.moveDocument);
 
   const childrenByParent = React.useMemo(
     () => buildChildrenByParent(documents),
     [documents],
   );
+
   const rootDocs = React.useMemo(() => {
     const ids = new Set(documents.map((d) => d.id));
-    return documents.filter(
-      (d) => d.parentId === null || !ids.has(d.parentId),
-    );
+    return documents
+      .filter((d) => d.parentId === null || !ids.has(d.parentId))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [documents]);
 
   const flatList = React.useMemo(
     () => buildFlatList(rootDocs, childrenByParent, expandedIds),
     [rootDocs, childrenByParent, expandedIds],
   );
+
+  // Precompute descendant sets for each document
+  const descendantsByDoc = React.useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const doc of documents) {
+      map.set(doc.id, getDescendantIds(childrenByParent, doc.id));
+    }
+    return map;
+  }, [documents, childrenByParent]);
 
   const toggleExpanded = React.useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -138,6 +174,10 @@ export function NotesSection({
     },
     [createDocument],
   );
+
+  const handleExpandParent = React.useCallback((id: string) => {
+    setExpandedIds((prev) => new Set([...prev, id]));
+  }, [setExpandedIds]);
 
   // When a nested note is created, expand its parent (and ancestors) so the tree "opens" to show it.
   React.useLayoutEffect(() => {
@@ -195,53 +235,65 @@ export function NotesSection({
             }}
             style={{ transformOrigin: 'top' }}
           >
-            <div className="min-h-0 flex-1 flex flex-col">
-              <div className="notes-scroll min-h-0 flex-1 pr-2 py-1">
-                <SidebarMenu>
-                  {loading ? (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton>
-                        <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
-                        <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                          Loading…
-                        </span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ) : (
-                    <AnimatePresence
-                      initial={false}
-                      custom={{ documentIds: new Set(documents.map((d) => d.id)) }}
-                    >
-                      {flatList.map(({ doc, depth }) => {
-                        const children = childrenByParent.get(doc.id) ?? [];
-                        const isExpanded = expandedIds.has(doc.id);
-                        const canAddChild = depth < MAX_NESTING_DEPTH;
-                        return (
-                          <motion.div
-                            key={doc.id}
-                            initial={false}
-                            variants={{ exit: getExitVariant(doc.id) }}
-                            exit="exit"
-                          >
-                            <NoteTreeItem
-                              doc={doc}
-                              depth={depth}
-                              children={children}
-                              isExpanded={isExpanded}
-                              canAddChild={canAddChild}
-                              isSelected={selectedId === doc.id}
-                              onToggleExpanded={toggleExpanded}
-                              onAddPageInside={handleAddPageInside}
-                              isRoot={depth === 0}
-                            />
-                          </motion.div>
-                        );
-                      })}
-                    </AnimatePresence>
-                  )}
-                </SidebarMenu>
+            <TreeDndProvider
+              documents={documents}
+              childrenByParent={childrenByParent}
+              onMove={moveDocument}
+              onExpandParent={handleExpandParent}
+            >
+              <div className="min-h-0 flex-1 flex flex-col">
+                <div className="notes-scroll min-h-0 flex-1 pr-2 py-1">
+                  <SidebarMenu>
+                    {loading ? (
+                      <SidebarMenuItem>
+                        <SidebarMenuButton>
+                          <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
+                          <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                            Loading…
+                          </span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ) : (
+                      <AnimatePresence
+                        initial={false}
+                        custom={{ documentIds: new Set(documents.map((d) => d.id)) }}
+                      >
+                        {flatList.map(({ doc, depth }, index) => {
+                          const children = childrenByParent.get(doc.id) ?? [];
+                          const isExpanded = expandedIds.has(doc.id);
+                          const canAddChild = depth < MAX_NESTING_DEPTH;
+                          const canNestInside = depth < MAX_NESTING_DEPTH;
+
+                          return (
+                            <motion.div
+                              key={doc.id}
+                              initial={false}
+                              variants={{ exit: getExitVariant(doc.id) }}
+                              exit="exit"
+                            >
+                              <NoteTreeItem
+                                doc={doc}
+                                depth={depth}
+                                children={children}
+                                isExpanded={isExpanded}
+                                canAddChild={canAddChild}
+                                isSelected={selectedId === doc.id}
+                                onToggleExpanded={toggleExpanded}
+                                onAddPageInside={handleAddPageInside}
+                                isRoot={depth === 0}
+                                canNestInside={canNestInside}
+                                allDescendantsMap={descendantsByDoc}
+                                isFirstInList={index === 0}
+                              />
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    )}
+                  </SidebarMenu>
+                </div>
               </div>
-            </div>
+            </TreeDndProvider>
           </motion.div>
         )}
       </AnimatePresence>
