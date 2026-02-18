@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import type { IpcContract, IpcChannel } from '../shared/ipc-types';
 import {
   createDocument,
@@ -58,5 +58,10 @@ export function registerIpcHandlers() {
   handle('documents.move', (payload) => ({
     document: moveDocument(payload.id, payload.parentId, payload.sortOrder),
   }));
+
+  handle('shell.openExternal', async (payload) => {
+    await shell.openExternal(payload.url);
+    return { ok: true };
+  });
 }
 
