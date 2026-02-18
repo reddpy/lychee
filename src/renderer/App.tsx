@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { AppSidebar } from '../components/app-sidebar';
 import { LexicalEditor } from '../components/lexical-editor';
+import { LycheeLogoHorizontal } from '../components/sidebar/lychee-logo';
 import { TabStrip } from '../components/tab-strip';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
 import { useDocumentStore } from '../renderer/document-store';
@@ -84,7 +85,7 @@ function TopBar() {
       </div>
 
       {/* Right section — tab strip (background stays draggable, individual tabs are nodrag) */}
-      <div className="flex min-w-0 flex-1 items-stretch bg-[hsl(var(--muted))]/50">
+      <div className={`flex min-w-0 flex-1 items-stretch ${hasTabs ? 'bg-[hsl(var(--muted))]/50' : 'bg-[hsl(var(--background))]'}`}>
         {hasTabs ? <TabStrip /> : null}
       </div>
     </div>
@@ -102,11 +103,16 @@ function EditorArea() {
   // Only show editor if selectedId has a corresponding open tab
   if (!selectedId || !selected || !openTabs.includes(selectedId)) {
     return (
-      <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0">
-        <div className="mx-auto max-w-[900px] px-8 py-10">
-          <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--muted-foreground))]">
-            Select a document or create one to start editing.
-          </div>
+      <main className="flex h-full flex-1 items-start justify-center bg-[hsl(var(--background))] pt-[20vh]">
+        <div className="flex flex-col items-center gap-6 select-none">
+          <LycheeLogoHorizontal className="h-20 opacity-15" />
+          <div className="h-px w-36 bg-[hsl(var(--muted-foreground))]/10" />
+          <p className="text-xl text-[hsl(var(--muted-foreground))]/40">
+            Start writing
+            <span className="inline-flex w-5">
+              <span className="animate-[ellipsis_1.5s_steps(4,end)_infinite] overflow-hidden whitespace-nowrap">...</span>
+            </span>
+          </p>
         </div>
       </main>
     );

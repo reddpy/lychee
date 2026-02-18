@@ -129,4 +129,10 @@ body {
     0 0 0 1px hsl(var(--sidebar-border));
 }
 
+/* Animated ellipsis for empty state */
+@keyframes ellipsis {
+  0% { width: 0; }
+  100% { width: 1em; }
+}
+
 /* Note tree: delete exit, section expand/collapse, chevron rotation (Framer Motion in NotesSection / NoteTreeItem). */
