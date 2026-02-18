@@ -183,6 +183,7 @@ export function NotesSection({
   React.useLayoutEffect(() => {
     if (!lastCreatedId || documents.length === 0) return;
     const ancestorIds = getAncestorIds(documents, lastCreatedId);
+    useDocumentStore.setState({ lastCreatedId: null });
     if (ancestorIds.length === 0) return;
     flushSync(() => {
       setExpandedIds((prev) => {
