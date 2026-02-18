@@ -83,13 +83,9 @@ function TopBar() {
         </div>
       </div>
 
-      {/* Right section — tabs or empty draggable space */}
-      <div className="flex min-w-0 flex-1 items-stretch bg-[hsl(var(--background))]">
-        {hasTabs ? (
-          <div className="titlebar-nodrag flex min-w-0 flex-1 items-stretch">
-            <TabStrip />
-          </div>
-        ) : null}
+      {/* Right section — tab strip (background stays draggable, individual tabs are nodrag) */}
+      <div className="flex min-w-0 flex-1 items-stretch bg-[hsl(var(--muted))]/50">
+        {hasTabs ? <TabStrip /> : null}
       </div>
     </div>
   );

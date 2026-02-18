@@ -30,6 +30,7 @@ function SortableTab({
   title,
   emoji,
   isActive,
+  showLeftDivider,
   onSelect,
   onClose,
   isDragging,
@@ -38,6 +39,7 @@ function SortableTab({
   title: string;
   emoji: string | null;
   isActive: boolean;
+  showLeftDivider: boolean;
   onSelect: () => void;
   onClose: (e: React.MouseEvent) => void;
   isDragging: boolean;
@@ -61,19 +63,22 @@ function SortableTab({
       style={style}
       data-tab-id={id}
       className={cn(
-        'relative flex cursor-default select-none items-center gap-1.5 rounded-t-xl px-3 py-2.5 text-[13px] w-[180px] shrink-0',
+        'group titlebar-nodrag relative flex cursor-default select-none items-center gap-1.5 rounded-t-xl px-3 py-2.5 text-[13px] w-[180px] shrink-0',
         isActive
           ? 'z-10 pb-[calc(0.625rem+1px)] first:border-l-0 border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
-          : 'bg-transparent text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--muted))]/40 hover:text-[hsl(var(--muted-foreground))]',
+          : 'bg-transparent text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/40 hover:text-[hsl(var(--foreground))]',
         isDragging && 'z-50 opacity-80 shadow-lg',
       )}
       onClick={onSelect}
       {...attributes}
       {...listeners}
     >
+      {showLeftDivider && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--border))]" />
+      )}
       <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
         {emoji ? (
-          <span className={cn('shrink-0 text-base leading-none', !isActive && 'opacity-40 grayscale')}>{emoji}</span>
+          <span className="shrink-0 text-base leading-none">{emoji}</span>
         ) : null}
         <span className="min-w-0 truncate">{title && title !== 'Untitled' ? title : 'New Page'}</span>
       </span>
@@ -85,7 +90,7 @@ function SortableTab({
           onClose(e);
         }}
         aria-label="Close tab"
-        className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm opacity-50 hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
+        className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm opacity-0 group-hover:opacity-50 hover:!opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
       >
         <X className="h-3 w-3" />
       </button>
@@ -181,16 +186,21 @@ export function TabStrip() {
             ref={scrollContainerRef}
             className="flex min-w-0 shrink items-end overflow-x-auto scrollbar-hide"
           >
-            {openTabs.map((tabId) => {
+            {openTabs.map((tabId, index) => {
               const doc = getDocById(documents, tabId);
               if (!doc) return null;
+              const isActive = selectedId === tabId;
+              const prevIsActive = index > 0 && selectedId === openTabs[index - 1];
+              // Show a left divider between two adjacent inactive tabs
+              const showLeftDivider = !isActive && index > 0 && !prevIsActive;
               return (
                 <SortableTab
                   key={tabId}
                   id={tabId}
                   title={doc.title}
                   emoji={doc.emoji ?? null}
-                  isActive={selectedId === tabId}
+                  isActive={isActive}
+                  showLeftDivider={showLeftDivider}
                   onSelect={() => handleTabSelect(tabId)}
                   onClose={(e) => handleTabClose(e, tabId)}
                   isDragging={draggingId === tabId}
