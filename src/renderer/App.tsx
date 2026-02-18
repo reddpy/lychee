@@ -1,52 +1,93 @@
-import * as React from 'react';
+import React from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { AppSidebar } from '../components/app-sidebar';
 import { LexicalEditor } from '../components/lexical-editor';
 import { TabStrip } from '../components/tab-strip';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '../components/ui/sidebar';
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
 import { useDocumentStore } from '../renderer/document-store';
 
-function Titlebar() {
-  return (
-    <div
-      className="titlebar-drag h-8 w-full border-b border-[hsl(var(--border))] bg-white/60 backdrop-blur"
-    >
-      <div className="flex h-full items-center">
-        {/* Leave space for macOS traffic lights */}
-        <div className="w-[76px]" />
-        {/* Sidebar toggle should not be draggable so clicks work */}
-        <div className="titlebar-nodrag flex items-center px-1">
-          <SidebarTrigger className="h-6 w-6 text-[hsl(var(--foreground))]" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Header contains the tabs bar (Notion-style: tabs blend into editor). Same bg as editor when tabs present. */
-function Header() {
+/** Unified top bar: left side matches sidebar, right side holds tabs. */
+function TopBar() {
+  const { open } = useSidebar();
   const openTabs = useDocumentStore((s) => s.openTabs);
+  const selectedId = useDocumentStore((s) => s.selectedId);
+  const selectDocument = useDocumentStore((s) => s.selectDocument);
   const hasTabs = openTabs.length > 0;
 
+  const activeIndex = selectedId != null ? openTabs.indexOf(selectedId) : -1;
+  const canGoLeft = activeIndex > 0;
+  const canGoRight = activeIndex >= 0 && activeIndex < openTabs.length - 1;
+
+  const handlePrevTab = React.useCallback(() => {
+    if (!canGoLeft) return;
+    const prevId = openTabs[activeIndex - 1];
+    if (prevId) selectDocument(prevId);
+  }, [canGoLeft, activeIndex, openTabs, selectDocument]);
+
+  const handleNextTab = React.useCallback(() => {
+    if (!canGoRight) return;
+    const nextId = openTabs[activeIndex + 1];
+    if (nextId) selectDocument(nextId);
+  }, [canGoRight, activeIndex, openTabs, selectDocument]);
+
   return (
-    <header
-      className={
-        hasTabs
-          ? 'w-full border-b-0 bg-[hsl(var(--background))] pt-1'
-          : 'h-12 w-full border-b border-[hsl(var(--border))] bg-white/70 backdrop-blur flex items-center pl-4'
-      }
-    >
-      {hasTabs ? (
-        <TabStrip />
-      ) : (
-        <div className="flex-1">
-          <div className="text-[13px] font-semibold tracking-tight">Lychee</div>
-          <div className="text-[11px] text-[hsl(var(--muted-foreground))]">
-            Local-first workspace
-          </div>
+    <div className="titlebar-drag flex h-10 w-full shrink-0">
+      {/* Left section — traffic lights, chevrons, toggle.
+          When open: expands to full sidebar width with border-r.
+          When collapsed: fixed size for all controls, no border-r. */}
+      <div
+        className={
+          'flex shrink-0 items-center border-b border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-background))] transition-[width] duration-200 ease-out ' +
+          (open ? 'w-[var(--sidebar-width)]' : 'w-[184px]')
+        }
+      >
+        {/* Traffic lights space — always reserved */}
+        <div className="w-[76px] shrink-0" />
+        {/* Sidebar toggle */}
+        <div className="titlebar-nodrag flex shrink-0 items-center px-2">
+          <SidebarTrigger className="h-6 w-6 text-[hsl(var(--sidebar-foreground))]" />
         </div>
-      )}
-    </header>
+        {/* Spacer pushes chevrons to the right edge */}
+        <div className="flex-1" />
+        {/* Tab nav chevrons — separated by a divider, pinned to right edge */}
+        <div className="titlebar-nodrag flex shrink-0 items-center gap-0.5 border-l border-[hsl(var(--sidebar-border))] px-1.5">
+          <button
+            type="button"
+            onClick={handlePrevTab}
+            disabled={!canGoLeft}
+            aria-label="Previous tab"
+            className={
+              'flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--sidebar-foreground))] transition-colors ' +
+              (canGoLeft
+                ? 'hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]'
+                : 'opacity-30')
+            }
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleNextTab}
+            disabled={!canGoRight}
+            aria-label="Next tab"
+            className={
+              'flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--sidebar-foreground))] transition-colors ' +
+              (canGoRight
+                ? 'hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]'
+                : 'opacity-30')
+            }
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Right section — tab strip (background stays draggable, individual tabs are nodrag) */}
+      <div className="flex min-w-0 flex-1 items-stretch bg-[hsl(var(--muted))]/50">
+        {hasTabs ? <TabStrip /> : null}
+      </div>
+    </div>
   );
 }
 
@@ -80,11 +121,10 @@ export function App() {
   return (
     <SidebarProvider defaultOpen>
       <div className="flex h-full w-full flex-col">
-        <Titlebar />
+        <TopBar />
         <div className="flex min-h-0 flex-1">
           <AppSidebar />
           <SidebarInset>
-            <Header />
             <div className="flex min-h-0 flex-1 flex-col">
               <EditorArea />
             </div>

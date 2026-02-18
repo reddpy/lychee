@@ -1,11 +1,21 @@
 import * as React from 'react';
-import * as ReactDOM from 'react-dom/client';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
-import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview';
-import { pointerOutsideOfPreview } from '@atlaskit/pragmatic-drag-and-drop/element/pointer-outside-of-preview';
-import { attachClosestEdge, extractClosestEdge, type Edge } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge';
+import { X } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
+import { CSS } from '@dnd-kit/utilities';
 
 import { cn } from '../lib/utils';
 import { useDocumentStore } from '../renderer/document-store';
@@ -15,120 +25,57 @@ function getDocById(documents: DocumentRow[], id: string): DocumentRow | undefin
   return documents.find((d) => d.id === id);
 }
 
-/** Tab pill used inside DragOverlay (no drag handlers, same look). */
-function DragOverlayTab({
-  title,
-  emoji,
-}: {
-  title: string;
-  emoji: string | null;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex cursor-grabbing items-center gap-1.5 border-b-2 border-b-[hsl(var(--foreground))] border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-[13px] font-medium text-[hsl(var(--foreground))] tab-raised',
-        'min-w-0 max-w-[200px] shrink-0 shadow-lg ring-2 ring-[hsl(var(--ring))]/20',
-      )}
-    >
-      <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
-        {emoji ? (
-          <span className="shrink-0 text-base leading-none">{emoji}</span>
-        ) : null}
-        <span className="min-w-0 truncate">{title && title !== 'Untitled' ? title : 'New Page'}</span>
-      </span>
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center opacity-50">
-        <X className="h-3 w-3" />
-      </span>
-    </div>
-  );
-}
-
 function SortableTab({
   id,
   title,
   emoji,
   isActive,
+  showLeftDivider,
   onSelect,
   onClose,
   isDragging,
-  dropEdge,
 }: {
   id: string;
   title: string;
   emoji: string | null;
   isActive: boolean;
+  showLeftDivider: boolean;
   onSelect: () => void;
   onClose: (e: React.MouseEvent) => void;
   isDragging: boolean;
-  dropEdge: Edge | null;
 }) {
-  const ref = React.useRef<HTMLDivElement>(null);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id });
 
-  // Register as draggable and drop target
-  React.useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    return combine(
-      draggable({
-        element,
-        getInitialData: () => ({ id, type: 'tab' }),
-        onGenerateDragPreview({ nativeSetDragImage }) {
-          setCustomNativeDragPreview({
-            nativeSetDragImage,
-            getOffset: pointerOutsideOfPreview({
-              x: '16px',
-              y: '8px',
-            }),
-            render({ container }) {
-              const root = ReactDOM.createRoot(container);
-              root.render(<DragOverlayTab title={title} emoji={emoji} />);
-              return () => root.unmount();
-            },
-          });
-        },
-      }),
-      dropTargetForElements({
-        element,
-        getData({ input, element: el }) {
-          return attachClosestEdge(
-            { id, type: 'tab' },
-            {
-              element: el,
-              input,
-              allowedEdges: ['left', 'right'],
-            }
-          );
-        },
-        canDrop({ source }) {
-          return source.data.type === 'tab' && source.data.id !== id;
-        },
-      })
-    );
-  }, [id, title, emoji]);
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform ? { ...transform, y: 0, scaleY: 1 } : null),
+    transition,
+  };
 
   return (
     <div
-      ref={ref}
+      ref={setNodeRef}
+      style={style}
       data-tab-id={id}
       className={cn(
-        'relative flex cursor-pointer select-none items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] min-w-0 max-w-[200px] shrink-0 transition-all duration-150',
+        'group titlebar-nodrag relative flex cursor-default select-none items-center gap-1.5 rounded-t-xl px-3 py-2.5 text-[13px] w-[180px] shrink-0',
         isActive
-          ? 'relative z-10 tab-raised border-b-[hsl(var(--foreground))] border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
-          : 'border-b-transparent bg-transparent text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/60 hover:text-[hsl(var(--foreground))]',
-        isDragging && 'opacity-5 pointer-events-none',
+          ? 'z-10 pb-[calc(0.625rem+1px)] first:border-l-0 border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
+          : 'bg-transparent text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/40 hover:text-[hsl(var(--foreground))]',
+        isDragging && 'z-50 opacity-80 shadow-lg',
       )}
       onClick={onSelect}
+      {...attributes}
+      {...listeners}
     >
-      {/* Drop indicator - left edge */}
-      {dropEdge === 'left' && (
-        <div className="absolute left-0 top-1 bottom-1 w-0.5 bg-blue-500 rounded-full -translate-x-1/2" />
+      {showLeftDivider && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--border))]" />
       )}
-      {/* Drop indicator - right edge */}
-      {dropEdge === 'right' && (
-        <div className="absolute right-0 top-1 bottom-1 w-0.5 bg-blue-500 rounded-full translate-x-1/2" />
-      )}
-
       <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
         {emoji ? (
           <span className="shrink-0 text-base leading-none">{emoji}</span>
@@ -137,12 +84,13 @@ function SortableTab({
       </span>
       <button
         type="button"
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
           onClose(e);
         }}
         aria-label="Close tab"
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-50 hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
+        className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm opacity-0 group-hover:opacity-50 hover:!opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
       >
         <X className="h-3 w-3" />
       </button>
@@ -161,67 +109,37 @@ export function TabStrip() {
   } = useDocumentStore();
 
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
-  const [dropTargetId, setDropTargetId] = React.useState<string | null>(null);
-  const [dropEdge, setDropEdge] = React.useState<Edge | null>(null);
 
-  // Global monitor for tab drag and drop
-  React.useEffect(() => {
-    return monitorForElements({
-      canMonitor: ({ source }) => source.data.type === 'tab',
-      onDragStart({ source }) {
-        setDraggingId(source.data.id as string);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
       },
-      onDrag({ location }) {
-        const target = location.current.dropTargets[0];
-        if (target) {
-          const edge = extractClosestEdge(target.data);
-          setDropTargetId(target.data.id as string);
-          setDropEdge(edge);
-        } else {
-          setDropTargetId(null);
-          setDropEdge(null);
-        }
-      },
-      onDrop({ source, location }) {
-        const draggedId = source.data.id as string;
-        const target = location.current.dropTargets[0];
+    }),
+  );
 
-        setDraggingId(null);
-        setDropTargetId(null);
-        setDropEdge(null);
+  const handleDragStart = React.useCallback((event: DragStartEvent) => {
+    setDraggingId(event.active.id as string);
+  }, []);
 
-        if (!target) return;
+  const handleDragEnd = React.useCallback(
+    (event: DragEndEvent) => {
+      setDraggingId(null);
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
 
-        const targetId = target.data.id as string;
-        const edge = extractClosestEdge(target.data);
+      const oldIndex = openTabs.indexOf(active.id as string);
+      const newIndex = openTabs.indexOf(over.id as string);
 
-        if (draggedId === targetId) return;
-
-        const oldIndex = openTabs.indexOf(draggedId);
-        let newIndex = openTabs.indexOf(targetId);
-
-        if (oldIndex === -1 || newIndex === -1) return;
-
-        // Adjust index based on edge
-        if (edge === 'right') {
-          newIndex = newIndex + 1;
-        }
-
-        // Adjust for removal of the dragged item
-        if (oldIndex < newIndex) {
-          newIndex = newIndex - 1;
-        }
-
-        if (oldIndex !== newIndex) {
-          reorderTabs(oldIndex, newIndex);
-        }
-      },
-    });
-  }, [openTabs, reorderTabs]);
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+        reorderTabs(oldIndex, newIndex);
+      }
+    },
+    [openTabs, reorderTabs],
+  );
 
   const handleTabSelect = React.useCallback(
     (id: string) => {
-      // Don't select tab if a tab drag is in progress
       if (draggingId) return;
       selectDocument(id);
     },
@@ -235,23 +153,6 @@ export function TabStrip() {
     },
     [closeTab],
   );
-
-  const activeIndex =
-    selectedId != null ? openTabs.indexOf(selectedId) : -1;
-  const canGoLeft = activeIndex > 0;
-  const canGoRight = activeIndex >= 0 && activeIndex < openTabs.length - 1;
-
-  const handlePrevTab = React.useCallback(() => {
-    if (!canGoLeft) return;
-    const prevId = openTabs[activeIndex - 1];
-    if (prevId) selectDocument(prevId);
-  }, [canGoLeft, activeIndex, openTabs, selectDocument]);
-
-  const handleNextTab = React.useCallback(() => {
-    if (!canGoRight) return;
-    const nextId = openTabs[activeIndex + 1];
-    if (nextId) selectDocument(nextId);
-  }, [canGoRight, activeIndex, openTabs, selectDocument]);
 
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -270,60 +171,47 @@ export function TabStrip() {
   }
 
   return (
-    <div className="flex items-stretch border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]">
-      <div
-        ref={scrollContainerRef}
-        className="flex min-w-0 flex-1 items-stretch overflow-x-auto scrollbar-hide"
+    <div className="relative flex min-w-0 flex-1 items-stretch bg-[hsl(var(--muted))]/50">
+      {/* Bottom border as a pseudo-line behind tabs so active tab can overlap it */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[hsl(var(--border))]" />
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
       >
-        {openTabs.map((tabId) => {
-          const doc = getDocById(documents, tabId);
-          if (!doc) return null;
-          const isDropTarget = dropTargetId === tabId;
-          return (
-            <SortableTab
-              key={tabId}
-              id={tabId}
-              title={doc.title}
-              emoji={doc.emoji ?? null}
-              isActive={selectedId === tabId}
-              onSelect={() => handleTabSelect(tabId)}
-              onClose={(e) => handleTabClose(e, tabId)}
-              isDragging={draggingId === tabId}
-              dropEdge={isDropTarget ? dropEdge : null}
-            />
-          );
-        })}
-      </div>
-      <div className="flex shrink-0 items-center border-l border-[hsl(var(--border))] pl-0.5 pr-1">
-        <button
-          type="button"
-          onClick={handlePrevTab}
-          disabled={!canGoLeft}
-          aria-label="Previous tab"
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors',
-            canGoLeft
-              ? 'hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]'
-              : 'cursor-not-allowed opacity-40',
-          )}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={handleNextTab}
-          disabled={!canGoRight}
-          aria-label="Next tab"
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors',
-            canGoRight
-              ? 'hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]'
-              : 'cursor-not-allowed opacity-40',
-          )}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
+        <SortableContext items={openTabs} strategy={horizontalListSortingStrategy}>
+          <div
+            ref={scrollContainerRef}
+            className="flex min-w-0 shrink items-end overflow-x-auto scrollbar-hide"
+          >
+            {openTabs.map((tabId, index) => {
+              const doc = getDocById(documents, tabId);
+              if (!doc) return null;
+              const isActive = selectedId === tabId;
+              const prevIsActive = index > 0 && selectedId === openTabs[index - 1];
+              // Show a left divider between two adjacent inactive tabs
+              const showLeftDivider = !isActive && index > 0 && !prevIsActive;
+              return (
+                <SortableTab
+                  key={tabId}
+                  id={tabId}
+                  title={doc.title}
+                  emoji={doc.emoji ?? null}
+                  isActive={isActive}
+                  showLeftDivider={showLeftDivider}
+                  onSelect={() => handleTabSelect(tabId)}
+                  onClose={(e) => handleTabClose(e, tabId)}
+                  isDragging={draggingId === tabId}
+                />
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
+      {/* Empty space after tabs */}
+      <div className="flex-1" />
     </div>
   );
 }
