@@ -296,11 +296,17 @@ export function NoteTreeItem({
                     }}
                     aria-label={isExpanded ? 'Collapse' : 'Expand'}
                   >
-                    <span className="flex h-4 w-4 items-center justify-center opacity-100 transition-opacity group-hover/icon:opacity-0">
+                    <span className={cn(
+                      'flex h-4 w-4 items-center justify-center opacity-100 transition-opacity',
+                      isExpanded ? 'group-hover:opacity-0' : 'group-hover:opacity-0',
+                    )}>
                       {iconNode}
                     </span>
                     <motion.span
-                      className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/icon:opacity-100"
+                      className={cn(
+                        'pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity',
+                        isExpanded ? 'group-hover:opacity-100' : 'group-hover:opacity-100',
+                      )}
                       animate={{ rotate: isExpanded ? 90 : 0 }}
                       transition={{
                         type: 'spring',
