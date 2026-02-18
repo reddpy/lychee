@@ -2,7 +2,6 @@ import * as React from 'react';
 import * as ReactDOM from 'react-dom/client';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { ChevronRight, MoreHorizontal, Plus, FileText } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
 import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview';
@@ -276,50 +275,37 @@ export function NoteTreeItem({
               style={{ paddingLeft: depth * 12 }}
             >
               {/* Icon / Expand toggle */}
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                {hasChildren ? (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="group/icon relative flex h-5 w-5 items-center justify-center rounded border border-transparent text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:border-black/60 hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleExpanded(doc.id);
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onToggleExpanded(doc.id);
-                      }
-                    }}
-                    aria-label={isExpanded ? 'Collapse' : 'Expand'}
-                  >
-                    <span className={cn(
-                      'flex h-4 w-4 items-center justify-center opacity-100 transition-opacity',
-                      isExpanded ? 'group-hover:opacity-0' : 'group-hover:opacity-0',
-                    )}>
-                      {iconNode}
-                    </span>
-                    <motion.span
-                      className={cn(
-                        'pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity',
-                        isExpanded ? 'group-hover:opacity-100' : 'group-hover:opacity-100',
-                      )}
-                      animate={{ rotate: isExpanded ? 90 : 0 }}
-                      transition={{
-                        type: 'spring',
-                        stiffness: 400,
-                        damping: 30,
-                      }}
-                    >
-                      <ChevronRight className="h-3 w-3" />
-                    </motion.span>
-                  </span>
-                ) : (
-                  iconNode
+              <span
+                className={cn(
+                  'relative flex h-5 w-5 shrink-0 items-center justify-center',
+                  hasChildren && 'rounded border border-transparent text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:border-black/60 hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]',
+                  hasChildren && !isExpanded && 'transition-colors',
                 )}
+                role={hasChildren ? 'button' : undefined}
+                tabIndex={hasChildren ? 0 : undefined}
+                onClick={hasChildren ? (e) => { e.stopPropagation(); onToggleExpanded(doc.id); } : undefined}
+                onPointerDown={hasChildren ? (e) => e.stopPropagation() : undefined}
+                onKeyDown={hasChildren ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggleExpanded(doc.id);
+                  }
+                } : undefined}
+                aria-label={hasChildren ? (isExpanded ? 'Collapse' : 'Expand') : undefined}
+              >
+                <span className={cn(
+                  'flex h-4 w-4 items-center justify-center',
+                  hasChildren && 'group-hover:hidden',
+                )}>
+                  {iconNode}
+                </span>
+                <span className={cn(
+                  'absolute inset-0 flex items-center justify-center hidden',
+                  hasChildren && 'group-hover:flex',
+                )}>
+                  <ChevronRight className={cn('h-3 w-3', isExpanded && 'rotate-90')} />
+                </span>
               </span>
 
               {/* Title */}
