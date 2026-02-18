@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom/client';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
 import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview';
@@ -112,10 +112,10 @@ function SortableTab({
       ref={ref}
       data-tab-id={id}
       className={cn(
-        'relative flex cursor-pointer select-none items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] min-w-0 max-w-[200px] shrink-0 transition-all duration-150',
+        'relative flex cursor-default select-none items-center gap-1.5 px-3 py-2.5 text-[13px] w-[180px] shrink-0',
         isActive
-          ? 'relative z-10 tab-raised border-b-[hsl(var(--foreground))] border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
-          : 'border-b-transparent bg-transparent text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/60 hover:text-[hsl(var(--foreground))]',
+          ? 'z-10 pb-[calc(0.625rem+1px)] first:border-l-0 border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
+          : 'bg-transparent text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--muted))]/40 hover:text-[hsl(var(--muted-foreground))]',
         isDragging && 'opacity-5 pointer-events-none',
       )}
       onClick={onSelect}
@@ -131,7 +131,7 @@ function SortableTab({
 
       <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
         {emoji ? (
-          <span className="shrink-0 text-base leading-none">{emoji}</span>
+          <span className={cn('shrink-0 text-base leading-none', !isActive && 'opacity-40 grayscale')}>{emoji}</span>
         ) : null}
         <span className="min-w-0 truncate">{title && title !== 'Untitled' ? title : 'New Page'}</span>
       </span>
@@ -142,7 +142,7 @@ function SortableTab({
           onClose(e);
         }}
         aria-label="Close tab"
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-50 hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
+        className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm opacity-50 hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
       >
         <X className="h-3 w-3" />
       </button>
@@ -236,23 +236,6 @@ export function TabStrip() {
     [closeTab],
   );
 
-  const activeIndex =
-    selectedId != null ? openTabs.indexOf(selectedId) : -1;
-  const canGoLeft = activeIndex > 0;
-  const canGoRight = activeIndex >= 0 && activeIndex < openTabs.length - 1;
-
-  const handlePrevTab = React.useCallback(() => {
-    if (!canGoLeft) return;
-    const prevId = openTabs[activeIndex - 1];
-    if (prevId) selectDocument(prevId);
-  }, [canGoLeft, activeIndex, openTabs, selectDocument]);
-
-  const handleNextTab = React.useCallback(() => {
-    if (!canGoRight) return;
-    const nextId = openTabs[activeIndex + 1];
-    if (nextId) selectDocument(nextId);
-  }, [canGoRight, activeIndex, openTabs, selectDocument]);
-
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
@@ -270,10 +253,12 @@ export function TabStrip() {
   }
 
   return (
-    <div className="flex items-stretch border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]">
+    <div className="relative flex min-w-0 flex-1 items-stretch bg-[hsl(var(--muted))]/50">
+      {/* Bottom border as a pseudo-line behind tabs so active tab can overlap it */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[hsl(var(--border))]" />
       <div
         ref={scrollContainerRef}
-        className="flex min-w-0 flex-1 items-stretch overflow-x-auto scrollbar-hide"
+        className="flex min-w-0 shrink items-end overflow-x-auto scrollbar-hide"
       >
         {openTabs.map((tabId) => {
           const doc = getDocById(documents, tabId);
@@ -294,36 +279,8 @@ export function TabStrip() {
           );
         })}
       </div>
-      <div className="flex shrink-0 items-center border-l border-[hsl(var(--border))] pl-0.5 pr-1">
-        <button
-          type="button"
-          onClick={handlePrevTab}
-          disabled={!canGoLeft}
-          aria-label="Previous tab"
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors',
-            canGoLeft
-              ? 'hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]'
-              : 'cursor-not-allowed opacity-40',
-          )}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={handleNextTab}
-          disabled={!canGoRight}
-          aria-label="Next tab"
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors',
-            canGoRight
-              ? 'hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]'
-              : 'cursor-not-allowed opacity-40',
-          )}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
+      {/* Empty space after tabs */}
+      <div className="flex-1" />
     </div>
   );
 }
