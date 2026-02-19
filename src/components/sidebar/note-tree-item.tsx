@@ -319,6 +319,7 @@ export function NoteTreeItem({
               <div
                 className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
                 onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
               >
                 <DropdownMenu onOpenChange={hoverLock}>
                   <DropdownMenuTrigger asChild>
