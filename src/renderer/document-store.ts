@@ -176,6 +176,9 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   async trashDocument(id) {
     try {
       set({ error: null });
+      // Optimistically close tab + deselect before the async IPC call
+      // to avoid the trashed document flashing as the active tab.
+      get().closeTab(id);
       const { trashedIds } = await window.lychee.invoke('documents.trash', { id });
       const trashedSet = new Set(trashedIds);
       set((state) => {
