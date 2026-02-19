@@ -127,6 +127,7 @@ hr.selected:after {
   line-height: 1.1;
   margin: 0;
   padding: 0;
+  margin-bottom: 1.5rem;
   border: none;
   outline: none;
   min-height: 1.1em;
