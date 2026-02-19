@@ -63,6 +63,7 @@ export function NoteTreeItem({
   const hasChildren = children.length > 0;
 
   const [isDragging, setIsDragging] = React.useState(false);
+  const [optionsTooltip, setOptionsTooltip] = React.useState(false);
   // Track when drag just ended to prevent click-after-drag
   const justDraggedRef = React.useRef(false);
 
@@ -279,9 +280,8 @@ export function NoteTreeItem({
               {/* Icon / Expand toggle */}
               <span
                 className={cn(
-                  'relative flex h-5 w-5 shrink-0 items-center justify-center',
-                  hasChildren && 'rounded border border-transparent text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:border-black/60 hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]',
-                  hasChildren && !isExpanded && 'transition-colors',
+                  'relative flex h-6 w-6 shrink-0 items-center justify-center',
+                  hasChildren && 'rounded-md border border-transparent text-[hsl(var(--muted-foreground))] outline-hidden hover:scale-110 hover:shadow-lg hover:border-[#6B8F5E] hover:text-[hsl(var(--foreground))] transition-all',
                 )}
                 role={hasChildren ? 'button' : undefined}
                 tabIndex={hasChildren ? 0 : undefined}
@@ -306,7 +306,7 @@ export function NoteTreeItem({
                   'absolute inset-0 flex items-center justify-center hidden',
                   hasChildren && 'group-hover:flex',
                 )}>
-                  <ChevronRight className={cn('h-3 w-3', isExpanded && 'rotate-90')} />
+                  <ChevronRight className={cn('h-4 w-4', isExpanded && 'rotate-90')} />
                 </span>
               </span>
 
@@ -321,17 +321,32 @@ export function NoteTreeItem({
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <DropdownMenu onOpenChange={hoverLock}>
-                  <DropdownMenuTrigger asChild>
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal className="h-3 w-3" />
-                    </span>
-                  </DropdownMenuTrigger>
+                <DropdownMenu onOpenChange={(open) => { hoverLock(open); if (open) setOptionsTooltip(false); }}>
+                  <TooltipPrimitive.Root open={optionsTooltip} onOpenChange={setOptionsTooltip} delayDuration={150}>
+                    <TooltipPrimitive.Trigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[#6B8F5E] hover:text-[hsl(var(--foreground))] transition-all"
+                          onClick={(e) => e.stopPropagation()}
+                          onFocus={(e) => e.preventDefault()}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </span>
+                      </DropdownMenuTrigger>
+                    </TooltipPrimitive.Trigger>
+                    <TooltipPrimitive.Portal>
+                      <TooltipPrimitive.Content
+                        side="top"
+                        sideOffset={4}
+                        className="z-50 rounded-md bg-[hsl(var(--foreground))] px-2 py-1 text-xs text-[hsl(var(--background))] shadow"
+                      >
+                        Options
+                        <TooltipPrimitive.Arrow className="fill-[hsl(var(--foreground))]" />
+                      </TooltipPrimitive.Content>
+                    </TooltipPrimitive.Portal>
+                  </TooltipPrimitive.Root>
                   <DocumentDropdownMenuContent
                     docId={doc.id}
                     canAddChild={canAddChild}
@@ -344,13 +359,13 @@ export function NoteTreeItem({
                       <span
                         role="button"
                         tabIndex={0}
-                        className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-transparent hover:border-[hsl(var(--sidebar-border))] hover:bg-[hsl(var(--sidebar-accent))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]"
+                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[#6B8F5E] hover:text-[hsl(var(--foreground))] transition-all"
                         onClick={(e) => {
                           e.stopPropagation();
                           onAddPageInside(doc.id);
                         }}
                       >
-                        <Plus className="h-3 w-3" />
+                        <Plus className="h-4 w-4" />
                       </span>
                     </TooltipPrimitive.Trigger>
                     <TooltipPrimitive.Portal>
