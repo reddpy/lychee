@@ -5,7 +5,6 @@ import {
   Sidebar,
   SidebarContent,
 } from './ui/sidebar';
-import { SidebarActions } from './sidebar/sidebar-actions';
 import { NotesSection } from './sidebar/notes-section';
 import { SidebarFooterContent } from './sidebar/sidebar-footer-content';
 
@@ -35,14 +34,9 @@ export function AppSidebar() {
     });
   }, [documents]);
 
-  const handleNewNote = React.useCallback(async () => {
-    await createDocument(null);
-  }, [createDocument]);
-
   return (
     <Sidebar>
       <SidebarContent>
-        <SidebarActions onNewNote={handleNewNote} />
         <NotesSection
           documents={documents}
           selectedId={selectedId}

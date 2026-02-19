@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
+import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import { ChevronRight, SquarePen } from 'lucide-react';
 
 import type { DocumentRow } from '../../shared/documents';
 import {
@@ -214,6 +215,30 @@ export function NotesSection({
               </motion.span>
               <span className='capitalize'>Notes</span>
             </span>
+            <TooltipPrimitive.Root delayDuration={150}>
+              <TooltipPrimitive.Trigger asChild>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-accent))] hover:bg-[#C14B55]/15 hover:border-[#C14B55]/30 hover:text-[#C14B55] transition-colors"
+                  onClick={(e) => { e.stopPropagation(); createDocument(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); createDocument(null); } }}
+                  aria-label="New note"
+                >
+                  <SquarePen className="h-4 w-4" />
+                </span>
+              </TooltipPrimitive.Trigger>
+              <TooltipPrimitive.Portal>
+                <TooltipPrimitive.Content
+                  side="top"
+                  sideOffset={4}
+                  className="z-50 rounded-md bg-[hsl(var(--foreground))] px-2 py-1 text-xs text-[hsl(var(--background))] shadow"
+                >
+                  New Note
+                  <TooltipPrimitive.Arrow className="fill-[hsl(var(--foreground))]" />
+                </TooltipPrimitive.Content>
+              </TooltipPrimitive.Portal>
+            </TooltipPrimitive.Root>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarGroup>
