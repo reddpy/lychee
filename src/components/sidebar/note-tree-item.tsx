@@ -281,7 +281,7 @@ export function NoteTreeItem({
               <span
                 className={cn(
                   'relative flex h-6 w-6 shrink-0 items-center justify-center',
-                  hasChildren && 'rounded-md border border-transparent text-[hsl(var(--muted-foreground))] outline-hidden hover:scale-110 hover:shadow-lg hover:border-[#6B8F5E] hover:text-[hsl(var(--foreground))] transition-all',
+                  hasChildren && 'rounded-md border border-transparent text-[hsl(var(--muted-foreground))] outline-hidden hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]',
                 )}
                 role={hasChildren ? 'button' : undefined}
                 tabIndex={hasChildren ? 0 : undefined}
@@ -328,7 +328,7 @@ export function NoteTreeItem({
                         <span
                           role="button"
                           tabIndex={0}
-                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[#6B8F5E] hover:text-[hsl(var(--foreground))] transition-all"
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]"
                           onClick={(e) => e.stopPropagation()}
                           onFocus={(e) => e.preventDefault()}
                         >
@@ -359,7 +359,7 @@ export function NoteTreeItem({
                       <span
                         role="button"
                         tabIndex={0}
-                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[#6B8F5E] hover:text-[hsl(var(--foreground))] transition-all"
+                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]"
                         onClick={(e) => {
                           e.stopPropagation();
                           onAddPageInside(doc.id);
