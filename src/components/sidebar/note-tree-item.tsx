@@ -64,6 +64,7 @@ export function NoteTreeItem({
 
   const [isDragging, setIsDragging] = React.useState(false);
   const [optionsTooltip, setOptionsTooltip] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
   // Track when drag just ended to prevent click-after-drag
   const justDraggedRef = React.useRef(false);
 
@@ -203,11 +204,11 @@ export function NoteTreeItem({
   }, [doc.id, draggingId, openTab]);
 
   const iconNode = doc.emoji ? (
-    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base leading-none">
+    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-base leading-none">
       {doc.emoji}
     </span>
   ) : (
-    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
   );
 
   // Derive visual state from context
@@ -242,7 +243,7 @@ export function NoteTreeItem({
               'absolute left-0 right-0 z-30 flex items-center pointer-events-none px-2 -translate-y-1/2',
               linePosition === 'top' ? 'top-0' : 'bottom-0 translate-y-1/2',
             )}
-            style={{ paddingLeft: depth * 12 }}
+            style={{ paddingLeft: depth * 10 }}
             title="Insert as sibling"
           >
             <div className="h-2 w-2 rounded-full border-2 border-blue-500 shrink-0 bg-[hsl(var(--background))]" />
@@ -254,7 +255,7 @@ export function NoteTreeItem({
         {showFirstChildLine && (
           <div
             className="absolute left-0 right-0 z-30 flex items-center pointer-events-none px-2 bottom-0 translate-y-1/2"
-            style={{ paddingLeft: (depth + 1) * 12 }}
+            style={{ paddingLeft: (depth + 1) * 10 }}
             title="Insert as first child"
           >
             <div className="h-2 w-2 rounded-full border-2 border-blue-500 shrink-0 bg-[hsl(var(--background))]" />
@@ -274,13 +275,13 @@ export function NoteTreeItem({
             )}
           >
             <div
-              className="flex w-full min-w-0 items-center gap-2 rounded-md transition-colors duration-200 text-left"
-              style={{ paddingLeft: depth * 12 }}
+              className={cn("relative flex w-full min-w-0 items-center gap-1.5 rounded-md transition-[padding] duration-200 text-left group-hover:pr-12", menuOpen && "pr-12")}
+              style={{ paddingLeft: depth * 10 }}
             >
               {/* Icon / Expand toggle */}
               <span
                 className={cn(
-                  'relative flex h-6 w-6 shrink-0 items-center justify-center',
+                  'relative flex h-5 w-5 shrink-0 items-center justify-center',
                   hasChildren && 'rounded-md border border-transparent text-[hsl(var(--muted-foreground))] outline-hidden hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]',
                 )}
                 role={hasChildren ? 'button' : undefined}
@@ -297,7 +298,7 @@ export function NoteTreeItem({
                 aria-label={hasChildren ? (isExpanded ? 'Collapse' : 'Expand') : undefined}
               >
                 <span className={cn(
-                  'flex h-4 w-4 items-center justify-center',
+                  'flex h-3.5 w-3.5 items-center justify-center',
                   hasChildren && 'group-hover:hidden',
                 )}>
                   {iconNode}
@@ -306,7 +307,7 @@ export function NoteTreeItem({
                   'absolute inset-0 flex items-center justify-center hidden',
                   hasChildren && 'group-hover:flex',
                 )}>
-                  <ChevronRight className={cn('h-4 w-4', isExpanded && 'rotate-90')} />
+                  <ChevronRight className={cn('h-3.5 w-3.5', isExpanded && 'rotate-90')} />
                 </span>
               </span>
 
@@ -317,22 +318,22 @@ export function NoteTreeItem({
 
               {/* Action buttons */}
               <div
-                className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+                className={cn("absolute right-0 top-0 bottom-0 flex items-center gap-0.5 pl-6 opacity-0 transition-opacity group-hover:opacity-100 bg-gradient-to-r from-transparent to-[hsl(var(--sidebar-accent))]", menuOpen && "opacity-100")}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <DropdownMenu onOpenChange={(open) => { hoverLock(open); if (open) setOptionsTooltip(false); }}>
+                <DropdownMenu onOpenChange={(open) => { setMenuOpen(open); hoverLock(open); if (open) setOptionsTooltip(false); }}>
                   <TooltipPrimitive.Root open={optionsTooltip} onOpenChange={setOptionsTooltip} delayDuration={150}>
                     <TooltipPrimitive.Trigger asChild>
                       <DropdownMenuTrigger asChild>
                         <span
                           role="button"
                           tabIndex={0}
-                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]"
+                          className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]"
                           onClick={(e) => e.stopPropagation()}
                           onFocus={(e) => e.preventDefault()}
                         >
-                          <MoreHorizontal className="h-4 w-4" />
+                          <MoreHorizontal className="h-3.5 w-3.5" />
                         </span>
                       </DropdownMenuTrigger>
                     </TooltipPrimitive.Trigger>
@@ -359,13 +360,13 @@ export function NoteTreeItem({
                       <span
                         role="button"
                         tabIndex={0}
-                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]"
+                        className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]"
                         onClick={(e) => {
                           e.stopPropagation();
                           onAddPageInside(doc.id);
                         }}
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3.5 w-3.5" />
                       </span>
                     </TooltipPrimitive.Trigger>
                     <TooltipPrimitive.Portal>

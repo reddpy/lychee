@@ -21,8 +21,8 @@ export function SidebarFooterContent() {
         {!isFloating && (
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Settings">
-              <Settings className="h-4 w-4 shrink-0" />
-              <span className="truncate text-sm">Settings</span>
+              <Settings className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate text-sm font-normal">Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         )}
