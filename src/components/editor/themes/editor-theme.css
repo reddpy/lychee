@@ -134,13 +134,34 @@ hr.selected:after {
 }
 
 .editor-title.is-placeholder::before,
-p.is-placeholder::before {
+p.is-placeholder::before,
+h1.is-placeholder::before,
+h2.is-placeholder::before,
+h3.is-placeholder::before,
+blockquote.is-placeholder::before,
+li.is-placeholder:not([role="checkbox"])::before {
   content: attr(data-placeholder);
   color: hsl(var(--muted-foreground));
   position: absolute;
   pointer-events: none;
 }
 
-p.is-placeholder {
+/* Checklist items use ::before for the checkbox, so use ::after for placeholder */
+li[role="checkbox"][aria-checked="false"].is-placeholder::after {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  position: absolute;
+  left: 1.5rem;
+  top: 0;
+  pointer-events: none;
+}
+
+p.is-placeholder,
+h1.is-placeholder,
+h2.is-placeholder,
+h3.is-placeholder,
+blockquote.is-placeholder,
+li.is-placeholder {
   position: relative;
 }
+
