@@ -9,7 +9,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from '../ui/sidebar';
 import { useDocumentStore } from '../../renderer/document-store';
 import { NoteTreeItem } from './note-tree-item';
@@ -125,7 +124,6 @@ export function NotesSection({
   setExpandedIds,
   createDocument,
 }: NotesSectionProps) {
-  const { open } = useSidebar();
   const [notesSectionOpen, setNotesSectionOpen] = React.useState(true);
   const lastCreatedId = useDocumentStore((s) => s.lastCreatedId);
   const moveDocument = useDocumentStore((s) => s.moveDocument);
@@ -193,8 +191,6 @@ export function NotesSection({
       });
     });
   }, [lastCreatedId, documents, setExpandedIds]);
-
-  if (!open) return null;
 
   return (
     <>

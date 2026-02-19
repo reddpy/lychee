@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { PanelLeft } from 'lucide-react';
 
 import { cn } from '../../lib/utils';
 import { Button } from './button';
@@ -10,6 +10,9 @@ type SidebarContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  /** Whether the sidebar is temporarily visible via hover. */
+  hoverOpen: boolean;
+  setHoverOpen: (hoverOpen: boolean) => void;
 };
 
 const SidebarContext = React.createContext<SidebarContextValue | null>(null);
@@ -45,14 +48,33 @@ export function SidebarProvider({
     [onOpenChange, openProp],
   );
 
+  const [hoverOpenInternal, setHoverOpenInternal] = React.useState(false);
+  const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const setHoverOpen = React.useCallback((next: boolean) => {
+    clearTimeout(hoverTimeoutRef.current);
+    if (next) {
+      setHoverOpenInternal(true);
+    } else {
+      // Small delay so cursor can move between collapsed strip and sidebar
+      hoverTimeoutRef.current = setTimeout(() => setHoverOpenInternal(false), 150);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    return () => clearTimeout(hoverTimeoutRef.current);
+  }, []);
+
   const value = React.useMemo<SidebarContextValue>(
     () => ({
       state: open ? 'expanded' : 'collapsed',
       open,
       setOpen,
       toggleSidebar: () => setOpen(!open),
+      hoverOpen: hoverOpenInternal,
+      setHoverOpen,
     }),
-    [open, setOpen],
+    [open, setOpen, hoverOpenInternal, setHoverOpen],
   );
 
   return (
@@ -62,7 +84,6 @@ export function SidebarProvider({
           className={cn('h-screen w-screen overflow-hidden', className)}
           style={{
             ...(style ?? {}),
-            // Keep compatible with shadcn docs patterns.
             ['--sidebar-width' as unknown as keyof React.CSSProperties]: '16rem',
           }}
         >
@@ -77,13 +98,22 @@ export function Sidebar({
   className,
   children,
 }: React.PropsWithChildren<{ className?: string }>) {
-  const { open } = useSidebar();
+  const { open, hoverOpen, setHoverOpen } = useSidebar();
+  const isVisible = open || hoverOpen;
+  const isFloating = !open && hoverOpen;
   return (
     <aside
+      onMouseEnter={() => { if (!open) setHoverOpen(true); }}
+      onMouseLeave={() => { if (!open) setHoverOpen(false); }}
       className={cn(
-        'relative flex h-full shrink-0 flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))] overflow-hidden',
-        'transition-[width] duration-200 ease-out',
-        open ? 'w-[var(--sidebar-width)]' : 'w-[3.25rem]',
+        'absolute z-30 flex w-[var(--sidebar-width)] flex-col bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
+        'transition-[transform,opacity] duration-200 ease-out',
+        isFloating
+          ? 'left-2 top-2 bottom-2 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-[hsl(var(--sidebar-border))] overflow-hidden'
+          : 'left-0 top-0 h-full border-r border-[hsl(var(--sidebar-border))]',
+        isVisible
+          ? cn('translate-x-0 opacity-100', isFloating ? 'shadow-xl' : 'shadow-none')
+          : '-translate-x-full opacity-0 shadow-none pointer-events-none',
         className,
       )}
       data-state={open ? 'expanded' : 'collapsed'}
@@ -159,12 +189,10 @@ export function SidebarGroupLabel({
   className,
   children,
 }: React.PropsWithChildren<{ className?: string }>) {
-  const { open } = useSidebar();
   return (
     <div
       className={cn(
         'px-2 pb-1 text-xs font-medium text-[hsl(var(--muted-foreground))]',
-        !open && 'opacity-0',
         className,
       )}
     >
@@ -182,7 +210,6 @@ export function SidebarMenuItem({ className, children }: React.PropsWithChildren
 }
 
 export function SidebarMenuButton({
-  tooltip,
   isActive,
   className,
   children,
@@ -197,17 +224,14 @@ export function SidebarMenuButton({
   onAuxClick?: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }>) {
-  const { open } = useSidebar();
-
-  const btn = (
+  return (
     <button
       onClick={onClick}
       onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}
       data-active={isActive ? 'true' : 'false'}
       className={cn(
-        'group/menu-button flex w-full items-center rounded-md py-2 text-sm',
-        open ? 'justify-start gap-2 px-2' : 'justify-center gap-0 px-0',
+        'group/menu-button flex w-full items-center justify-start gap-2 rounded-md px-2 py-2 text-sm',
         'hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]',
         'data-[active=true]:bg-[hsl(var(--sidebar-accent))] data-[active=true]:text-[hsl(var(--sidebar-accent-foreground))]',
         className,
@@ -215,26 +239,6 @@ export function SidebarMenuButton({
     >
       {children}
     </button>
-  );
-
-  if (open || !tooltip) return btn;
-
-  return (
-    <TooltipPrimitive.Root>
-      <TooltipPrimitive.Trigger asChild>{btn}</TooltipPrimitive.Trigger>
-      <TooltipPrimitive.Portal>
-        <TooltipPrimitive.Content
-          side="right"
-          sideOffset={8}
-          className={cn(
-            'z-50 rounded-md bg-[hsl(var(--foreground))] px-2 py-1 text-xs text-[hsl(var(--background))] shadow',
-          )}
-        >
-          {tooltip}
-          <TooltipPrimitive.Arrow className="fill-[hsl(var(--foreground))]" />
-        </TooltipPrimitive.Content>
-      </TooltipPrimitive.Portal>
-    </TooltipPrimitive.Root>
   );
 }
 
@@ -245,21 +249,23 @@ export function SidebarTrigger({
   className?: string;
   'aria-label'?: string;
 }) {
-  const { open, toggleSidebar } = useSidebar();
+  const { open, toggleSidebar, setHoverOpen } = useSidebar();
+  const justClicked = React.useRef(false);
   return (
     <Button
       variant="ghost"
       size="icon"
-      onClick={toggleSidebar}
+      onClick={() => {
+        justClicked.current = true;
+        toggleSidebar();
+      }}
+      onMouseEnter={() => { if (!open && !justClicked.current) setHoverOpen(true); }}
+      onMouseLeave={() => { justClicked.current = false; setHoverOpen(false); }}
       aria-label={ariaLabel}
       className={className}
     >
       <span className="sr-only">{ariaLabel}</span>
-      {open ? (
-        <PanelLeftClose className="h-4 w-4" />
-      ) : (
-        <PanelLeftOpen className="h-4 w-4" />
-      )}
+      <PanelLeft className="h-[18px] w-[18px]" />
     </Button>
   );
 }
