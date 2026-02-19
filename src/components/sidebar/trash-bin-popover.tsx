@@ -9,7 +9,7 @@ import { Input } from '../ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { cn } from '../../lib/utils';
-import { SidebarMenuItem, useSidebar } from '../ui/sidebar';
+import { SidebarMenuItem } from '../ui/sidebar';
 
 function displayTitle(doc: DocumentRow): string {
   return doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page';
@@ -95,7 +95,6 @@ function TrashItemRow({
 }
 
 export function TrashBinPopover() {
-  const { open } = useSidebar();
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [popoverOpen, setPopoverOpen] = React.useState(false);
   const [trashLoading, setTrashLoading] = React.useState(false);
@@ -280,20 +279,19 @@ export function TrashBinPopover() {
               aria-label="Trash Bin"
               data-active="false"
               className={cn(
-                'group/menu-button flex w-full items-center rounded-md py-2 text-sm',
+                'group/menu-button flex w-full items-center justify-start gap-2 rounded-md px-2 py-2 text-sm',
                 'hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]',
-                open ? 'justify-start gap-2 px-2' : 'justify-center gap-0 px-0',
               )}
             >
               <Trash2 className="h-4 w-4 shrink-0" />
-              {open ? <span className="truncate text-xs">Trash Bin</span> : null}
+              <span className="truncate text-xs">Trash Bin</span>
             </button>
           </PopoverTrigger>
           <PopoverContent
             className="w-[21rem] p-0 shadow-xl"
             align="end"
             alignOffset={10}
-            side={open ? 'right' : 'top'}
+            side="right"
             sideOffset={24}
           >
             <div className="flex h-[20rem] flex-col gap-2 p-2">

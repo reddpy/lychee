@@ -23,7 +23,7 @@ const createWindow = (): void => {
     icon: iconPath,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition:
-      process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
+      process.platform === 'darwin' ? { x: 12, y: 14 } : undefined,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
