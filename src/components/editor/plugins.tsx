@@ -55,7 +55,7 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
     <div ref={editorContainerRef} className="relative">
       <RichTextPlugin
         contentEditable={
-          <ContentEditable placeholder="" />
+          <ContentEditable />
         }
         ErrorBoundary={LexicalErrorBoundary}
       />
