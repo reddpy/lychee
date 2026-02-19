@@ -187,7 +187,7 @@ export function NoteTreeItem({
   const handleClick = React.useCallback((e: React.MouseEvent) => {
     // Don't open note if any drag is in progress or just ended
     if (draggingId || justDraggedRef.current) return;
-    if (e.metaKey) {
+    if (e.metaKey || e.ctrlKey) {
       openTab(doc.id);
     } else {
       openOrSelectTab(doc.id);
