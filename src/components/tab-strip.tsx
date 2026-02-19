@@ -63,10 +63,10 @@ function SortableTab({
       style={style}
       data-tab-id={id}
       className={cn(
-        'group titlebar-nodrag relative flex cursor-default select-none items-center gap-1.5 px-3 py-2.5 text-[13px] w-[180px] shrink-0',
+        'group titlebar-nodrag relative flex cursor-default select-none items-center gap-1.5 px-3 py-2.5 text-[13px] w-[180px] shrink-0 border-x border-x-transparent first:!border-l-transparent',
         isActive
-          ? 'z-10 bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
-          : 'bg-transparent text-white/70 hover:bg-white/15 hover:text-white',
+          ? 'z-10 bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium border-x-[hsl(var(--border))]'
+          : 'bg-transparent text-[hsl(var(--muted-foreground))] hover:bg-black/5 hover:text-[hsl(var(--foreground))]',
         isDragging && 'z-50 opacity-80 shadow-lg',
       )}
       onClick={onSelect}
@@ -74,7 +74,7 @@ function SortableTab({
       {...listeners}
     >
       {showLeftDivider && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-white/20" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-black/10" />
       )}
       <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
         {emoji ? (
@@ -93,8 +93,8 @@ function SortableTab({
         className={cn(
           "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm opacity-0 group-hover:opacity-50 hover:!opacity-100 focus-visible:opacity-100 focus-visible:ring-1",
           isActive
-            ? "hover:bg-red-500/10 hover:text-red-500 focus-visible:ring-[hsl(var(--ring))]"
-            : "hover:bg-white/15 hover:text-white focus-visible:ring-white/30",
+            ? "hover:bg-[#C14B55]/10 hover:text-[#C14B55] focus-visible:ring-[hsl(var(--ring))]"
+            : "hover:bg-black/5 hover:text-[hsl(var(--foreground))] focus-visible:ring-black/20",
         )}
       >
         <X className="h-3 w-3" />
@@ -177,8 +177,6 @@ export function TabStrip() {
 
   return (
     <div className="relative flex min-w-0 flex-1 items-stretch bg-transparent">
-      {/* Bottom accent line */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/15" />
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

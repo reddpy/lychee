@@ -14,13 +14,13 @@ export function SidebarFooterContent() {
 
   return (
     <>
-      <SidebarMenu className="w-full shrink-0 border-t border-white/10 bg-[#C14B55] px-1 py-1">
+      <SidebarMenu className="w-full shrink-0 border-t border-[hsl(var(--sidebar-border))] px-1 py-1">
         <TrashBinPopover />
         {!isFloating && (
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Settings" className="text-white/80 hover:!bg-white/15 hover:!text-white">
-              <Settings className="h-3.5 w-3.5 shrink-0 text-white/80" />
-              <span className="truncate text-sm font-semibold text-white/80">Settings</span>
+            <SidebarMenuButton tooltip="Settings">
+              <Settings className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
+              <span className="truncate text-sm font-semibold">Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         )}

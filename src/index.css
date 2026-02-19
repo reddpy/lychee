@@ -20,47 +20,47 @@
   --color-ring: hsl(var(--ring));
 }
 
-/* shadcn-style design tokens (light only for now) */
+/* shadcn-style design tokens — warm palette with lychee brand red */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
+  --background: 30 25% 99.5%;
+  --foreground: 20 15% 8%;
 
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
+  --muted: 25 20% 95%;
+  --muted-foreground: 20 10% 48%;
 
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
+  --border: 25 15% 90%;
+  --input: 25 15% 90%;
 
-  --primary: 222.2 47.4% 11.2%;
-  --primary-foreground: 210 40% 98%;
+  --primary: 355 49% 53%;
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 25 20% 95%;
+  --secondary-foreground: 20 15% 8%;
 
-  --ring: 222.2 84% 4.9%;
+  --ring: 20 15% 8%;
 
   --radius: 0.5rem;
 
   /* popover / overlay (context menu, dropdown, etc.) */
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
+  --popover: 30 25% 99.5%;
+  --popover-foreground: 20 15% 8%;
 
   /* accent (highlighted menu item, etc.) */
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
+  --accent: 25 15% 96%;
+  --accent-foreground: 20 15% 8%;
 
   /* destructive (trash, delete, danger) */
   --destructive: 0 84% 60%;
 
   /* shadcn sidebar tokens */
-  --sidebar-background: 0 0% 98%;
-  --sidebar-foreground: 240 5.3% 26.1%;
-  --sidebar-primary: 240 5.9% 10%;
-  --sidebar-primary-foreground: 0 0% 98%;
-  --sidebar-accent: 240 4.8% 95.9%;
-  --sidebar-accent-foreground: 240 5.9% 10%;
-  --sidebar-border: 220 13% 91%;
-  --sidebar-ring: 217.2 91.2% 59.8%;
+  --sidebar-background: 30 20% 97%;
+  --sidebar-foreground: 20 10% 28%;
+  --sidebar-primary: 355 49% 53%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 25 18% 94%;
+  --sidebar-accent-foreground: 20 10% 12%;
+  --sidebar-border: 25 15% 90%;
+  --sidebar-ring: 355 49% 53%;
 }
 
 html,
@@ -72,6 +72,7 @@ body {
   margin: 0;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
+  caret-color: #C14B55;
   font-family:
     "Inter Variable",
     ui-sans-serif,
@@ -87,6 +88,10 @@ body {
   font-weight: 580;
 }
 
+
+::selection {
+  background-color: hsl(355 49% 53% / 0.2);
+}
 
 /* Helps "Notion-like" crisp typography */
 * {
