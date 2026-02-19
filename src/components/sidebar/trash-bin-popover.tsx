@@ -9,7 +9,7 @@ import { Input } from '../ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { cn } from '../../lib/utils';
-import { SidebarMenuItem } from '../ui/sidebar';
+import { SidebarMenuItem, useHoverLock } from '../ui/sidebar';
 
 function displayTitle(doc: DocumentRow): string {
   return doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page';
@@ -95,6 +95,7 @@ function TrashItemRow({
 }
 
 export function TrashBinPopover() {
+  const hoverLock = useHoverLock();
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [popoverOpen, setPopoverOpen] = React.useState(false);
   const [trashLoading, setTrashLoading] = React.useState(false);
@@ -198,7 +199,8 @@ export function TrashBinPopover() {
   const closeTrashPopover = React.useCallback(() => {
     setSearch('');
     setPopoverOpen(false);
-  }, []);
+    hoverLock(false);
+  }, [hoverLock]);
 
   const showOverlays = (popoverOpen || pendingDeleteDoc) && document?.body;
 
@@ -263,12 +265,13 @@ export function TrashBinPopover() {
       <SidebarMenuItem>
         <Popover
           open={popoverOpen}
-          onOpenChange={(open) => {
-            if (!open) {
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
               if (pendingDeleteDoc) return;
               closeTrashPopover();
             } else {
               setPopoverOpen(true);
+              hoverLock(true);
             }
           }}
         >

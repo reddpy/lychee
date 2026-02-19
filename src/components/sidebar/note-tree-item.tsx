@@ -11,6 +11,7 @@ import type { DocumentRow } from '../../shared/documents';
 import {
   SidebarMenuButton,
   SidebarMenuItem,
+  useHoverLock,
 } from '../ui/sidebar';
 import {
   DropdownMenu,
@@ -57,6 +58,7 @@ export function NoteTreeItem({
 }: NoteTreeItemProps) {
   const ref = React.useRef<HTMLDivElement>(null);
   const { openTab, openOrSelectTab } = useDocumentStore();
+  const hoverLock = useHoverLock();
   const { draggingId, dropTargetId, dropPosition, nestAsFirst, setDraggingId, setDropTarget } = useTreeDnd();
   const hasChildren = children.length > 0;
 
@@ -318,7 +320,7 @@ export function NoteTreeItem({
                 className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={hoverLock}>
                   <DropdownMenuTrigger asChild>
                     <span
                       role="button"
