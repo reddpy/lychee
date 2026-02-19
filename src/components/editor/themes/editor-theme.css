@@ -120,6 +120,7 @@ hr.selected:after {
 
 /* Title styles */
 .editor-title {
+  position: relative;
   font-size: 3rem;
   font-weight: 800;
   letter-spacing: -0.025em;
@@ -131,8 +132,14 @@ hr.selected:after {
   min-height: 1.1em;
 }
 
-.editor-title:empty::before {
+.editor-title.is-placeholder::before,
+p.is-placeholder::before {
   content: attr(data-placeholder);
   color: hsl(var(--muted-foreground));
+  position: absolute;
   pointer-events: none;
+}
+
+p.is-placeholder {
+  position: relative;
 }

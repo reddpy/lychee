@@ -31,6 +31,7 @@ import {
   Type,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { $isTitleNode } from "@/components/editor/nodes/title-node"
 
 class SlashCommandOption extends MenuOption {
   title: string
@@ -192,9 +193,24 @@ export function SlashCommandPlugin() {
   const [editor] = useLexicalComposerContext()
   const [queryString, setQueryString] = useState<string | null>(null)
 
-  const checkForTriggerMatch = useBasicTypeaheadTriggerMatch("/", {
+  const checkForSlashTrigger = useBasicTypeaheadTriggerMatch("/", {
     minLength: 0,
   })
+
+  const checkForTriggerMatch = useCallback(
+    (text: string, editorRef: ReturnType<typeof useLexicalComposerContext>[0]) => {
+      const selection = $getSelection()
+      if ($isRangeSelection(selection)) {
+        const anchorNode = selection.anchor.getNode()
+        const topElement = anchorNode.getTopLevelElement()
+        if (topElement && $isTitleNode(topElement)) {
+          return null
+        }
+      }
+      return checkForSlashTrigger(text, editorRef)
+    },
+    [checkForSlashTrigger]
+  )
 
   const options = useMemo(() => {
     const baseOptions = getBaseOptions()

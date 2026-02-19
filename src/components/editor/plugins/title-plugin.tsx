@@ -47,10 +47,19 @@ export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): 
           root.append($createParagraphNode())
         }
       }
+
+      // Set initial placeholder state
+      const titleNode = $getRoot().getFirstChild()
+      if ($isTitleNode(titleNode)) {
+        const titleDom = editor.getElementByKey(titleNode.getKey())
+        if (titleDom) {
+          titleDom.classList.toggle("is-placeholder", titleNode.getTextContent().length === 0)
+        }
+      }
     })
   }, [editor, initialTitle])
 
-  // Listen for changes to sync title
+  // Listen for changes to sync title and toggle placeholder
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
@@ -60,6 +69,12 @@ export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): 
         if ($isTitleNode(firstChild)) {
           const titleText = firstChild.getTextContent()
           onTitleChange?.(titleText)
+
+          // Toggle placeholder class based on whether title is empty
+          const titleDom = editor.getElementByKey(firstChild.getKey())
+          if (titleDom) {
+            titleDom.classList.toggle("is-placeholder", titleText.length === 0)
+          }
         }
       })
     })
