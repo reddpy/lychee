@@ -84,7 +84,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     set((state) => {
       const exists = state.openTabs.includes(id);
       const nextTabs = exists ? [...state.openTabs] : [...state.openTabs, id];
-      return { openTabs: nextTabs, selectedId: id };
+      return { openTabs: nextTabs };
     });
   },
 
