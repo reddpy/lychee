@@ -126,8 +126,8 @@ export function Sidebar({
         'absolute z-30 flex w-[var(--sidebar-width)] flex-col bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
         'transition-[transform,opacity] duration-200 ease-out',
         isFloating
-          ? 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-[hsl(var(--sidebar-border))] overflow-hidden'
-          : 'left-0 top-0 h-full border-r border-[hsl(var(--sidebar-border))]',
+          ? 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-[#C14B55] overflow-hidden'
+          : 'left-0 top-0 h-full border-r border-r-[hsl(var(--sidebar-border))]',
         isVisible
           ? cn('translate-x-0 opacity-100', isFloating ? 'shadow-xl' : 'shadow-none')
           : '-translate-x-full opacity-0 shadow-none pointer-events-none',

@@ -110,12 +110,12 @@ hr:after {
 
 hr.selected {
   outline: none;
-  background-color: hsl(210 100% 96%);
-  box-shadow: 0 0 0 2px hsl(210 100% 50% / 0.3);
+  background-color: hsl(355 49% 53% / 0.08);
+  box-shadow: 0 0 0 2px hsl(355 49% 53% / 0.3);
 }
 
 hr.selected:after {
-  background-color: hsl(210 100% 50%);
+  background-color: #C14B55;
 }
 
 /* Title styles */
