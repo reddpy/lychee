@@ -109,7 +109,7 @@ export function Sidebar({
         'absolute z-30 flex w-[var(--sidebar-width)] flex-col bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
         'transition-[transform,opacity] duration-200 ease-out',
         isFloating
-          ? 'left-2 top-2 bottom-2 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-[hsl(var(--sidebar-border))] overflow-hidden'
+          ? 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-[hsl(var(--sidebar-border))] overflow-hidden'
           : 'left-0 top-0 h-full border-r border-[hsl(var(--sidebar-border))]',
         isVisible
           ? cn('translate-x-0 opacity-100', isFloating ? 'shadow-xl' : 'shadow-none')
@@ -249,18 +249,27 @@ export function SidebarTrigger({
   className?: string;
   'aria-label'?: string;
 }) {
-  const { open, toggleSidebar, setHoverOpen } = useSidebar();
-  const justClicked = React.useRef(false);
+  const { open, setOpen, setHoverOpen } = useSidebar();
+  const suppressHover = React.useRef(false);
   return (
     <Button
       variant="ghost"
       size="icon"
       onClick={() => {
-        justClicked.current = true;
-        toggleSidebar();
+        if (open) {
+          // Collapsing: transition to hover/floating state
+          suppressHover.current = true;
+          setOpen(false);
+          setHoverOpen(true);
+        } else {
+          // Expanding: clear hover state and fully open
+          suppressHover.current = false;
+          setHoverOpen(false);
+          setOpen(true);
+        }
       }}
-      onMouseEnter={() => { if (!open && !justClicked.current) setHoverOpen(true); }}
-      onMouseLeave={() => { justClicked.current = false; setHoverOpen(false); }}
+      onMouseEnter={() => { if (!open && !suppressHover.current) setHoverOpen(true); }}
+      onMouseLeave={() => { suppressHover.current = false; setHoverOpen(false); }}
       aria-label={ariaLabel}
       className={className}
     >
