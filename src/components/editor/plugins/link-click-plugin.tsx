@@ -13,7 +13,7 @@ function openExternalUrl(url: string) {
 function LinkTooltip({ position, url }: { position: { x: number; y: number }; url: string }) {
   return createPortal(
     <div
-      className="fixed z-50 px-3 py-1.5 text-xs bg-popover text-popover-foreground border rounded-md shadow-md pointer-events-none animate-in fade-in-0 zoom-in-95"
+      className="fixed z-50 px-3 py-1.5 text-xs bg-popover text-popover-foreground border border-[hsl(var(--border))] rounded-md shadow-md pointer-events-none animate-in fade-in-0 zoom-in-95"
       style={{
         left: position.x,
         top: position.y + 8,

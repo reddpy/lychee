@@ -434,7 +434,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
 
   return createPortal(
     <div
-      className="floating-toolbar fixed z-50 flex items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
+      className="floating-toolbar fixed z-50 flex items-center gap-0.5 rounded-md border border-[hsl(var(--border))] bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
       style={{
         top: position.top,
         left: position.left,
