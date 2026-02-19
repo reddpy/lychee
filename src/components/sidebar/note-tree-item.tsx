@@ -269,12 +269,12 @@ export function NoteTreeItem({
             onClick={handleClick}
             onAuxClick={handleAuxClick}
             className={cn(
-              'group cursor-pointer',
+              'group cursor-pointer text-sm',
               showNestIndicator && 'bg-blue-500/20 !text-blue-600 dark:!text-blue-400 rounded-md',
             )}
           >
             <div
-              className="flex w-full items-center gap-2 rounded-md transition-colors duration-200"
+              className="flex w-full min-w-0 items-center gap-2 rounded-md transition-colors duration-200 text-left"
               style={{ paddingLeft: depth * 12 }}
             >
               {/* Icon / Expand toggle */}
@@ -311,7 +311,7 @@ export function NoteTreeItem({
               </span>
 
               {/* Title */}
-              <span className="flex-1 truncate select-none">
+              <span className={cn("flex-1 truncate select-none text-[hsl(var(--muted-foreground))]", isSelected && "font-extrabold text-[hsl(var(--foreground))]")}>
                 {doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}
               </span>
 
