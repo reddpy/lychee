@@ -3,14 +3,17 @@
 import { useEffect } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
+  $getNodeByKey,
   $getSelection,
   $isRangeSelection,
   $isParagraphNode,
   LexicalNode,
+  NodeMutation,
 } from "lexical"
-import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text"
-import { $isListItemNode, $isListNode } from "@lexical/list"
+import { HeadingNode, $isHeadingNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text"
+import { ListItemNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { $isTitleNode } from "@/components/editor/nodes/title-node"
+import { mergeRegister } from "@lexical/utils"
 
 const PLACEHOLDER_CLASS = "is-placeholder"
 
@@ -33,52 +36,83 @@ function getPlaceholderText(node: LexicalNode): string | null {
   return null
 }
 
+function syncPlaceholderForMutations(
+  mutations: Map<string, NodeMutation>,
+  editor: ReturnType<typeof useLexicalComposerContext>[0]
+): void {
+  editor.getEditorState().read(() => {
+    for (const [key, mutation] of mutations) {
+      if (mutation === "destroyed") continue
+
+      const node = $getNodeByKey(key)
+      if (!node) continue
+
+      const dom = editor.getElementByKey(key)
+      if (!dom) continue
+
+      const placeholder = getPlaceholderText(node)
+      if (!placeholder) continue
+
+      const isEmpty = node.getTextContent().length === 0
+      if (isEmpty) {
+        dom.classList.add(PLACEHOLDER_CLASS)
+        dom.setAttribute("data-placeholder", placeholder)
+      } else {
+        dom.classList.remove(PLACEHOLDER_CLASS)
+        dom.removeAttribute("data-placeholder")
+      }
+    }
+  })
+}
+
 export function BlockPlaceholderPlugin(): null {
   const [editor] = useLexicalComposerContext()
 
+  // Persistent placeholders via mutation listeners — fire after DOM reconciliation
   useEffect(() => {
+    return mergeRegister(
+      editor.registerMutationListener(HeadingNode, (mutations) => {
+        syncPlaceholderForMutations(mutations, editor)
+      }),
+      editor.registerMutationListener(QuoteNode, (mutations) => {
+        syncPlaceholderForMutations(mutations, editor)
+      }),
+      editor.registerMutationListener(ListItemNode, (mutations) => {
+        syncPlaceholderForMutations(mutations, editor)
+      })
+    )
+  }, [editor])
+
+  // Focus-based placeholder for paragraphs only
+  useEffect(() => {
+    let prevParagraphDom: HTMLElement | null = null
+
     return editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
-        const root = editor.getRootElement()
-        if (!root) return
-
-        // Remove placeholder from any previous element
-        const prev = root.querySelector(`.${PLACEHOLDER_CLASS}:not(.editor-title)`)
-        if (prev) {
-          prev.classList.remove(PLACEHOLDER_CLASS)
-          prev.removeAttribute("data-placeholder")
+        // Clear previous paragraph placeholder
+        if (prevParagraphDom) {
+          prevParagraphDom.classList.remove(PLACEHOLDER_CLASS)
+          prevParagraphDom.removeAttribute("data-placeholder")
+          prevParagraphDom = null
         }
 
         const selection = $getSelection()
         if (!$isRangeSelection(selection) || !selection.isCollapsed()) return
 
         const anchorNode = selection.anchor.getNode()
+        const topElement = anchorNode.getTopLevelElement()
 
-        // For list items, walk up to the ListItemNode (not top-level)
-        let block: LexicalNode | null = null
-        let current: LexicalNode | null = anchorNode
-        while (current) {
-          if ($isListItemNode(current)) {
-            block = current
-            break
+        if (
+          topElement &&
+          $isParagraphNode(topElement) &&
+          topElement.getTextContent().length === 0
+        ) {
+          const dom = editor.getElementByKey(topElement.getKey())
+          if (dom) {
+            dom.classList.add(PLACEHOLDER_CLASS)
+            dom.setAttribute("data-placeholder", getPlaceholderText(topElement)!)
+            prevParagraphDom = dom
           }
-          current = current.getParent()
-        }
-
-        // For non-list nodes, use top-level element
-        if (!block) {
-          block = anchorNode.getTopLevelElement()
-        }
-
-        if (!block || block.getTextContent().length > 0) return
-
-        const placeholder = getPlaceholderText(block)
-        if (!placeholder) return
-
-        const dom = editor.getElementByKey(block.getKey())
-        if (dom) {
-          dom.classList.add(PLACEHOLDER_CLASS)
-          dom.setAttribute("data-placeholder", placeholder)
         }
       })
     })
