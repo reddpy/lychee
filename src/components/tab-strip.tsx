@@ -63,10 +63,10 @@ function SortableTab({
       style={style}
       data-tab-id={id}
       className={cn(
-        'group titlebar-nodrag relative flex cursor-default select-none items-center gap-1.5 rounded-t-xl px-3 py-2.5 text-[13px] w-[180px] shrink-0',
+        'group titlebar-nodrag relative flex cursor-default select-none items-center gap-1.5 px-3 py-2.5 text-[13px] w-[180px] shrink-0',
         isActive
-          ? 'z-10 pb-[calc(0.625rem+1px)] first:border-l-0 border-l border-r border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
-          : 'bg-transparent text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/40 hover:text-[hsl(var(--foreground))]',
+          ? 'z-10 bg-[hsl(var(--background))] text-[hsl(var(--foreground))] font-medium'
+          : 'bg-transparent text-white/70 hover:bg-white/15 hover:text-white',
         isDragging && 'z-50 opacity-80 shadow-lg',
       )}
       onClick={onSelect}
@@ -74,7 +74,7 @@ function SortableTab({
       {...listeners}
     >
       {showLeftDivider && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--border))]" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-white/20" />
       )}
       <span className="flex flex-1 min-w-0 items-center gap-1.5 truncate">
         {emoji ? (
@@ -90,7 +90,12 @@ function SortableTab({
           onClose(e);
         }}
         aria-label="Close tab"
-        className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm opacity-0 group-hover:opacity-50 hover:!opacity-100 hover:bg-red-500/10 hover:text-red-500 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
+        className={cn(
+          "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm opacity-0 group-hover:opacity-50 hover:!opacity-100 focus-visible:opacity-100 focus-visible:ring-1",
+          isActive
+            ? "hover:bg-red-500/10 hover:text-red-500 focus-visible:ring-[hsl(var(--ring))]"
+            : "hover:bg-white/15 hover:text-white focus-visible:ring-white/30",
+        )}
       >
         <X className="h-3 w-3" />
       </button>
@@ -171,9 +176,9 @@ export function TabStrip() {
   }
 
   return (
-    <div className="relative flex min-w-0 flex-1 items-stretch bg-[hsl(var(--muted))]/50">
-      {/* Bottom border as a pseudo-line behind tabs so active tab can overlap it */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[hsl(var(--border))]" />
+    <div className="relative flex min-w-0 flex-1 items-stretch bg-transparent">
+      {/* Bottom accent line */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/15" />
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

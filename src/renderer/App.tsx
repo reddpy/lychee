@@ -33,16 +33,16 @@ function TopBar() {
   }, [canGoRight, activeIndex, openTabs, selectDocument]);
 
   return (
-    <div className="titlebar-drag flex h-10 w-full shrink-0 bg-[hsl(var(--sidebar-background))]">
-      {/* Left section — fixed width matching sidebar right edge, with border-r separator */}
+    <div className="titlebar-drag flex h-10 w-full shrink-0 bg-[#C14B55]">
+      {/* Left section — fixed width matching sidebar right edge */}
       <div
-        className="flex w-[var(--sidebar-width)] shrink-0 items-center border-b border-r border-[hsl(var(--border))]"
+        className="flex w-[var(--sidebar-width)] shrink-0 items-center"
       >
         {/* Traffic lights space — always reserved */}
         <div className="w-[76px] shrink-0" />
         {/* Sidebar toggle */}
         <div className="titlebar-nodrag flex shrink-0 items-center px-1 translate-y-0.5">
-          <SidebarTrigger className="h-7 w-7 rounded-md border border-transparent text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] transition-all" />
+          <SidebarTrigger className="h-7 w-7 rounded-md border border-transparent text-white/80 hover:border-white/20 hover:bg-white/15 hover:text-white transition-all" />
         </div>
         {/* Spacer pushes chevrons to the right edge */}
         <div className="flex-1" />
@@ -54,9 +54,9 @@ function TopBar() {
             disabled={!canGoLeft}
             aria-label="Previous tab"
             className={
-              'flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--foreground))] transition-colors ' +
+              'flex h-6 w-6 items-center justify-center rounded-sm text-white/80 transition-colors ' +
               (canGoLeft
-                ? 'hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]'
+                ? 'hover:bg-white/15 hover:text-white'
                 : 'opacity-30')
             }
           >
@@ -68,9 +68,9 @@ function TopBar() {
             disabled={!canGoRight}
             aria-label="Next tab"
             className={
-              'flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--foreground))] transition-colors ' +
+              'flex h-6 w-6 items-center justify-center rounded-sm text-white/80 transition-colors ' +
               (canGoRight
-                ? 'hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]'
+                ? 'hover:bg-white/15 hover:text-white'
                 : 'opacity-30')
             }
           >
@@ -80,10 +80,10 @@ function TopBar() {
       </div>
 
       {/* Tab strip fills remaining space */}
-      <div className={`relative flex min-w-0 flex-1 items-stretch bg-[hsl(var(--sidebar-background))]`}>
+      <div className="relative flex min-w-0 flex-1 items-stretch">
         {hasTabs ? <TabStrip /> : null}
-        {/* Bottom border — TabStrip's active tab overlaps this when tabs are open */}
-        {!hasTabs && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[hsl(var(--border))]" />}
+        {/* Bottom accent line when no tabs are open */}
+        {!hasTabs && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/15" />}
       </div>
     </div>
   );
