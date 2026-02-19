@@ -72,7 +72,6 @@ body {
   margin: 0;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-  caret-color: #C14B55;
   font-family:
     "Inter Variable",
     ui-sans-serif,
@@ -88,10 +87,6 @@ body {
   font-weight: 580;
 }
 
-
-::selection {
-  background-color: hsl(355 49% 53% / 0.2);
-}
 
 /* Helps "Notion-like" crisp typography */
 * {
