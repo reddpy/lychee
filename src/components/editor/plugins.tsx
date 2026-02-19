@@ -25,6 +25,7 @@ import { CodeHighlightPlugin } from "@/components/editor/plugins/code-highlight-
 import { CodeLanguagePlugin } from "@/components/editor/plugins/code-language-plugin"
 import { LinkEditorPlugin } from "@/components/editor/plugins/link-editor-plugin"
 import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
+import { ParagraphPlaceholderPlugin } from "@/components/editor/plugins/paragraph-placeholder-plugin"
 
 // Use linkifyjs for robust URL/email detection
 const MATCHERS: LinkMatcher[] = [
@@ -54,13 +55,16 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
     <div ref={editorContainerRef} className="relative">
       <RichTextPlugin
         contentEditable={
-          <ContentEditable placeholder="Start typing or press / for commands..." />
+          <ContentEditable placeholder="" />
         }
         ErrorBoundary={LexicalErrorBoundary}
       />
 
       {/* Title plugin */}
       <TitlePlugin initialTitle={initialTitle} onTitleChange={onTitleChange} />
+
+      {/* Paragraph placeholder */}
+      <ParagraphPlaceholderPlugin />
 
       {/* Core plugins */}
       <HistoryPlugin />
