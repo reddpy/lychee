@@ -72,6 +72,7 @@
     "@emoji-mart/data": "^1.2.1",
     "@emoji-mart/react": "^1.1.1",
     "@emotion/is-prop-valid": "^1.4.0",
+    "@fontsource-variable/inter": "^5.2.8",
     "@lexical/code": "^0.39.0",
     "@lexical/hashtag": "^0.39.0",
     "@lexical/html": "^0.39.0",

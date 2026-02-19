@@ -1,18 +1,18 @@
-import * as React from 'react';
-import { createPortal } from 'react-dom';
-import { FileText, Loader2, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import * as React from "react";
+import { createPortal } from "react-dom";
+import { FileText, Loader2, RotateCcw, Search, Trash2, X } from "lucide-react";
 
-import type { DocumentRow } from '../../shared/documents';
-import { useDocumentStore } from '../../renderer/document-store';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { cn } from '../../lib/utils';
-import { SidebarMenuItem, useHoverLock } from '../ui/sidebar';
+import type { DocumentRow } from "../../shared/documents";
+import { useDocumentStore } from "../../renderer/document-store";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { cn } from "../../lib/utils";
+import { SidebarMenuItem, useHoverLock } from "../ui/sidebar";
 
 function displayTitle(doc: DocumentRow): string {
-  return doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page';
+  return doc.title && doc.title !== "Untitled" ? doc.title : "New Page";
 }
 
 function TrashItemRow({
@@ -32,8 +32,8 @@ function TrashItemRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent/50',
-        isChild && 'pl-7',
+        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent/50",
+        isChild && "pl-7",
       )}
     >
       {doc.emoji ? (
@@ -48,8 +48,11 @@ function TrashItemRow({
           {title}
         </span>
         {(parentTitle != null || isChild) && (
-          <span className="block truncate text-xs text-muted-foreground" title={parentTitle ?? undefined}>
-            in: {parentTitle ?? '…'}
+          <span
+            className="block truncate text-xs text-muted-foreground"
+            title={parentTitle ?? undefined}
+          >
+            in: {parentTitle ?? "…"}
           </span>
         )}
       </div>
@@ -99,7 +102,7 @@ export function TrashBinPopover() {
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [popoverOpen, setPopoverOpen] = React.useState(false);
   const [trashLoading, setTrashLoading] = React.useState(false);
-  const [search, setSearch] = React.useState('');
+  const [search, setSearch] = React.useState("");
   const [pendingDeleteDoc, setPendingDeleteDoc] = React.useState<{
     id: string;
     title: string;
@@ -114,7 +117,9 @@ export function TrashBinPopover() {
   } = useDocumentStore();
 
   const TRASH_LOAD_MIN_MS = 120;
-  const loadTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   React.useEffect(() => {
     if (!popoverOpen) return;
@@ -151,7 +156,8 @@ export function TrashBinPopover() {
       (d) => d.parentId === null || !ids.has(d.parentId),
     );
     const sortedParents = [...parents].sort(
-      (a, b) => new Date(b.deletedAt!).getTime() - new Date(a.deletedAt!).getTime(),
+      (a, b) =>
+        new Date(b.deletedAt!).getTime() - new Date(a.deletedAt!).getTime(),
     );
     const out: DocumentRow[] = [];
     for (const p of sortedParents) {
@@ -197,7 +203,7 @@ export function TrashBinPopover() {
   }, []);
 
   const closeTrashPopover = React.useCallback(() => {
-    setSearch('');
+    setSearch("");
     setPopoverOpen(false);
     hoverLock(false);
   }, [hoverLock]);
@@ -282,12 +288,14 @@ export function TrashBinPopover() {
               aria-label="Trash Bin"
               data-active="false"
               className={cn(
-                'group/menu-button flex w-full items-center justify-start gap-2 rounded-md px-2 py-2 text-sm',
-                'hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]',
+                "group/menu-button flex w-full items-center justify-start gap-2 rounded-md px-2 py-2 text-sm",
+                "hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]",
               )}
             >
               <Trash2 className="h-4 w-4 shrink-0" />
-              <span className="truncate text-xs">Trash Bin</span>
+              <span className="truncate text-sm">
+                Trash Bin
+              </span>
             </button>
           </PopoverTrigger>
           <PopoverContent
@@ -306,15 +314,15 @@ export function TrashBinPopover() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className={cn(
-                    'h-8 border pl-8 border-transparent focus:border-[1.5px] focus:border-[hsl(var(--ring))] focus:ring-0 focus-visible:border-[1.5px] focus-visible:border-[hsl(var(--ring))] focus-visible:ring-0 focus-visible:outline-none',
-                    search.length > 0 && 'pr-8',
+                    "h-8 border pl-8 border-transparent focus:border-[1.5px] focus:border-[hsl(var(--ring))] focus:ring-0 focus-visible:border-[1.5px] focus-visible:border-[hsl(var(--ring))] focus-visible:ring-0 focus-visible:outline-none",
+                    search.length > 0 && "pr-8",
                   )}
                 />
                 {search.length > 0 && (
                   <button
                     type="button"
                     onClick={() => {
-                      setSearch('');
+                      setSearch("");
                       searchInputRef.current?.focus();
                     }}
                     aria-label="Clear search"
@@ -326,13 +334,18 @@ export function TrashBinPopover() {
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[hsl(var(--border))]">
                 {trashLoading ? (
-                  <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground" aria-busy>
+                  <div
+                    className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground"
+                    aria-busy
+                  >
                     <Loader2 className="h-6 w-6 animate-spin" />
                     <span className="text-xs">Loading trash…</span>
                   </div>
                 ) : filtered.length === 0 ? (
                   <div className="py-6 text-center text-sm text-muted-foreground">
-                    {trashedDocuments.length === 0 ? 'Trash is empty' : 'No matching items'}
+                    {trashedDocuments.length === 0
+                      ? "Trash is empty"
+                      : "No matching items"}
                   </div>
                 ) : (
                   <div className="p-1 pr-4">
@@ -340,9 +353,7 @@ export function TrashBinPopover() {
                       const parent = doc.parentId
                         ? allDocsById.get(doc.parentId)
                         : null;
-                      const parentTitle = parent
-                        ? displayTitle(parent)
-                        : null;
+                      const parentTitle = parent ? displayTitle(parent) : null;
                       const isChild = !!doc.parentId && !!parent;
                       return (
                         <TrashItemRow
