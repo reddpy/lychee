@@ -13,6 +13,9 @@ type SidebarContextValue = {
   /** Whether the sidebar is temporarily visible via hover. */
   hoverOpen: boolean;
   setHoverOpen: (hoverOpen: boolean) => void;
+  lockHover: () => void;
+  unlockHover: () => void;
+  isHoverLocked: () => boolean;
 };
 
 const SidebarContext = React.createContext<SidebarContextValue | null>(null);
@@ -50,6 +53,17 @@ export function SidebarProvider({
 
   const [hoverOpenInternal, setHoverOpenInternal] = React.useState(false);
   const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+  const hoverLockRef = React.useRef(0);
+
+  const lockHover = React.useCallback(() => {
+    hoverLockRef.current++;
+  }, []);
+
+  const unlockHover = React.useCallback(() => {
+    hoverLockRef.current = Math.max(0, hoverLockRef.current - 1);
+  }, []);
+
+  const isHoverLocked = React.useCallback(() => hoverLockRef.current > 0, []);
 
   const setHoverOpen = React.useCallback((next: boolean) => {
     clearTimeout(hoverTimeoutRef.current);
@@ -73,8 +87,11 @@ export function SidebarProvider({
       toggleSidebar: () => setOpen(!open),
       hoverOpen: hoverOpenInternal,
       setHoverOpen,
+      lockHover,
+      unlockHover,
+      isHoverLocked,
     }),
-    [open, setOpen, hoverOpenInternal, setHoverOpen],
+    [open, setOpen, hoverOpenInternal, setHoverOpen, lockHover, unlockHover, isHoverLocked],
   );
 
   return (
@@ -98,13 +115,13 @@ export function Sidebar({
   className,
   children,
 }: React.PropsWithChildren<{ className?: string }>) {
-  const { open, hoverOpen, setHoverOpen } = useSidebar();
+  const { open, hoverOpen, setHoverOpen, isHoverLocked } = useSidebar();
   const isVisible = open || hoverOpen;
   const isFloating = !open && hoverOpen;
   return (
     <aside
       onMouseEnter={() => { if (!open) setHoverOpen(true); }}
-      onMouseLeave={() => { if (!open) setHoverOpen(false); }}
+      onMouseLeave={() => { if (!open && !isHoverLocked()) setHoverOpen(false); }}
       className={cn(
         'absolute z-30 flex w-[var(--sidebar-width)] flex-col bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
         'transition-[transform,opacity] duration-200 ease-out',
@@ -277,6 +294,25 @@ export function SidebarTrigger({
       <PanelLeft className="h-[18px] w-[18px]" />
     </Button>
   );
+}
+
+export function useHoverLock() {
+  const { open, setHoverOpen, lockHover, unlockHover } = useSidebar();
+  return React.useCallback((isOpen: boolean) => {
+    if (isOpen) {
+      lockHover();
+    } else {
+      unlockHover();
+      if (!open) {
+        requestAnimationFrame(() => {
+          const sidebarEl = document.querySelector('aside[data-state]');
+          if (sidebarEl && !sidebarEl.matches(':hover')) {
+            setHoverOpen(false);
+          }
+        });
+      }
+    }
+  }, [open, setHoverOpen, lockHover, unlockHover]);
 }
 
 export function SidebarRail() {

@@ -12,6 +12,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '../ui/dropdown-menu';
+import { useHoverLock } from '../ui/sidebar';
 
 export type DocumentMenuProps = {
   docId: string;
@@ -27,9 +28,10 @@ export function DocumentContextMenu({
 }: DocumentMenuProps & { children: React.ReactNode }) {
   const openTab = useDocumentStore((s) => s.openTab);
   const trashDocument = useDocumentStore((s) => s.trashDocument);
+  const hoverLock = useHoverLock();
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={hoverLock}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem onSelect={() => openTab(docId)}>
