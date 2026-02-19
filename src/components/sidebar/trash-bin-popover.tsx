@@ -288,12 +288,12 @@ export function TrashBinPopover() {
               aria-label="Trash Bin"
               data-active="false"
               className={cn(
-                "group/menu-button flex w-full items-center justify-start gap-2 rounded-md px-2 py-2 text-sm",
+                "group/menu-button flex w-full items-center justify-start gap-1.5 rounded-md px-2 py-1.5 text-sm",
                 "hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]",
               )}
             >
-              <Trash2 className="h-4 w-4 shrink-0" />
-              <span className="truncate text-sm">
+              <Trash2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate text-sm font-normal">
                 Trash Bin
               </span>
             </button>

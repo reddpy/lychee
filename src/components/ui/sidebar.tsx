@@ -101,7 +101,7 @@ export function SidebarProvider({
           className={cn('h-screen w-screen overflow-hidden', className)}
           style={{
             ...(style ?? {}),
-            ['--sidebar-width' as unknown as keyof React.CSSProperties]: '16rem',
+            ['--sidebar-width' as unknown as keyof React.CSSProperties]: '18rem',
           }}
         >
           {children}
@@ -248,7 +248,7 @@ export function SidebarMenuButton({
       onContextMenu={onContextMenu}
       data-active={isActive ? 'true' : 'false'}
       className={cn(
-        'group/menu-button flex w-full items-center justify-start gap-2 rounded-md px-2 py-2 text-sm',
+        'group/menu-button flex w-full items-center justify-start gap-1.5 rounded-md px-2 py-1.5 text-sm',
         'hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]',
         'data-[active=true]:bg-[hsl(var(--sidebar-accent))] data-[active=true]:text-[hsl(var(--sidebar-accent-foreground))]',
         className,
