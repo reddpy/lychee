@@ -1,0 +1,268 @@
+/* ── ProseMirror base ─────────────────────────────────── */
+
+.ProseMirror-editor .ProseMirror {
+  outline: none;
+  padding: 0 2rem;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* ── Toggle / Collapsible ──────────────────────────────── */
+
+.Collapsible__container {
+  background-color: var(--background);
+  border: 1px solid #ccc;
+  border-radius: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.Collapsible__title {
+  padding: 0.25rem;
+  padding-left: 1rem;
+  position: relative;
+  font-weight: bold;
+  outline: none;
+  cursor: pointer;
+  list-style-type: disclosure-closed;
+  list-style-position: inside;
+}
+
+.Collapsible__title p {
+  display: inline-flex;
+}
+
+.Collapsible__title::marker {
+  color: lightgray;
+}
+
+.Collapsible__container[open] > .Collapsible__title {
+  list-style-type: disclosure-open;
+}
+
+.toggle-content {
+  padding: 0 1rem 0.5rem 1rem;
+}
+
+/* ── Horizontal Rule ───────────────────────────────────── */
+
+.ProseMirror hr {
+  padding: 12px 0;
+  border: none;
+  margin: 8px 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.ProseMirror hr:after {
+  content: "";
+  display: block;
+  height: 2px;
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+}
+
+/* ── Title ─────────────────────────────────────────────── */
+
+.editor-title {
+  position: relative;
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0;
+  padding: 0;
+  margin-bottom: 1.5rem;
+  border: none;
+  outline: none;
+  min-height: 1.1em;
+}
+
+/* ── Placeholder styles ────────────────────────────────── */
+
+.editor-title:empty::before,
+p.is-placeholder::before,
+h1.is-placeholder::before,
+h2.is-placeholder::before,
+h3.is-placeholder::before,
+blockquote.is-placeholder::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  position: absolute;
+  pointer-events: none;
+}
+
+.editor-title:empty::before {
+  content: "New Page";
+}
+
+.list-item.is-placeholder::after {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  position: absolute;
+  left: 1.75rem;
+  top: 0;
+  pointer-events: none;
+}
+
+p.is-placeholder,
+h1.is-placeholder,
+h2.is-placeholder,
+h3.is-placeholder,
+blockquote.is-placeholder,
+.list-item.is-placeholder {
+  position: relative;
+}
+
+/* ── Flat list item styles ─────────────────────────────── */
+
+.list-item {
+  position: relative;
+  padding-left: 1.75rem;
+  margin-top: 0.25rem;
+  line-height: 1.75;
+  display: block;
+  list-style: none;
+}
+
+.list-item--bullet::before {
+  content: "";
+  position: absolute;
+  left: 0.3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+.list-item--number::before {
+  content: attr(data-ordinal) ".";
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 0.9em;
+  line-height: 1.75;
+  color: currentColor;
+  font-variant-numeric: tabular-nums;
+  width: 1.2rem;
+  text-align: center;
+}
+
+.list-item--check {
+  outline: none;
+}
+
+.list-item--check::before {
+  content: "";
+  width: 18px;
+  height: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 0;
+  cursor: pointer;
+  display: block;
+  position: absolute;
+  border: 2px solid hsl(var(--primary));
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.list-item--checked {
+  text-decoration: line-through;
+}
+
+.list-item--checked::before {
+  background-color: hsl(var(--primary));
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 8L6.5 11L12.5 5' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 14px 14px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.list-item--checked.is-placeholder::after {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* ── Code Block ────────────────────────────────────────── */
+
+.editor-code {
+  display: block;
+  font-family: Menlo, Consolas, Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.53;
+  padding: 12px;
+  color: #383A42;
+  tab-size: 2;
+  overflow-x: auto;
+  position: relative;
+  outline: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background-color: hsl(var(--muted) / 0.3);
+  margin: 8px 0;
+}
+
+/* Atom One Light syntax highlighting */
+.editor-tokenComment {
+  color: #A0A1A7;
+  font-style: italic;
+}
+.editor-tokenSelector {
+  color: #50A14F;
+}
+.editor-tokenProperty {
+  color: #986801;
+}
+.editor-tokenAttr {
+  color: #A626A4;
+}
+.editor-tokenFunction {
+  color: #4078F2;
+}
+.editor-tokenVariable {
+  color: #E45649;
+}
+.editor-tokenOperator {
+  color: #383A42;
+}
+.editor-tokenPunctuation {
+  color: #383A42;
+}
+
+/* ── TOC navigation highlight ──────────────────────────── */
+
+.heading-highlight {
+  background-color: hsl(var(--primary) / 0.12);
+  border-radius: 4px;
+}
+
+/* ── ProseMirror gap cursor ────────────────────────────── */
+
+.ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+}
+
+.ProseMirror-gapcursor:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid black;
+  animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
+}
+
+@keyframes ProseMirror-cursor-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}

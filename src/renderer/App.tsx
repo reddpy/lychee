@@ -4,6 +4,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppSidebar } from '../components/app-sidebar';
 import { CollapsedSidebarWidget } from '../components/collapsed-sidebar-widget';
 import { LexicalEditor } from '../components/lexical-editor';
+import { ProseMirrorEditor } from '../components/prosemirror-editor';
+
+const USE_PROSEMIRROR = true;
 import { LycheeLogoHorizontal } from '../components/sidebar/lychee-logo';
 import { TabStrip } from '../components/tab-strip';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
@@ -113,6 +116,12 @@ function EditorArea() {
           </p>
         </div>
       </main>
+    );
+  }
+
+  if (USE_PROSEMIRROR) {
+    return (
+      <ProseMirrorEditor key={selectedId} documentId={selected.id} document={selected} />
     );
   }
 
