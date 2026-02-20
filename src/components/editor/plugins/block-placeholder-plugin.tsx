@@ -11,8 +11,11 @@ import {
   NodeMutation,
 } from "lexical"
 import { HeadingNode, $isHeadingNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text"
-import { ListItemNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { $isTitleNode } from "@/components/editor/nodes/title-node"
+import {
+  ListItemNode,
+  $isListItemNode,
+} from "@/components/editor/nodes/list-item-node"
 import { mergeRegister } from "@lexical/utils"
 
 const PLACEHOLDER_CLASS = "is-placeholder"
@@ -29,8 +32,7 @@ function getPlaceholderText(node: LexicalNode): string | null {
   }
   if ($isQuoteNode(node)) return "Enter a quote..."
   if ($isListItemNode(node)) {
-    const listParent = node.getParent()
-    if (listParent && $isListNode(listParent) && listParent.getListType() === "check") return "To-do"
+    if (node.getListType() === "check") return "To-do"
     return "List item"
   }
   return null

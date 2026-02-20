@@ -11,13 +11,9 @@ import {
 import { TextNode, $getSelection, $isRangeSelection, $createParagraphNode } from "lexical"
 import { $setBlocksType } from "@lexical/selection"
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
-import {
-  INSERT_ORDERED_LIST_COMMAND,
-  INSERT_UNORDERED_LIST_COMMAND,
-  INSERT_CHECK_LIST_COMMAND,
-} from "@lexical/list"
 import { $createCodeNode } from "@lexical/code"
 import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/react/LexicalHorizontalRuleNode"
+import { $createListItemNode } from "@/components/editor/nodes/list-item-node"
 import {
   Heading1,
   Heading2,
@@ -139,21 +135,36 @@ function getBaseOptions(): SlashCommandOption[] {
       icon: <List className="h-4 w-4" />,
       keywords: ["ul", "unordered", "bullet", "list"],
       onSelect: (editor) => {
-        editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
+        editor.update(() => {
+          const selection = $getSelection()
+          if ($isRangeSelection(selection)) {
+            $setBlocksType(selection, () => $createListItemNode("bullet"))
+          }
+        })
       },
     }),
     new SlashCommandOption("Numbered List", {
       icon: <ListOrdered className="h-4 w-4" />,
       keywords: ["ol", "ordered", "numbered", "list"],
       onSelect: (editor) => {
-        editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
+        editor.update(() => {
+          const selection = $getSelection()
+          if ($isRangeSelection(selection)) {
+            $setBlocksType(selection, () => $createListItemNode("number"))
+          }
+        })
       },
     }),
     new SlashCommandOption("Check List", {
       icon: <CheckSquare className="h-4 w-4" />,
       keywords: ["todo", "check", "checkbox", "task"],
       onSelect: (editor) => {
-        editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined)
+        editor.update(() => {
+          const selection = $getSelection()
+          if ($isRangeSelection(selection)) {
+            $setBlocksType(selection, () => $createListItemNode("check"))
+          }
+        })
       },
     }),
     new SlashCommandOption("Quote", {

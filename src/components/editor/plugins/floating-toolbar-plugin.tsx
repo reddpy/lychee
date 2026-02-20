@@ -20,19 +20,15 @@ import {
   $isQuoteNode,
   HeadingTagType,
 } from "@lexical/rich-text";
-import {
-  $isListNode,
-  INSERT_ORDERED_LIST_COMMAND,
-  INSERT_UNORDERED_LIST_COMMAND,
-  INSERT_CHECK_LIST_COMMAND,
-  REMOVE_LIST_COMMAND,
-  ListNode,
-} from "@lexical/list";
-import { $createCodeNode, $isCodeNode } from "@lexical/code";
+import { $isCodeNode, $createCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
-import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
+import { mergeRegister } from "@lexical/utils";
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
 import { $isTitleNode } from "@/components/editor/nodes/title-node";
+import {
+  $isListItemNode,
+  $createListItemNode,
+} from "@/components/editor/nodes/list-item-node";
 import {
   Bold,
   Italic,
@@ -108,48 +104,27 @@ function BlockTypeSelector({
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return;
 
-        // Handle list transformations
-        if (newType === "bullet") {
-          if (blockType === "bullet") {
-            editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-          } else {
-            editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
-          }
+        if (newType === "paragraph") {
+          $setBlocksType(selection, () => $createParagraphNode());
+        } else if (newType === "h1" || newType === "h2" || newType === "h3") {
+          $setBlocksType(selection, () =>
+            $createHeadingNode(newType as HeadingTagType)
+          );
+        } else if (newType === "bullet") {
+          $setBlocksType(selection, () => $createListItemNode("bullet"));
         } else if (newType === "number") {
-          if (blockType === "number") {
-            editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-          } else {
-            editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
-          }
+          $setBlocksType(selection, () => $createListItemNode("number"));
         } else if (newType === "check") {
-          if (blockType === "check") {
-            editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-          } else {
-            editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
-          }
-        } else {
-          // First remove list if we're in one
-          if (blockType === "bullet" || blockType === "number" || blockType === "check") {
-            editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-          }
-
-          // Then set the block type
-          if (newType === "paragraph") {
-            $setBlocksType(selection, () => $createParagraphNode());
-          } else if (newType === "h1" || newType === "h2" || newType === "h3") {
-            $setBlocksType(selection, () =>
-              $createHeadingNode(newType as HeadingTagType)
-            );
-          } else if (newType === "quote") {
-            $setBlocksType(selection, () => $createQuoteNode());
-          } else if (newType === "code") {
-            $setBlocksType(selection, () => $createCodeNode());
-          }
+          $setBlocksType(selection, () => $createListItemNode("check"));
+        } else if (newType === "quote") {
+          $setBlocksType(selection, () => $createQuoteNode());
+        } else if (newType === "code") {
+          $setBlocksType(selection, () => $createCodeNode());
         }
       });
       setOpen(false);
     },
-    [editor, blockType]
+    [editor]
   );
 
   return (
@@ -265,34 +240,14 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
         if (tag === "h1" || tag === "h2" || tag === "h3") {
           currentBlockType = tag;
         }
-      } else if ($isListNode(element)) {
-        const listType = element.getListType();
-        if (listType === "bullet") {
-          currentBlockType = "bullet";
-        } else if (listType === "number") {
-          currentBlockType = "number";
-        } else if (listType === "check") {
-          currentBlockType = "check";
-        }
+      } else if ($isListItemNode(element)) {
+        currentBlockType = element.getListType();
       } else if ($isQuoteNode(element)) {
         currentBlockType = "quote";
       } else if ($isCodeNode(element)) {
         currentBlockType = "code";
       } else {
-        // Check if we're inside a list item
-        const listNode = $getNearestNodeOfType(anchorNode, ListNode);
-        if (listNode) {
-          const listType = listNode.getListType();
-          if (listType === "bullet") {
-            currentBlockType = "bullet";
-          } else if (listType === "number") {
-            currentBlockType = "number";
-          } else if (listType === "check") {
-            currentBlockType = "check";
-          }
-        } else {
-          currentBlockType = "paragraph";
-        }
+        currentBlockType = "paragraph";
       }
 
       // Get position from native selection

@@ -7,12 +7,24 @@ import { LinkClickPlugin } from "@/components/editor/plugins/link-click-plugin"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin"
-import { ListPlugin } from "@lexical/react/LexicalListPlugin"
-import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin"
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin"
 import { TabIndentationPlugin } from "@lexical/react/LexicalTabIndentationPlugin"
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin"
-import { TRANSFORMERS } from "@lexical/markdown"
+import {
+  HEADING,
+  QUOTE,
+  CODE,
+  BOLD_ITALIC_STAR,
+  BOLD_ITALIC_UNDERSCORE,
+  BOLD_STAR,
+  BOLD_UNDERSCORE,
+  ITALIC_STAR,
+  ITALIC_UNDERSCORE,
+  INLINE_CODE,
+  STRIKETHROUGH,
+  HIGHLIGHT,
+  LINK,
+} from "@lexical/markdown"
 import { LinkMatcher } from "@lexical/react/LexicalAutoLinkPlugin"
 import * as linkify from "linkifyjs"
 
@@ -26,6 +38,32 @@ import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
 import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeholder-plugin"
 import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
+import { FlatListPlugin } from "@/components/editor/plugins/flat-list-plugin"
+import {
+  FLAT_BULLET_LIST,
+  FLAT_ORDERED_LIST,
+  FLAT_CHECK_LIST,
+} from "@/components/editor/plugins/list-markdown-transformers"
+
+// Custom transformers: standard ones minus the old list transformers, plus our flat ones
+const TRANSFORMERS = [
+  HEADING,
+  QUOTE,
+  FLAT_BULLET_LIST,
+  FLAT_ORDERED_LIST,
+  FLAT_CHECK_LIST,
+  CODE,
+  INLINE_CODE,
+  BOLD_ITALIC_STAR,
+  BOLD_ITALIC_UNDERSCORE,
+  BOLD_STAR,
+  BOLD_UNDERSCORE,
+  HIGHLIGHT,
+  ITALIC_STAR,
+  ITALIC_UNDERSCORE,
+  STRIKETHROUGH,
+  LINK,
+]
 
 // Use linkifyjs for robust URL/email detection
 const MATCHERS: LinkMatcher[] = [
@@ -68,8 +106,7 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
 
       {/* Core plugins */}
       <HistoryPlugin />
-      <ListPlugin />
-      <CheckListPlugin />
+      <FlatListPlugin />
       <TabIndentationPlugin />
       <HorizontalRulePlugin />
       <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
