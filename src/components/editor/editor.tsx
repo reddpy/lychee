@@ -17,12 +17,32 @@ const editorConfig: InitialConfigType = {
   },
 }
 
-// Sanitize the serialized state to handle empty states
+// Remove legacy node types that are no longer registered
+function migrateChildren(children: any[]): any[] {
+  return children
+    .filter(
+      (child) =>
+        child.type !== "code-snippet" && child.type !== "executable-code-block"
+    )
+    .map((child) => {
+      if (child.children && Array.isArray(child.children)) {
+        return { ...child, children: migrateChildren(child.children) }
+      }
+      return child
+    })
+}
+
+// Sanitize the serialized state to handle empty states and legacy nodes
 function sanitizeSerializedState(
   state: SerializedEditorState
 ): SerializedEditorState | null {
   // Clone to avoid mutating the original
   const cloned = JSON.parse(JSON.stringify(state))
+
+  // Migrate legacy node types
+  if (cloned.root?.children) {
+    cloned.root.children = migrateChildren(cloned.root.children)
+  }
 
   // Ensure root has at least one child (Lexical requires this)
   if (!cloned.root?.children?.length) {

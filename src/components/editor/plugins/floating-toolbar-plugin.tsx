@@ -28,7 +28,7 @@ import {
   REMOVE_LIST_COMMAND,
   ListNode,
 } from "@lexical/list";
-import { $isCodeNode, $createCodeNode } from "@lexical/code";
+import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
