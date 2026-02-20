@@ -146,14 +146,27 @@ li.is-placeholder:not([role="checkbox"])::before {
   pointer-events: none;
 }
 
+/* Checked checkbox checkmark via SVG background */
+li[role="checkbox"][aria-checked="true"]::before {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 8L6.5 11L12.5 5' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 14px 14px;
+  background-position: center;
+}
+
 /* Checklist items use ::before for the checkbox, so use ::after for placeholder */
-li[role="checkbox"][aria-checked="false"].is-placeholder::after {
+li[role="checkbox"].is-placeholder::after {
   content: attr(data-placeholder);
   color: hsl(var(--muted-foreground));
   position: absolute;
   left: 1.5rem;
   top: 0;
   pointer-events: none;
+}
+
+li[role="checkbox"][aria-checked="true"].is-placeholder::after {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: hsl(var(--muted-foreground) / 0.5);
 }
 
 p.is-placeholder,
