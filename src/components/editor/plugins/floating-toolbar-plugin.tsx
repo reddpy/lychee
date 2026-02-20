@@ -6,7 +6,6 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import {
   $getSelection,
   $isRangeSelection,
-  $insertNodes,
   FORMAT_TEXT_COMMAND,
   SELECTION_CHANGE_COMMAND,
   COMMAND_PRIORITY_LOW,
@@ -144,8 +143,7 @@ function BlockTypeSelector({
           } else if (newType === "quote") {
             $setBlocksType(selection, () => $createQuoteNode());
           } else if (newType === "code") {
-            const node = $createCodeNode();
-            $insertNodes([node]);
+            $setBlocksType(selection, () => $createCodeNode());
           }
         }
       });
