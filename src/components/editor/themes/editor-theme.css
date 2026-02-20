@@ -169,3 +169,9 @@ li.is-placeholder {
   color: #383A42;
 }
 
+/* TOC navigation highlight */
+.heading-highlight {
+  background-color: hsl(var(--primary) / 0.12);
+  border-radius: 4px;
+}
+
