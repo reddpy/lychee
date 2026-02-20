@@ -25,7 +25,7 @@ import { CodeHighlightPlugin } from "@/components/editor/plugins/code-highlight-
 import { CodeLanguagePlugin } from "@/components/editor/plugins/code-language-plugin"
 import { LinkEditorPlugin } from "@/components/editor/plugins/link-editor-plugin"
 import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
-import { ParagraphPlaceholderPlugin } from "@/components/editor/plugins/paragraph-placeholder-plugin"
+import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeholder-plugin"
 
 // Use linkifyjs for robust URL/email detection
 const MATCHERS: LinkMatcher[] = [
@@ -63,8 +63,8 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
       {/* Title plugin */}
       <TitlePlugin initialTitle={initialTitle} onTitleChange={onTitleChange} />
 
-      {/* Paragraph placeholder */}
-      <ParagraphPlaceholderPlugin />
+      {/* Block placeholders */}
+      <BlockPlaceholderPlugin />
 
       {/* Core plugins */}
       <HistoryPlugin />

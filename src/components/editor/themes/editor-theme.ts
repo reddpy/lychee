@@ -14,15 +14,15 @@ export const editorTheme: EditorThemeClasses = {
     h6: "scroll-m-20 text-base font-semibold tracking-tight [&:not(:first-child)]:mt-4 mb-2",
   },
   paragraph: "leading-7",
-  quote: "mt-6 border-l-2 pl-6 italic",
+  quote: "mt-1 border-l-2 pl-6 italic",
   link: "text-blue-600 underline cursor-text",
   list: {
     checklist: "relative",
     listitem: "mx-8",
     listitemChecked:
-      'relative mx-2 px-6 list-none outline-none line-through before:content-[""] before:w-4 before:h-4 before:top-0.5 before:left-0 before:cursor-pointer before:block before:bg-cover before:absolute before:border before:border-primary before:rounded before:bg-primary before:bg-no-repeat after:content-[""] after:cursor-pointer after:border-white after:border-solid after:absolute after:block after:top-[6px] after:w-[3px] after:left-[7px] after:right-[7px] after:h-[6px] after:rotate-45 after:border-r-2 after:border-b-2 after:border-l-0 after:border-t-0',
+      "relative mx-2 px-6 list-none outline-none line-through before:content-[''] before:w-[18px] before:h-[18px] before:top-0.5 before:left-0 before:cursor-pointer before:block before:absolute before:border-2 before:border-primary before:rounded-[2px] before:bg-primary before:bg-no-repeat",
     listitemUnchecked:
-      'relative mx-2 px-6 list-none outline-none before:content-[""] before:w-4 before:h-4 before:top-0.5 before:left-0 before:cursor-pointer before:block before:bg-cover before:absolute before:border before:border-primary before:rounded',
+      'relative mx-2 px-6 list-none outline-none before:content-[""] before:w-[18px] before:h-[18px] before:top-0.5 before:left-0 before:cursor-pointer before:block before:absolute before:border-2 before:border-primary before:rounded-[2px]',
     nested: {
       listitem: "list-none before:hidden after:hidden",
     },
