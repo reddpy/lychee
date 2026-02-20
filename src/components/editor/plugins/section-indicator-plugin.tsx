@@ -3,7 +3,7 @@
 import { type ReactElement, useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
-import { $nodesOfType, type NodeKey } from "lexical"
+import { $nodesOfType, $setSelection, type NodeKey } from "lexical"
 import { HeadingNode, type HeadingTagType } from "@lexical/rich-text"
 
 interface HeadingInfo {
@@ -28,6 +28,7 @@ export function SectionIndicatorPlugin(): ReactElement | null {
   const [pillTop, setPillTop] = useState(0)
   const [pillRight, setPillRight] = useState(0)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const highlightedRef = useRef<HTMLElement | null>(null)
 
   // Read headings + pill position on editor updates
   useEffect(() => {
@@ -42,6 +43,7 @@ export function SectionIndicatorPlugin(): ReactElement | null {
 
       editor.getEditorState().read(() => {
         const nodes = $nodesOfType(HeadingNode)
+        nodes.sort((a, b) => (a.isBefore(b) ? -1 : 1))
         const result: HeadingInfo[] = []
         for (const node of nodes) {
           const tag = node.getTag()
@@ -51,6 +53,20 @@ export function SectionIndicatorPlugin(): ReactElement | null {
         setHeadings(result)
       })
     })
+  }, [editor])
+
+  // Clear highlight when clicking in the editor
+  useEffect(() => {
+    const root = editor.getRootElement()
+    if (!root) return
+    const clearHighlight = () => {
+      if (highlightedRef.current) {
+        highlightedRef.current.classList.remove("heading-highlight")
+        highlightedRef.current = null
+      }
+    }
+    root.addEventListener("click", clearHighlight)
+    return () => root.removeEventListener("click", clearHighlight)
   }, [editor])
 
   // Cleanup
@@ -74,8 +90,15 @@ export function SectionIndicatorPlugin(): ReactElement | null {
 
   const handleClick = useCallback(
     (key: NodeKey) => {
+      if (highlightedRef.current) {
+        highlightedRef.current.classList.remove("heading-highlight")
+      }
       const dom = editor.getElementByKey(key)
-      if (dom) dom.scrollIntoView({ behavior: "smooth", block: "start" })
+      if (dom) {
+        dom.scrollIntoView({ behavior: "smooth", block: "start" })
+        dom.classList.add("heading-highlight")
+        highlightedRef.current = dom
+      }
     },
     [editor]
   )
@@ -86,6 +109,10 @@ export function SectionIndicatorPlugin(): ReactElement | null {
     <div
       className="fixed z-40"
       style={{ top: pillTop, right: pillRight }}
+      onMouseDown={() => {
+        editor.getRootElement()?.blur()
+        editor.update(() => { $setSelection(null) })
+      }}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
