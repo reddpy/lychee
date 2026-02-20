@@ -25,6 +25,7 @@ import { LinkEditorPlugin } from "@/components/editor/plugins/link-editor-plugin
 import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
 import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeholder-plugin"
 import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
+import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
 
 // Use linkifyjs for robust URL/email detection
 const MATCHERS: LinkMatcher[] = [
@@ -90,6 +91,9 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
 
       {/* Drag and drop blocks */}
       <DraggableBlockPlugin anchorElem={editorContainerRef.current} />
+
+      {/* Section position indicator */}
+      <SectionIndicatorPlugin />
     </div>
   )
 }
