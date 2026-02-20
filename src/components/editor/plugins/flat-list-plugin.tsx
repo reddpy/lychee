@@ -138,16 +138,13 @@ export function FlatListPlugin(): null {
       const rect = target.getBoundingClientRect()
       const clientX = event.clientX
 
-      // Compute the ::before width (the checkbox area)
-      const beforeStyles = window.getComputedStyle(target, "::before")
-      const beforeWidth = parseFloat(beforeStyles.width) || 18
-
-      // Allow a bit of padding for easier clicking
+      // Checkbox ::before is always 18px wide (defined in editor-theme.css)
+      const checkboxWidth = 18
       const padding = (event as PointerEvent).pointerType === "touch" ? 32 : 4
 
       if (
         clientX > rect.left - padding &&
-        clientX < rect.left + beforeWidth + padding
+        clientX < rect.left + checkboxWidth + padding
       ) {
         callback()
       }
