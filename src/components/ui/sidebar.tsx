@@ -116,21 +116,23 @@ export function Sidebar({
   children,
 }: React.PropsWithChildren<{ className?: string }>) {
   const { open, hoverOpen, setHoverOpen, isHoverLocked } = useSidebar();
-  const isVisible = open || hoverOpen;
   const isFloating = !open && hoverOpen;
+
+  // When expanded: in-flow flex child that pushes content over
+  // When floating (collapsed + hover): absolute overlay
+  // When hidden (collapsed, no hover): absolute + off-screen
   return (
     <aside
       onMouseEnter={() => { if (!open) setHoverOpen(true); }}
       onMouseLeave={() => { if (!open && !isHoverLocked()) setHoverOpen(false); }}
       className={cn(
-        'absolute z-30 flex w-[var(--sidebar-width)] flex-col bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
-        'transition-[transform,opacity] duration-200 ease-out',
-        isFloating
-          ? 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-[#C14B55] overflow-hidden'
-          : 'left-0 top-0 h-full border-r border-r-[hsl(var(--sidebar-border))]',
-        isVisible
-          ? cn('translate-x-0 opacity-100', isFloating ? 'shadow-xl' : 'shadow-none')
-          : '-translate-x-full opacity-0 shadow-none pointer-events-none',
+        'z-30 flex w-[var(--sidebar-width)] flex-col bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
+        // Expanded: in-flow flex child
+        open && 'relative shrink-0 h-full border-r border-r-[hsl(var(--sidebar-border))]',
+        // Collapsed: absolute overlay with transition
+        !open && 'absolute transition-[transform,opacity] duration-200 ease-out',
+        isFloating && 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-[#C14B55] overflow-hidden translate-x-0 opacity-100 shadow-xl',
+        !open && !isFloating && 'left-0 top-0 h-full border-r border-r-[hsl(var(--sidebar-border))] -translate-x-full opacity-0 shadow-none pointer-events-none',
         className,
       )}
       data-state={open ? 'expanded' : 'collapsed'}

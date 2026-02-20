@@ -1,87 +1,89 @@
-import * as React from "react"
-import debounce from "lodash/debounce"
-import { Smile, X } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { useDocumentStore } from "@/renderer/document-store"
-import type { DocumentRow } from "@/shared/documents"
-import type { SerializedEditorState } from "lexical"
+import * as React from "react";
+import debounce from "lodash/debounce";
+import { Smile, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useDocumentStore } from "@/renderer/document-store";
+import type { DocumentRow } from "@/shared/documents";
+import type { SerializedEditorState } from "lexical";
 
-import { Editor } from "@/components/editor/editor"
-import { NoteEmojiPicker } from "@/components/sidebar/note-emoji-picker"
+import { Editor } from "@/components/editor/editor";
+import { NoteEmojiPicker } from "@/components/sidebar/note-emoji-picker";
 
 function getSerializedState(
-  content: string | undefined
+  content: string | undefined,
 ): SerializedEditorState | undefined {
-  if (!content || content.trim() === "") return undefined
+  if (!content || content.trim() === "") return undefined;
   try {
-    const parsed = JSON.parse(content)
-    if (parsed && typeof parsed === "object" && parsed.root) return parsed
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === "object" && parsed.root) return parsed;
   } catch {
     // ignore invalid JSON
   }
-  return undefined
+  return undefined;
 }
 
-const LEGACY_UNTITLED = "Untitled"
+const LEGACY_UNTITLED = "Untitled";
 
 export function LexicalEditor({
   documentId,
   document,
 }: {
-  documentId: string
-  document: DocumentRow
+  documentId: string;
+  document: DocumentRow;
 }) {
-  const [emojiPickerOpen, setEmojiPickerOpen] = React.useState(false)
-  const [addIconPickerOpen, setAddIconPickerOpen] = React.useState(false)
-  const updateDocumentInStore = useDocumentStore((s) => s.updateDocumentInStore)
+  const [emojiPickerOpen, setEmojiPickerOpen] = React.useState(false);
+  const [addIconPickerOpen, setAddIconPickerOpen] = React.useState(false);
+  const updateDocumentInStore = useDocumentStore(
+    (s) => s.updateDocumentInStore,
+  );
 
   const editorSerializedState = React.useMemo(
     () => getSerializedState(document.content),
-    [documentId, document.content]
-  )
+    [documentId, document.content],
+  );
 
   const initialTitle = React.useMemo(() => {
-    const title = document.title
+    const title = document.title;
     if (title == null || title === "" || title === LEGACY_UNTITLED) {
-      return ""
+      return "";
     }
-    return title
-  }, [document.title])
+    return title;
+  }, [document.title]);
 
   const handleEmojiSelect = React.useCallback(
     async (native: string) => {
       try {
         const { document: updated } = await window.lychee.invoke(
           "documents.update",
-          { id: documentId, emoji: native }
-        )
-        updateDocumentInStore(documentId, { emoji: updated.emoji })
+          { id: documentId, emoji: native },
+        );
+        updateDocumentInStore(documentId, { emoji: updated.emoji });
       } catch {
         // ignore
       }
     },
-    [documentId, updateDocumentInStore]
-  )
+    [documentId, updateDocumentInStore],
+  );
 
   const removeEmoji = React.useCallback(async () => {
     try {
       const { document: updated } = await window.lychee.invoke(
         "documents.update",
-        { id: documentId, emoji: null }
-      )
-      updateDocumentInStore(documentId, { emoji: updated.emoji })
+        { id: documentId, emoji: null },
+      );
+      updateDocumentInStore(documentId, { emoji: updated.emoji });
     } catch {
       // ignore
     }
-  }, [documentId, updateDocumentInStore])
+  }, [documentId, updateDocumentInStore]);
 
   const handleRemoveEmojiClick = React.useCallback(
     (e: React.MouseEvent) => {
-      e.stopPropagation()
-      removeEmoji()
+      e.stopPropagation();
+      removeEmoji();
     },
-    [removeEmoji]
-  )
+    [removeEmoji],
+  );
 
   const saveContent = React.useMemo(
     () =>
@@ -89,24 +91,24 @@ export function LexicalEditor({
         (
           id: string,
           serialized: SerializedEditorState,
-          onSaved?: (doc: DocumentRow) => void
+          onSaved?: (doc: DocumentRow) => void,
         ) => {
-          const content = JSON.stringify(serialized)
+          const content = JSON.stringify(serialized);
           window.lychee
             .invoke("documents.update", { id, content })
             .then(({ document: doc }) => {
               updateDocumentInStore(doc.id, {
                 content: doc.content,
                 updatedAt: doc.updatedAt,
-              })
-              onSaved?.(doc)
+              });
+              onSaved?.(doc);
             })
-            .catch((err) => console.error("Save failed:", err))
+            .catch((err) => console.error("Save failed:", err));
         },
-        600
+        600,
       ),
-    [updateDocumentInStore]
-  )
+    [updateDocumentInStore],
+  );
 
   const saveTitle = React.useMemo(
     () =>
@@ -114,38 +116,38 @@ export function LexicalEditor({
         window.lychee
           .invoke("documents.update", { id, title: newTitle })
           .then(({ document: doc }) => {
-            updateDocumentInStore(doc.id, { title: doc.title })
+            updateDocumentInStore(doc.id, { title: doc.title });
           })
-          .catch((err) => console.error("Title save failed:", err))
+          .catch((err) => console.error("Title save failed:", err));
       }, 500),
-    [updateDocumentInStore]
-  )
+    [updateDocumentInStore],
+  );
 
   React.useEffect(() => {
     return () => {
-      saveContent.cancel()
-      saveTitle.cancel()
-    }
-  }, [saveContent, saveTitle])
+      saveContent.cancel();
+      saveTitle.cancel();
+    };
+  }, [saveContent, saveTitle]);
 
   const handleSerializedChange = React.useCallback(
     (value: SerializedEditorState) => {
-      saveContent(documentId, value)
+      saveContent(documentId, value);
     },
-    [documentId, saveContent]
-  )
+    [documentId, saveContent],
+  );
 
   const handleTitleChange = React.useCallback(
     (title: string) => {
-      updateDocumentInStore(documentId, { title })
-      saveTitle(documentId, title)
+      updateDocumentInStore(documentId, { title });
+      saveTitle(documentId, title);
     },
-    [documentId, updateDocumentInStore, saveTitle]
-  )
+    [documentId, updateDocumentInStore, saveTitle],
+  );
 
   return (
     <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto">
-      <div className="mx-auto max-w-[900px] px-8 py-10">
+      <div className="mx-auto max-w-225 px-8 py-10">
         {/* Emoji or Add Icon above editor */}
         <div className="pl-8 mb-2">
           {document.emoji ? (
@@ -161,7 +163,7 @@ export function LexicalEditor({
                     type="button"
                     className={cn(
                       "flex h-20 w-20 items-center justify-center rounded-lg bg-transparent text-6xl leading-none transition-colors",
-                      "hover:bg-[hsl(var(--muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      "hover:bg-[hsl(var(--muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
                     )}
                     title="Change icon"
                     aria-label="Change note icon"
@@ -193,7 +195,7 @@ export function LexicalEditor({
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-md px-2 py-1 transition-colors text-sm text-[hsl(var(--muted-foreground))]",
                     "hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
                   )}
                   title="Add Icon"
                   aria-label="Add note icon"
@@ -216,5 +218,5 @@ export function LexicalEditor({
         />
       </div>
     </main>
-  )
+  );
 }
