@@ -21,11 +21,10 @@ import { DraggableBlockPlugin } from "@/components/editor/plugins/draggable-bloc
 import { SlashCommandPlugin } from "@/components/editor/plugins/slash-command-plugin"
 import { KeyboardShortcutsPlugin } from "@/components/editor/plugins/keyboard-shortcuts-plugin"
 import { FloatingToolbarPlugin } from "@/components/editor/plugins/floating-toolbar-plugin"
-import { CodeHighlightPlugin } from "@/components/editor/plugins/code-highlight-plugin"
-import { CodeLanguagePlugin } from "@/components/editor/plugins/code-language-plugin"
 import { LinkEditorPlugin } from "@/components/editor/plugins/link-editor-plugin"
 import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
 import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeholder-plugin"
+import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 
 // Use linkifyjs for robust URL/email detection
 const MATCHERS: LinkMatcher[] = [
@@ -76,9 +75,7 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
       <LinkPlugin />
       <AutoLinkPlugin matchers={MATCHERS} />
       <LinkClickPlugin />
-      <CodeHighlightPlugin />
-      <CodeLanguagePlugin />
-
+      <CodeBlockPlugin />
       {/* Keyboard shortcuts */}
       <KeyboardShortcutsPlugin />
 

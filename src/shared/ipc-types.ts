@@ -65,3 +65,14 @@ export type IpcInvoke = <C extends IpcChannel>(
   payload: IpcContract[C]['req'],
 ) => Promise<IpcContract[C]['res']>;
 
+// ── Event-based IPC (main → renderer push) ─────────────────────────
+
+export type IpcEvents = {
+};
+
+export type IpcEventChannel = keyof IpcEvents;
+
+export type IpcOn = <C extends IpcEventChannel>(
+  channel: C,
+  callback: (payload: IpcEvents[C]) => void,
+) => () => void; // returns unsubscribe function

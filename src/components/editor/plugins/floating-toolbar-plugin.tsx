@@ -6,6 +6,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import {
   $getSelection,
   $isRangeSelection,
+  $insertNodes,
   FORMAT_TEXT_COMMAND,
   SELECTION_CHANGE_COMMAND,
   COMMAND_PRIORITY_LOW,
@@ -28,7 +29,7 @@ import {
   REMOVE_LIST_COMMAND,
   ListNode,
 } from "@lexical/list";
-import { $isCodeNode, $createCodeNode } from "@lexical/code";
+import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
@@ -143,7 +144,8 @@ function BlockTypeSelector({
           } else if (newType === "quote") {
             $setBlocksType(selection, () => $createQuoteNode());
           } else if (newType === "code") {
-            $setBlocksType(selection, () => $createCodeNode());
+            const node = $createCodeNode();
+            $insertNodes([node]);
           }
         }
       });

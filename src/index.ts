@@ -15,7 +15,7 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
-const createWindow = (): void => {
+const createWindow = (): BrowserWindow => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     height: 600,
@@ -36,6 +36,8 @@ const createWindow = (): void => {
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
+
+  return mainWindow;
 };
 
 // This method will be called when Electron has finished
@@ -47,8 +49,8 @@ app.whenReady().then(() => {
   }
   const { dbPath } = initDatabase();
   console.log(`[db] sqlite: ${dbPath}`);
-  registerIpcHandlers();
   createWindow();
+  registerIpcHandlers();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { $isTitleNode } from "@/components/editor/nodes/title-node"
+import { $insertNodes } from "lexical"
 
 class SlashCommandOption extends MenuOption {
   title: string
@@ -172,10 +173,8 @@ function getBaseOptions(): SlashCommandOption[] {
       keywords: ["code", "codeblock", "snippet"],
       onSelect: (editor) => {
         editor.update(() => {
-          const selection = $getSelection()
-          if ($isRangeSelection(selection)) {
-            $setBlocksType(selection, () => $createCodeNode())
-          }
+          const node = $createCodeNode()
+          $insertNodes([node])
         })
       },
     }),
