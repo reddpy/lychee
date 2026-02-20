@@ -6,11 +6,12 @@ import { CollapsedSidebarWidget } from '../components/collapsed-sidebar-widget';
 import { LexicalEditor } from '../components/lexical-editor';
 import { LycheeLogoHorizontal } from '../components/sidebar/lychee-logo';
 import { TabStrip } from '../components/tab-strip';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '../components/ui/sidebar';
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
 import { useDocumentStore } from '../renderer/document-store';
 
 /** Unified top bar: left section aligns with sidebar, right section holds tabs. */
 function TopBar() {
+  const { open: sidebarOpen } = useSidebar();
   const openTabs = useDocumentStore((s) => s.openTabs);
   const selectedId = useDocumentStore((s) => s.selectedId);
   const selectDocument = useDocumentStore((s) => s.selectDocument);
@@ -34,9 +35,9 @@ function TopBar() {
 
   return (
     <div className="titlebar-drag relative flex h-10 w-full shrink-0 bg-[hsl(var(--sidebar-background))]">
-      {/* Left section — fixed width matching sidebar right edge */}
+      {/* Left section — matches sidebar width when open, shrinks when collapsed */}
       <div
-        className="flex w-[var(--sidebar-width)] shrink-0 items-center border-r border-r-[hsl(var(--border))]"
+        className={`relative z-20 flex shrink-0 items-center overflow-hidden border-r border-r-[hsl(var(--border))] transition-[width] duration-200 ease-out ${sidebarOpen ? 'w-[var(--sidebar-width)]' : 'w-[184px]'}`}
       >
         {/* Traffic lights space — always reserved */}
         <div className="w-[76px] shrink-0" />
