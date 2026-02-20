@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $nodesOfType, $setSelection, type NodeKey } from "lexical"
 import { HeadingNode, type HeadingTagType } from "@lexical/rich-text"
+import { HIGHLIGHT_BLOCK_COMMAND } from "./block-highlight-plugin"
 
 interface HeadingInfo {
   key: NodeKey
@@ -28,7 +29,6 @@ export function SectionIndicatorPlugin(): ReactElement | null {
   const [pillTop, setPillTop] = useState(0)
   const [pillRight, setPillRight] = useState(0)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const highlightedRef = useRef<HTMLElement | null>(null)
 
   // Rebuild heading list only when headings are created/updated/destroyed
   useEffect(() => {
@@ -68,20 +68,6 @@ export function SectionIndicatorPlugin(): ReactElement | null {
     }
   }, [editor])
 
-  // Clear highlight when clicking in the editor
-  useEffect(() => {
-    const root = editor.getRootElement()
-    if (!root) return
-    const clearHighlight = () => {
-      if (highlightedRef.current) {
-        highlightedRef.current.classList.remove("heading-highlight")
-        highlightedRef.current = null
-      }
-    }
-    root.addEventListener("click", clearHighlight)
-    return () => root.removeEventListener("click", clearHighlight)
-  }, [editor])
-
   // Cleanup
   useEffect(() => {
     return () => {
@@ -103,14 +89,10 @@ export function SectionIndicatorPlugin(): ReactElement | null {
 
   const handleClick = useCallback(
     (key: NodeKey) => {
-      if (highlightedRef.current) {
-        highlightedRef.current.classList.remove("heading-highlight")
-      }
       const dom = editor.getElementByKey(key)
       if (dom) {
         dom.scrollIntoView({ behavior: "smooth", block: "start" })
-        dom.classList.add("heading-highlight")
-        highlightedRef.current = dom
+        editor.dispatchCommand(HIGHLIGHT_BLOCK_COMMAND, dom)
       }
     },
     [editor]

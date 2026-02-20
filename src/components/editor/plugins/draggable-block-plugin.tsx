@@ -5,6 +5,7 @@ import { DraggableBlockPlugin_EXPERIMENTAL } from "@lexical/react/LexicalDraggab
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $setSelection } from "lexical"
 import { GripVerticalIcon } from "lucide-react"
+import { HIGHLIGHT_BLOCK_COMMAND } from "./block-highlight-plugin"
 
 const DRAGGABLE_BLOCK_MENU_CLASSNAME = "draggable-block-menu"
 
@@ -20,6 +21,7 @@ export function DraggableBlockPlugin({
   const [editor] = useLexicalComposerContext()
   const menuRef = useRef<HTMLDivElement>(null)
   const targetLineRef = useRef<HTMLDivElement>(null)
+  const targetBlockRef = useRef<HTMLElement | null>(null)
   const [hideMenu, setHideMenu] = useState(false)
 
   // Clear selection and blur editor when clicking drag handle to prevent scroll-back on drop
@@ -31,10 +33,17 @@ export function DraggableBlockPlugin({
     if (rootElement) {
       rootElement.blur()
     }
+
+    // Highlight the target block
+    const block = targetBlockRef.current
+    if (block) {
+      editor.dispatchCommand(HIGHLIGHT_BLOCK_COMMAND, block)
+    }
   }, [editor])
 
   // Called when the target block element changes - hide menu if it's the title
   const handleElementChanged = useCallback((element: HTMLElement | null) => {
+    targetBlockRef.current = element
     if (element && element.getAttribute("data-lexical-no-drag") === "true") {
       setHideMenu(true)
     } else {

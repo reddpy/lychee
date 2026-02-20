@@ -38,6 +38,7 @@ import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
 import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeholder-plugin"
 import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
+import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highlight-plugin"
 import { FlatListPlugin } from "@/components/editor/plugins/flat-list-plugin"
 import {
   FLAT_BULLET_LIST,
@@ -125,6 +126,9 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
 
       {/* Link editor popover */}
       <LinkEditorPlugin />
+
+      {/* Block highlight (shared by drag handle, TOC, etc.) */}
+      <BlockHighlightPlugin />
 
       {/* Drag and drop blocks */}
       <DraggableBlockPlugin anchorElem={editorContainerRef.current} />
