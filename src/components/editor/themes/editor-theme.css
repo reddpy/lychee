@@ -159,7 +159,8 @@ blockquote.is-placeholder,
   content: "";
   width: 18px;
   height: 18px;
-  top: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   left: 0;
   cursor: pointer;
   display: block;
