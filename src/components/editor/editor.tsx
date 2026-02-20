@@ -17,19 +17,83 @@ const editorConfig: InitialConfigType = {
   },
 }
 
-// Remove legacy node types that are no longer registered
+/**
+ * Flatten a single old-format listitem node into one or more flat list-item nodes.
+ * Old format: { type: "listitem", children: [...textNodes, possibleNestedList], checked?: boolean }
+ * A listitem's children may include a nested "list" node at the end (for sub-items).
+ */
+function flattenListItem(
+  item: any,
+  indent: number,
+  listType: string
+): any[] {
+  const result: any[] = []
+
+  // Separate inline children from nested list children
+  const inlineChildren: any[] = []
+  const nestedLists: any[] = []
+
+  for (const child of item.children || []) {
+    if (child.type === "list") {
+      nestedLists.push(child)
+    } else {
+      inlineChildren.push(child)
+    }
+  }
+
+  // Create the flat list-item for this node
+  result.push({
+    type: "list-item",
+    listType,
+    checked: item.checked ?? false,
+    indent,
+    direction: item.direction ?? null,
+    format: item.format ?? "",
+    version: 1,
+    children: inlineChildren,
+  })
+
+  // Recursively flatten any nested lists at indent + 1
+  for (const nested of nestedLists) {
+    const nestedType = nested.listType || listType
+    for (const nestedItem of nested.children || []) {
+      result.push(...flattenListItem(nestedItem, indent + 1, nestedType))
+    }
+  }
+
+  return result
+}
+
+/**
+ * Migrate children: remove legacy nodes and flatten old nested list structures
+ * into flat list-item nodes.
+ */
 function migrateChildren(children: any[]): any[] {
-  return children
-    .filter(
-      (child) =>
-        child.type !== "code-snippet" && child.type !== "executable-code-block"
-    )
-    .map((child) => {
-      if (child.children && Array.isArray(child.children)) {
-        return { ...child, children: migrateChildren(child.children) }
+  const result: any[] = []
+
+  for (const child of children) {
+    // Filter out legacy nodes
+    if (child.type === "code-snippet" || child.type === "executable-code-block") {
+      continue
+    }
+
+    if (child.type === "list") {
+      // Flatten: promote list items to root level as flat list-item nodes
+      const listType = child.listType || "bullet"
+      for (const listItem of child.children || []) {
+        result.push(...flattenListItem(listItem, 0, listType))
       }
-      return child
-    })
+    } else {
+      // Non-list nodes: recurse into children (for nested structures)
+      if (child.children && Array.isArray(child.children)) {
+        result.push({ ...child, children: migrateChildren(child.children) })
+      } else {
+        result.push(child)
+      }
+    }
+  }
+
+  return result
 }
 
 // Sanitize the serialized state to handle empty states and legacy nodes

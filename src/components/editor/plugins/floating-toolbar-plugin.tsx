@@ -7,8 +7,6 @@ import {
   $getSelection,
   $isRangeSelection,
   FORMAT_TEXT_COMMAND,
-  SELECTION_CHANGE_COMMAND,
-  COMMAND_PRIORITY_LOW,
   LexicalEditor,
   $createParagraphNode,
 } from "lexical";
@@ -20,19 +18,14 @@ import {
   $isQuoteNode,
   HeadingTagType,
 } from "@lexical/rich-text";
-import {
-  $isListNode,
-  INSERT_ORDERED_LIST_COMMAND,
-  INSERT_UNORDERED_LIST_COMMAND,
-  INSERT_CHECK_LIST_COMMAND,
-  REMOVE_LIST_COMMAND,
-  ListNode,
-} from "@lexical/list";
-import { $createCodeNode, $isCodeNode } from "@lexical/code";
+import { $isCodeNode, $createCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
-import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
 import { $isTitleNode } from "@/components/editor/nodes/title-node";
+import {
+  $isListItemNode,
+  $createListItemNode,
+} from "@/components/editor/nodes/list-item-node";
 import {
   Bold,
   Italic,
@@ -108,48 +101,27 @@ function BlockTypeSelector({
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return;
 
-        // Handle list transformations
-        if (newType === "bullet") {
-          if (blockType === "bullet") {
-            editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-          } else {
-            editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
-          }
+        if (newType === "paragraph") {
+          $setBlocksType(selection, () => $createParagraphNode());
+        } else if (newType === "h1" || newType === "h2" || newType === "h3") {
+          $setBlocksType(selection, () =>
+            $createHeadingNode(newType as HeadingTagType)
+          );
+        } else if (newType === "bullet") {
+          $setBlocksType(selection, () => $createListItemNode("bullet"));
         } else if (newType === "number") {
-          if (blockType === "number") {
-            editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-          } else {
-            editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
-          }
+          $setBlocksType(selection, () => $createListItemNode("number"));
         } else if (newType === "check") {
-          if (blockType === "check") {
-            editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-          } else {
-            editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
-          }
-        } else {
-          // First remove list if we're in one
-          if (blockType === "bullet" || blockType === "number" || blockType === "check") {
-            editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-          }
-
-          // Then set the block type
-          if (newType === "paragraph") {
-            $setBlocksType(selection, () => $createParagraphNode());
-          } else if (newType === "h1" || newType === "h2" || newType === "h3") {
-            $setBlocksType(selection, () =>
-              $createHeadingNode(newType as HeadingTagType)
-            );
-          } else if (newType === "quote") {
-            $setBlocksType(selection, () => $createQuoteNode());
-          } else if (newType === "code") {
-            $setBlocksType(selection, () => $createCodeNode());
-          }
+          $setBlocksType(selection, () => $createListItemNode("check"));
+        } else if (newType === "quote") {
+          $setBlocksType(selection, () => $createQuoteNode());
+        } else if (newType === "code") {
+          $setBlocksType(selection, () => $createCodeNode());
         }
       });
       setOpen(false);
     },
-    [editor, blockType]
+    [editor]
   );
 
   return (
@@ -192,59 +164,57 @@ function BlockTypeSelector({
   );
 }
 
+interface ToolbarState {
+  isVisible: boolean;
+  isBold: boolean;
+  isItalic: boolean;
+  isUnderline: boolean;
+  isStrikethrough: boolean;
+  isCode: boolean;
+  isLink: boolean;
+  blockType: BlockType;
+  isSingleBlock: boolean;
+}
+
+const HIDDEN_STATE: ToolbarState = {
+  isVisible: false,
+  isBold: false,
+  isItalic: false,
+  isUnderline: false,
+  isStrikethrough: false,
+  isCode: false,
+  isLink: false,
+  blockType: "paragraph",
+  isSingleBlock: true,
+};
+
+const TOOLBAR_WIDTH = 380;
+const TOOLBAR_HEIGHT = 45;
+const TOOLBAR_GAP = 8;
+const TAB_BAR_HEIGHT = 120;
+
 function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
-  const [isVisible, setIsVisible] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const [isBold, setIsBold] = useState(false);
-  const [isItalic, setIsItalic] = useState(false);
-  const [isUnderline, setIsUnderline] = useState(false);
-  const [isStrikethrough, setIsStrikethrough] = useState(false);
-  const [isCode, setIsCode] = useState(false);
-  const [isLink, setIsLink] = useState(false);
-  const [blockType, setBlockType] = useState<BlockType>("paragraph");
-  const [isSingleBlock, setIsSingleBlock] = useState(true);
-  const isMouseDownRef = useRef(false);
+  const [state, setState] = useState<ToolbarState>(HIDDEN_STATE);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const scrollHiddenRef = useRef(false);
+  const visibleRef = useRef(false);
 
-  const updateToolbar = useCallback(() => {
-    const editorState = editor.getEditorState();
+  // Keep ref in sync so scroll handler has current value without re-subscribing
+  visibleRef.current = state.isVisible;
 
-    let shouldShow = false;
-    let bold = false;
-    let italic = false;
-    let underline = false;
-    let strikethrough = false;
-    let code = false;
-    let link = false;
-    let currentBlockType: BlockType = "paragraph";
-    let singleBlock = true;
-    let pos = { top: 0, left: 0 };
+  // Read current selection state — returns null if no valid selection
+  const readSelectionState = useCallback((): Omit<ToolbarState, "isVisible"> | null => {
+    let result: Omit<ToolbarState, "isVisible"> | null = null;
 
-    editorState.read(() => {
+    editor.getEditorState().read(() => {
       const selection = $getSelection();
-      if (!$isRangeSelection(selection)) {
-        return;
-      }
+      if (!$isRangeSelection(selection) || selection.isCollapsed()) return;
 
       const text = selection.getTextContent();
-      if (!text || text.length === 0 || selection.isCollapsed()) {
-        return;
-      }
+      if (!text || text.length === 0) return;
 
-      // Update format states
-      bold = selection.hasFormat("bold");
-      italic = selection.hasFormat("italic");
-      underline = selection.hasFormat("underline");
-      strikethrough = selection.hasFormat("strikethrough");
-      code = selection.hasFormat("code");
-
-      // Check for link - only check anchor node's parent
-      const anchorParent = selection.anchor.getNode().getParent();
-      link = $isLinkNode(anchorParent);
-
-      // Detect block type - simple check: anchor and focus in same block
       const anchorNode = selection.anchor.getNode();
       const focusNode = selection.focus.getNode();
-
       const anchorElement =
         anchorNode.getKey() === "root"
           ? anchorNode
@@ -254,169 +224,125 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
           ? focusNode
           : focusNode.getTopLevelElementOrThrow();
 
-      // Simple: same block = show selector, different blocks = hide it
-      // Also hide for title node since it can't be transformed
-      singleBlock = anchorElement === focusElement && !$isTitleNode(anchorElement);
-
-      const element = anchorElement;
-
-      if ($isHeadingNode(element)) {
-        const tag = element.getTag();
-        if (tag === "h1" || tag === "h2" || tag === "h3") {
-          currentBlockType = tag;
-        }
-      } else if ($isListNode(element)) {
-        const listType = element.getListType();
-        if (listType === "bullet") {
-          currentBlockType = "bullet";
-        } else if (listType === "number") {
-          currentBlockType = "number";
-        } else if (listType === "check") {
-          currentBlockType = "check";
-        }
-      } else if ($isQuoteNode(element)) {
-        currentBlockType = "quote";
-      } else if ($isCodeNode(element)) {
-        currentBlockType = "code";
-      } else {
-        // Check if we're inside a list item
-        const listNode = $getNearestNodeOfType(anchorNode, ListNode);
-        if (listNode) {
-          const listType = listNode.getListType();
-          if (listType === "bullet") {
-            currentBlockType = "bullet";
-          } else if (listType === "number") {
-            currentBlockType = "number";
-          } else if (listType === "check") {
-            currentBlockType = "check";
-          }
-        } else {
-          currentBlockType = "paragraph";
-        }
+      let blockType: BlockType = "paragraph";
+      if ($isHeadingNode(anchorElement)) {
+        const tag = anchorElement.getTag();
+        if (tag === "h1" || tag === "h2" || tag === "h3") blockType = tag;
+      } else if ($isListItemNode(anchorElement)) {
+        blockType = anchorElement.getListType();
+      } else if ($isQuoteNode(anchorElement)) {
+        blockType = "quote";
+      } else if ($isCodeNode(anchorElement)) {
+        blockType = "code";
       }
 
-      // Get position from native selection
-      const nativeSelection = window.getSelection();
-      if (!nativeSelection || nativeSelection.rangeCount === 0) {
-        return;
-      }
-
-      const range = nativeSelection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-
-      if (rect.width === 0 || rect.height === 0) {
-        return;
-      }
-
-      // Position above the selection
-      const toolbarWidth = 380;
-      const toolbarHeight = 45;
-      const gap = 8;
-      const left = rect.left + rect.width / 2 - toolbarWidth / 2;
-      const top = rect.top - toolbarHeight - gap;
-
-      pos = {
-        top: Math.max(top, 10),
-        left: Math.max(left, 10),
+      result = {
+        isBold: selection.hasFormat("bold"),
+        isItalic: selection.hasFormat("italic"),
+        isUnderline: selection.hasFormat("underline"),
+        isStrikethrough: selection.hasFormat("strikethrough"),
+        isCode: selection.hasFormat("code"),
+        isLink: $isLinkNode(anchorNode.getParent()),
+        blockType,
+        isSingleBlock: anchorElement === focusElement && !$isTitleNode(anchorElement),
       };
-      shouldShow = true;
     });
 
-    // Update state outside of read callback
-    setIsBold(bold);
-    setIsItalic(italic);
-    setIsUnderline(underline);
-    setIsStrikethrough(strikethrough);
-    setIsCode(code);
-    setIsLink(link);
-    setBlockType(currentBlockType);
-    setIsSingleBlock(singleBlock);
-    setPosition(pos);
-
-    // Only show toolbar when mouse is up and there's a selection
-    if (shouldShow && !isMouseDownRef.current) {
-      setIsVisible(true);
-    } else if (!shouldShow) {
-      setIsVisible(false);
-    }
+    return result;
   }, [editor]);
 
-  // Track mouse state to only show toolbar after mouseup (within editor only)
+  // Position toolbar at selection rect. Returns false if no valid rect.
+  const positionToolbar = useCallback((minTop?: number) => {
+    const nativeSelection = window.getSelection();
+    if (!nativeSelection || nativeSelection.rangeCount === 0) return;
+    const rect = nativeSelection.getRangeAt(0).getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    if (toolbarRef.current) {
+      const left = Math.max(rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2, 10);
+      const top = Math.max(rect.top - TOOLBAR_HEIGHT - TOOLBAR_GAP, minTop ?? 10);
+      toolbarRef.current.style.top = `${top}px`;
+      toolbarRef.current.style.left = `${left}px`;
+    }
+  }, []);
+
+  // Right-click shows toolbar; mousedown hides it; editor updates refresh format state
   useEffect(() => {
     const rootElement = editor.getRootElement();
     if (!rootElement) return;
 
+    const handleContextMenu = (e: MouseEvent) => {
+      const selState = readSelectionState();
+      if (!selState) return;
+      e.preventDefault();
+      setState({ ...selState, isVisible: true });
+      requestAnimationFrame(() => positionToolbar());
+    };
+
     const handleMouseDown = () => {
-      isMouseDownRef.current = true;
-    };
-    const handleMouseUp = () => {
-      isMouseDownRef.current = false;
-      updateToolbar();
+      scrollHiddenRef.current = false;
+      setState(HIDDEN_STATE);
     };
 
+    rootElement.addEventListener("contextmenu", handleContextMenu);
     rootElement.addEventListener("mousedown", handleMouseDown);
-    document.addEventListener("mouseup", handleMouseUp);
     return () => {
+      rootElement.removeEventListener("contextmenu", handleContextMenu);
       rootElement.removeEventListener("mousedown", handleMouseDown);
-      document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [editor, updateToolbar]);
+  }, [editor, readSelectionState, positionToolbar]);
 
+  // Update format states when editor changes (only while toolbar is visible)
   useEffect(() => {
-    return mergeRegister(
-      editor.registerUpdateListener(({ editorState }) => {
-        editorState.read(() => {
-          updateToolbar();
-        });
-      }),
-      editor.registerCommand(
-        SELECTION_CHANGE_COMMAND,
-        () => {
-          updateToolbar();
-          return false;
-        },
-        COMMAND_PRIORITY_LOW
-      )
-    );
-  }, [editor, updateToolbar]);
+    return editor.registerUpdateListener(() => {
+      if (!visibleRef.current && !scrollHiddenRef.current) return;
 
-  // Update toolbar position on scroll
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!isVisible) return;
-
-      const nativeSelection = window.getSelection();
-      if (!nativeSelection || nativeSelection.rangeCount === 0) {
+      const selState = readSelectionState();
+      if (!selState) {
+        scrollHiddenRef.current = false;
+        setState(HIDDEN_STATE);
         return;
       }
 
-      const range = nativeSelection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
+      setState((prev) => {
+        if (!prev.isVisible) return prev;
+        return { ...selState, isVisible: true };
+      });
+      positionToolbar();
+    });
+  }, [editor, readSelectionState, positionToolbar]);
 
-      // Hide if selected text exits the viewport
-      const tabBarHeight = 120;
-      const toolbarHeight = 45;
-      const isAboveView = rect.bottom < tabBarHeight;
-      const isBelowView = rect.top > window.innerHeight;
+  // Scroll: hide when selection leaves viewport, re-show when it returns
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!visibleRef.current && !scrollHiddenRef.current) return;
 
-      if (isAboveView || isBelowView) {
-        setIsVisible(false);
+      const nativeSelection = window.getSelection();
+      if (!nativeSelection || nativeSelection.rangeCount === 0) return;
+
+      const rect = nativeSelection.getRangeAt(0).getBoundingClientRect();
+      const outOfView = rect.bottom < TAB_BAR_HEIGHT || rect.top > window.innerHeight;
+
+      if (!toolbarRef.current) return;
+
+      if (outOfView) {
+        toolbarRef.current.style.visibility = "hidden";
+        scrollHiddenRef.current = true;
       } else {
-        const toolbarWidth = 380;
-        const gap = 8;
-        const left = rect.left + rect.width / 2 - toolbarWidth / 2;
-        const top = rect.top - toolbarHeight - gap;
-
-        setPosition({
-          top: Math.max(top, tabBarHeight),
-          left: Math.max(left, 10),
-        });
+        if (scrollHiddenRef.current) {
+          toolbarRef.current.style.visibility = "visible";
+          scrollHiddenRef.current = false;
+        }
+        const left = Math.max(rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2, 10);
+        const top = Math.max(rect.top - TOOLBAR_HEIGHT - TOOLBAR_GAP, TAB_BAR_HEIGHT);
+        toolbarRef.current.style.top = `${top}px`;
+        toolbarRef.current.style.left = `${left}px`;
       }
     };
 
     window.addEventListener("scroll", handleScroll, true);
     return () => window.removeEventListener("scroll", handleScroll, true);
-  }, [isVisible]);
+  }, []);
 
   const handleFormat = useCallback(
     (format: "bold" | "italic" | "underline" | "strikethrough" | "code") => {
@@ -430,149 +356,82 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
     editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined);
   }, [editor]);
 
-  if (!isVisible) return null;
+  if (!state.isVisible) return null;
+
+  const btnClass = (active: boolean) =>
+    cn(
+      "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+      active
+        ? "bg-primary text-primary-foreground"
+        : "hover:bg-muted text-foreground"
+    );
 
   return createPortal(
     <div
+      ref={toolbarRef}
       className="floating-toolbar fixed z-50 flex items-center gap-0.5 rounded-md border border-[hsl(var(--border))] bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
-      style={{
-        top: position.top,
-        left: position.left,
-      }}
     >
-      {isSingleBlock && (
+      {state.isSingleBlock && (
         <>
-          <BlockTypeSelector editor={editor} blockType={blockType} />
+          <BlockTypeSelector editor={editor} blockType={state.blockType} />
           <div className="mx-1 h-6 w-px bg-border" />
         </>
       )}
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => handleFormat("bold")}
-            className={cn(
-              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
-              isBold
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-foreground"
-            )}
-            aria-label="Bold"
-          >
+          <button type="button" onClick={() => handleFormat("bold")} className={btnClass(state.isBold)} aria-label="Bold">
             <Bold className="h-4 w-4" />
           </button>
         </TooltipTrigger>
-        <TooltipContent sideOffset={8}>
-          Bold <kbd className="ml-1.5 opacity-60">⌘B</kbd>
-        </TooltipContent>
+        <TooltipContent sideOffset={8}>Bold <kbd className="ml-1.5 opacity-60">⌘B</kbd></TooltipContent>
       </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => handleFormat("italic")}
-            className={cn(
-              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
-              isItalic
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-foreground"
-            )}
-            aria-label="Italic"
-          >
+          <button type="button" onClick={() => handleFormat("italic")} className={btnClass(state.isItalic)} aria-label="Italic">
             <Italic className="h-4 w-4" />
           </button>
         </TooltipTrigger>
-        <TooltipContent sideOffset={8}>
-          Italic <kbd className="ml-1.5 opacity-60">⌘I</kbd>
-        </TooltipContent>
+        <TooltipContent sideOffset={8}>Italic <kbd className="ml-1.5 opacity-60">⌘I</kbd></TooltipContent>
       </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => handleFormat("underline")}
-            className={cn(
-              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
-              isUnderline
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-foreground"
-            )}
-            aria-label="Underline"
-          >
+          <button type="button" onClick={() => handleFormat("underline")} className={btnClass(state.isUnderline)} aria-label="Underline">
             <Underline className="h-4 w-4" />
           </button>
         </TooltipTrigger>
-        <TooltipContent sideOffset={8}>
-          Underline <kbd className="ml-1.5 opacity-60">⌘U</kbd>
-        </TooltipContent>
+        <TooltipContent sideOffset={8}>Underline <kbd className="ml-1.5 opacity-60">⌘U</kbd></TooltipContent>
       </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => handleFormat("strikethrough")}
-            className={cn(
-              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
-              isStrikethrough
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-foreground"
-            )}
-            aria-label="Strikethrough"
-          >
+          <button type="button" onClick={() => handleFormat("strikethrough")} className={btnClass(state.isStrikethrough)} aria-label="Strikethrough">
             <Strikethrough className="h-4 w-4" />
           </button>
         </TooltipTrigger>
-        <TooltipContent sideOffset={8}>
-          Strikethrough <kbd className="ml-1.5 opacity-60">⌘⇧S</kbd>
-        </TooltipContent>
+        <TooltipContent sideOffset={8}>Strikethrough <kbd className="ml-1.5 opacity-60">⌘⇧S</kbd></TooltipContent>
       </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => handleFormat("code")}
-            className={cn(
-              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
-              isCode
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-foreground"
-            )}
-            aria-label="Inline code"
-          >
+          <button type="button" onClick={() => handleFormat("code")} className={btnClass(state.isCode)} aria-label="Inline code">
             <Code className="h-4 w-4" />
           </button>
         </TooltipTrigger>
-        <TooltipContent sideOffset={8}>
-          Inline code <kbd className="ml-1.5 opacity-60">⌘E</kbd>
-        </TooltipContent>
+        <TooltipContent sideOffset={8}>Inline code <kbd className="ml-1.5 opacity-60">⌘E</kbd></TooltipContent>
       </Tooltip>
 
       <div className="mx-1 h-6 w-px bg-border" />
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={handleLink}
-            className={cn(
-              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
-              isLink
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-foreground"
-            )}
-            aria-label="Link"
-          >
+          <button type="button" onClick={handleLink} className={btnClass(state.isLink)} aria-label="Link">
             <Link className="h-4 w-4" />
           </button>
         </TooltipTrigger>
-        <TooltipContent sideOffset={8}>
-          Link <kbd className="ml-1.5 opacity-60">⌘K</kbd>
-        </TooltipContent>
+        <TooltipContent sideOffset={8}>Link <kbd className="ml-1.5 opacity-60">⌘K</kbd></TooltipContent>
       </Tooltip>
     </div>,
     document.body

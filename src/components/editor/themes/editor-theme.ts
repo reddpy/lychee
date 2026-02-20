@@ -16,33 +16,7 @@ export const editorTheme: EditorThemeClasses = {
   paragraph: "leading-7",
   quote: "mt-1 border-l-2 pl-6 italic",
   link: "text-blue-600 underline cursor-text",
-  list: {
-    checklist: "relative",
-    listitem: "mx-8",
-    listitemChecked:
-      "relative mx-2 px-6 list-none outline-none line-through before:content-[''] before:w-[18px] before:h-[18px] before:top-0.5 before:left-0 before:cursor-pointer before:block before:absolute before:border-2 before:border-primary before:rounded-[2px] before:bg-primary before:bg-no-repeat",
-    listitemUnchecked:
-      'relative mx-2 px-6 list-none outline-none before:content-[""] before:w-[18px] before:h-[18px] before:top-0.5 before:left-0 before:cursor-pointer before:block before:absolute before:border-2 before:border-primary before:rounded-[2px]',
-    nested: {
-      listitem: "list-none before:hidden after:hidden",
-    },
-    ol: "m-0 p-0 list-decimal [&>li]:mt-2",
-    olDepth: [
-      "list-outside !list-decimal",
-      "list-outside !list-[upper-roman]",
-      "list-outside !list-[lower-roman]",
-      "list-outside !list-[upper-alpha]",
-      "list-outside !list-[lower-alpha]",
-    ],
-    ul: "m-0 p-0 list-outside [&>li]:mt-2",
-    ulDepth: [
-      "list-outside !list-disc",
-      "list-outside !list-disc",
-      "list-outside !list-disc",
-      "list-outside !list-disc",
-      "list-outside !list-disc",
-    ],
-  },
+  // list theme removed — flat list items are styled via CSS classes on the node's <div>
   hashtag: "text-blue-600 bg-blue-100 rounded-md px-1",
   text: {
     bold: "font-bold",

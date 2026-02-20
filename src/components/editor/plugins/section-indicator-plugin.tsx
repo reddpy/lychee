@@ -30,20 +30,11 @@ export function SectionIndicatorPlugin(): ReactElement | null {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const highlightedRef = useRef<HTMLElement | null>(null)
 
-  // Read headings + pill position on editor updates
+  // Rebuild heading list only when headings are created/updated/destroyed
   useEffect(() => {
-    return editor.registerUpdateListener(() => {
-      const root = editor.getRootElement()
-      const scrollContainer = getScrollContainer(root)
-      if (!scrollContainer) return
-
-      const rect = scrollContainer.getBoundingClientRect()
-      setPillRight(window.innerWidth - rect.right + 14)
-      setPillTop(rect.top + rect.height * 0.3)
-
+    return editor.registerMutationListener(HeadingNode, () => {
       editor.getEditorState().read(() => {
         const nodes = $nodesOfType(HeadingNode)
-        nodes.sort((a, b) => (a.isBefore(b) ? -1 : 1))
         const result: HeadingInfo[] = []
         for (const node of nodes) {
           const tag = node.getTag()
@@ -53,6 +44,28 @@ export function SectionIndicatorPlugin(): ReactElement | null {
         setHeadings(result)
       })
     })
+  }, [editor])
+
+  // Position the pill based on the scroll container — only on resize/layout
+  useEffect(() => {
+    const root = editor.getRootElement()
+    const scrollContainer = getScrollContainer(root)
+    if (!scrollContainer) return
+
+    const updatePosition = () => {
+      const rect = scrollContainer.getBoundingClientRect()
+      setPillRight(window.innerWidth - rect.right + 14)
+      setPillTop(rect.top + rect.height * 0.3)
+    }
+
+    updatePosition()
+    const observer = new ResizeObserver(updatePosition)
+    observer.observe(scrollContainer)
+    window.addEventListener("resize", updatePosition)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", updatePosition)
+    }
   }, [editor])
 
   // Clear highlight when clicking in the editor
