@@ -19,6 +19,7 @@ import { formatKeymap } from "./plugins/keymap"
 import { editorInputRules } from "./plugins/inputrules"
 import { blockKeymap, listKeymap } from "./plugins/block-keymap"
 import { FloatingToolbarPlugin } from "./plugins/floating-toolbar-plugin"
+import { SlashCommandPlugin } from "./plugins/slash-command-plugin"
 
 import "./theme.css"
 
@@ -160,8 +161,9 @@ export function Editor({
 
   return (
     <ProseMirrorProvider value={view}>
-      <div className="bg-background overflow-hidden">
+      <div className="bg-background overflow-hidden relative">
         <div ref={editorRef} className="ProseMirror-editor" />
+        <SlashCommandPlugin />
       </div>
       <FloatingToolbarPlugin />
     </ProseMirrorProvider>
