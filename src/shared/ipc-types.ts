@@ -56,6 +56,18 @@ export type IpcContract = {
     req: { url: string };
     res: { ok: true };
   };
+  'images.save': {
+    req: { data: string; mimeType: string };
+    res: { id: string; filePath: string };
+  };
+  'images.getPath': {
+    req: { id: string };
+    res: { filePath: string };
+  };
+  'images.delete': {
+    req: { id: string };
+    res: { ok: true };
+  };
 };
 
 export type IpcChannel = keyof IpcContract;

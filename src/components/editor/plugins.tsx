@@ -39,6 +39,7 @@ import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeh
 import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
 import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highlight-plugin"
+import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
 import { FlatListPlugin } from "@/components/editor/plugins/flat-list-plugin"
 import {
   FLAT_BULLET_LIST,
@@ -126,6 +127,9 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
 
       {/* Link editor popover */}
       <LinkEditorPlugin />
+
+      {/* Image drop, paste, and insert command */}
+      <ImagePlugin />
 
       {/* Block highlight (shared by drag handle, TOC, etc.) */}
       <BlockHighlightPlugin />

@@ -240,3 +240,105 @@ blockquote.is-placeholder,
   background-color: hsl(var(--primary) / 0.12);
   border-radius: 4px;
 }
+
+/* ── Image block ──────────────────────────────────────── */
+
+.editor-image {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  cursor: default;
+  user-select: none;
+  margin: 0.25rem 0;
+  padding: 0.5rem;
+}
+
+.image-container {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.image-container img {
+  display: block;
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+.image-container.selected {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Alignment toolbar */
+.image-toolbar {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 6px;
+  background: hsl(var(--background) / 0.9);
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.image-container.selected .image-toolbar {
+  display: flex;
+}
+
+.image-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground));
+  transition: background 0.1s, color 0.1s;
+}
+
+.image-toolbar-btn:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.image-toolbar-btn.active {
+  background: hsl(var(--primary));
+  color: white;
+}
+
+/* Loading placeholder */
+.image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 200px;
+  background-color: hsl(var(--muted));
+  border-radius: 6px;
+}
+
+/* Resize handles */
+.image-resizer {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: hsl(var(--primary));
+  border: 1.5px solid white;
+  border-radius: 2px;
+  z-index: 10;
+}
+
+.image-resizer-nw { top: -5px; left: -5px; cursor: nw-resize; }
+.image-resizer-ne { top: -5px; right: -5px; cursor: ne-resize; }
+.image-resizer-sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+.image-resizer-se { bottom: -5px; right: -5px; cursor: se-resize; }

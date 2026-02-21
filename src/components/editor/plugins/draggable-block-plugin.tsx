@@ -3,7 +3,8 @@
 import { JSX, useRef, useCallback, useState } from "react"
 import { DraggableBlockPlugin_EXPERIMENTAL } from "@lexical/react/LexicalDraggableBlockPlugin"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
-import { $setSelection } from "lexical"
+import { $createNodeSelection, $getNearestNodeFromDOMNode, $setSelection } from "lexical"
+import { $isImageNode } from "@/components/editor/nodes/image-node"
 import { GripVerticalIcon } from "lucide-react"
 import { HIGHLIGHT_BLOCK_COMMAND } from "./block-highlight-plugin"
 
@@ -25,17 +26,27 @@ export function DraggableBlockPlugin({
   const [hideMenu, setHideMenu] = useState(false)
 
   // Clear selection and blur editor when clicking drag handle to prevent scroll-back on drop
+  // For image blocks, select the node so resize handles appear
   const handleMouseDown = useCallback(() => {
+    const block = targetBlockRef.current
     editor.update(() => {
+      if (block) {
+        const node = $getNearestNodeFromDOMNode(block)
+        if ($isImageNode(node)) {
+          const selection = $createNodeSelection()
+          selection.add(node.getKey())
+          $setSelection(selection)
+          return
+        }
+      }
       $setSelection(null)
     })
+
     const rootElement = editor.getRootElement()
     if (rootElement) {
       rootElement.blur()
     }
 
-    // Highlight the target block
-    const block = targetBlockRef.current
     if (block) {
       editor.dispatchCommand(HIGHLIGHT_BLOCK_COMMAND, block)
     }
