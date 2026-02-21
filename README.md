@@ -27,7 +27,7 @@
 <br>
 
 <p align="center">
-  <img src="src/assets/screenshot.png" width="720" alt="Lychee — Reading List note with sidebar and tabs" style="border-radius: 10px;" />
+  <video src="src/assets/demo.mp4" width="720" autoplay loop muted playsinline></video>
 </p>
 
 <br>
