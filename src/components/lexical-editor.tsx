@@ -147,10 +147,10 @@ export function LexicalEditor({
 
   return (
     <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto">
-      <div className="mx-auto max-w-225 px-8 py-10">
-        {/* Emoji or Add Icon above editor */}
-        <div className="pl-8 mb-2">
-          {document.emoji ? (
+      <div className="mx-auto max-w-225 px-8 py-20">
+        {/* Emoji above editor */}
+        {document.emoji && (
+          <div className="pl-8 mb-2">
             <div className="group/emoji relative inline-flex items-end rounded w-fit">
               <NoteEmojiPicker
                 docId={documentId}
@@ -182,7 +182,12 @@ export function LexicalEditor({
                 <X className="h-4 w-4" />
               </button>
             </div>
-          ) : (
+          </div>
+        )}
+
+        {/* Add Icon button — visible when hovering above or on the title */}
+        {!document.emoji && (
+          <div className="add-icon-zone pl-8 pb-2 -mt-20 pt-20">
             <NoteEmojiPicker
               docId={documentId}
               currentEmoji={document.emoji}
@@ -193,9 +198,10 @@ export function LexicalEditor({
                 <button
                   type="button"
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-2 py-1 transition-colors text-sm text-[hsl(var(--muted-foreground))]",
+                    "add-icon-btn inline-flex items-center gap-1.5 rounded-md px-2 py-1 transition-opacity text-sm text-[hsl(var(--muted-foreground))]",
                     "hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                    "opacity-0",
                   )}
                   title="Add Icon"
                   aria-label="Add note icon"
@@ -205,8 +211,8 @@ export function LexicalEditor({
                 </button>
               }
             />
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Editor with title as first block */}
         <Editor
