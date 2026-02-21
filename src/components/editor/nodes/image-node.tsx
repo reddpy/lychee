@@ -14,6 +14,8 @@ import {
 } from "lexical"
 import { ImageComponent } from "./image-component"
 
+export type ImageAlignment = "left" | "center" | "right"
+
 export type SerializedImageNode = Spread<
   {
     type: "image"
@@ -21,6 +23,7 @@ export type SerializedImageNode = Spread<
     altText: string
     width?: number
     height?: number
+    alignment?: ImageAlignment
     version: 1
   },
   SerializedLexicalNode
@@ -33,6 +36,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
   __width: number | undefined
   __height: number | undefined
   __loading: boolean
+  __alignment: ImageAlignment
 
   static getType(): string {
     return "image"
@@ -46,6 +50,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
       node.__width,
       node.__height,
       node.__loading,
+      node.__alignment,
       node.__key,
     )
   }
@@ -57,6 +62,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
     width?: number,
     height?: number,
     loading: boolean = false,
+    alignment: ImageAlignment = "center",
     key?: NodeKey,
   ) {
     super(key)
@@ -66,15 +72,20 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
     this.__width = width
     this.__height = height
     this.__loading = loading
+    this.__alignment = alignment
   }
 
   createDOM(_config: EditorConfig): HTMLElement {
     const div = document.createElement("div")
     div.className = "editor-image"
+    div.style.textAlign = this.__alignment
     return div
   }
 
-  updateDOM(): boolean {
+  updateDOM(prevNode: ImageNode, dom: HTMLElement): boolean {
+    if (prevNode.__alignment !== this.__alignment) {
+      dom.style.textAlign = this.__alignment
+    }
     return false
   }
 
@@ -93,6 +104,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
       altText: serializedNode.altText,
       width: serializedNode.width,
       height: serializedNode.height,
+      alignment: serializedNode.alignment,
     })
   }
 
@@ -103,6 +115,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
       altText: this.__altText,
       width: this.__width,
       height: this.__height,
+      alignment: this.__alignment,
       version: 1,
     }
   }
@@ -150,6 +163,11 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
     writable.__altText = altText
   }
 
+  setAlignment(alignment: ImageAlignment): void {
+    const writable = this.getWritable()
+    writable.__alignment = alignment
+  }
+
   decorate(_editor: LexicalEditor, _config: EditorConfig): ReactElement | null {
     return (
       <ImageComponent
@@ -160,6 +178,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
         width={this.__width}
         height={this.__height}
         loading={this.__loading}
+        alignment={this.__alignment}
       />
     )
   }
@@ -187,6 +206,7 @@ export interface CreateImageNodeParams {
   width?: number
   height?: number
   loading?: boolean
+  alignment?: ImageAlignment
 }
 
 export function $createImageNode(params: CreateImageNodeParams = {}): ImageNode {
@@ -198,6 +218,7 @@ export function $createImageNode(params: CreateImageNodeParams = {}): ImageNode 
       params.width,
       params.height,
       params.loading ?? false,
+      params.alignment ?? "center",
     ),
   )
 }

@@ -14,9 +14,9 @@ import {
   type NodeKey,
 } from "lexical"
 import { mergeRegister } from "@lexical/utils"
-import { $isImageNode } from "./image-node"
+import { $isImageNode, type ImageAlignment } from "./image-node"
 import { cn } from "@/lib/utils"
-import { Loader2 } from "lucide-react"
+import { Loader2, AlignLeft, AlignCenter, AlignRight } from "lucide-react"
 
 function toImageUrl(filename: string): string {
   if (!filename) return ""
@@ -32,6 +32,7 @@ interface ImageComponentProps {
   width: number | undefined
   height: number | undefined
   loading: boolean
+  alignment: ImageAlignment
 }
 
 export function ImageComponent({
@@ -42,6 +43,7 @@ export function ImageComponent({
   width,
   height,
   loading: initialLoading,
+  alignment: initialAlignment,
 }: ImageComponentProps) {
   const [editor] = useLexicalComposerContext()
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
@@ -50,6 +52,7 @@ export function ImageComponent({
   const [isLoading, setIsLoading] = useState(initialLoading)
   const [currentSrc, setCurrentSrc] = useState(initialSrc)
   const [currentImageId, setCurrentImageId] = useState(initialImageId)
+  const [currentAlignment, setCurrentAlignment] = useState(initialAlignment)
   const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -63,12 +66,14 @@ export function ImageComponent({
         const loading = node.__loading
         const src = node.__src
         const imageId = node.__imageId
+        const alignment = node.__alignment
         if (loading !== isLoading) setIsLoading(loading)
         if (src !== currentSrc) setCurrentSrc(src)
         if (imageId !== currentImageId) setCurrentImageId(imageId)
+        if (alignment !== currentAlignment) setCurrentAlignment(alignment)
       })
     })
-  }, [editor, nodeKey, isLoading, currentSrc, currentImageId])
+  }, [editor, nodeKey, isLoading, currentSrc, currentImageId, currentAlignment])
 
   // Resolve imageId → file path on mount (for nodes loaded from JSON that have imageId but no src)
   useEffect(() => {
@@ -141,6 +146,17 @@ export function ImageComponent({
       editor.registerCommand(KEY_ENTER_COMMAND, onEnter, COMMAND_PRIORITY_LOW),
     )
   }, [editor, isResizing, isSelected, nodeKey, setSelected, clearSelection])
+
+  // ── Alignment ──
+  const onAlignmentChange = useCallback(
+    (alignment: ImageAlignment) => {
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isImageNode(node)) node.setAlignment(alignment)
+      })
+    },
+    [editor, nodeKey],
+  )
 
   // ── Resize ──
   const onResizeStart = useCallback(
@@ -216,6 +232,31 @@ export function ImageComponent({
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       )}
+
+      {/* Alignment toolbar — visible when selected */}
+      <div className="image-toolbar">
+        <button
+          className={cn("image-toolbar-btn", currentAlignment === "left" && "active")}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onAlignmentChange("left")}
+        >
+          <AlignLeft className="size-3.5" />
+        </button>
+        <button
+          className={cn("image-toolbar-btn", currentAlignment === "center" && "active")}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onAlignmentChange("center")}
+        >
+          <AlignCenter className="size-3.5" />
+        </button>
+        <button
+          className={cn("image-toolbar-btn", currentAlignment === "right" && "active")}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onAlignmentChange("right")}
+        >
+          <AlignRight className="size-3.5" />
+        </button>
+      </div>
 
       {/* Resize handles — only when selected and image is loaded */}
       {isSelected && resolvedSrc && (
