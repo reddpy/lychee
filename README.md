@@ -26,6 +26,12 @@
 
 <br>
 
+<p align="center">
+  <img src="src/assets/screenshot.png" width="720" alt="Lychee — Reading List note with sidebar and tabs" style="border-radius: 10px;" />
+</p>
+
+<br>
+
 ---
 
 <br>
@@ -50,8 +56,10 @@
 ### Quick start
 
 ```bash
-pnpm install
-pnpm start
+npx degit reddpy/lychee lychee
+cd lychee
+npm install   # or pnpm, yarn — whatever you prefer
+npm start
 ```
 
 <br>
