@@ -18,6 +18,7 @@ const title: NodeSpec = {
 const paragraph: NodeSpec = {
   content: "inline*",
   group: "block",
+  draggable: true,
   parseDOM: [{ tag: "p" }],
   toDOM() {
     return ["p", { class: "leading-7" }, 0]
@@ -29,6 +30,7 @@ const heading: NodeSpec = {
   group: "block",
   attrs: { level: { default: 1 } },
   defining: true,
+  draggable: true,
   parseDOM: [
     { tag: "h1", getAttrs: () => ({ level: 1 }) },
     { tag: "h2", getAttrs: () => ({ level: 2 }) },
@@ -49,6 +51,7 @@ const blockquote: NodeSpec = {
   content: "block+",
   group: "block",
   defining: true,
+  draggable: true,
   parseDOM: [{ tag: "blockquote" }],
   toDOM() {
     return ["blockquote", { class: "mt-1 border-l-2 pl-6 italic" }, 0]
@@ -60,6 +63,7 @@ const blockquote: NodeSpec = {
 const orderedList: NodeSpec = {
   content: "list_item+",
   group: "block",
+  draggable: true,
   attrs: { order: { default: 1 } },
   parseDOM: [{
     tag: "ol",
@@ -77,6 +81,7 @@ const orderedList: NodeSpec = {
 const bulletList: NodeSpec = {
   content: "list_item+",
   group: "block",
+  draggable: true,
   parseDOM: [{ tag: "ul" }],
   toDOM() {
     return ["ul", 0]
@@ -85,6 +90,7 @@ const bulletList: NodeSpec = {
 
 const listItem: NodeSpec = {
   content: "paragraph block*",
+  draggable: true,
   parseDOM: [{ tag: "li" }],
   toDOM() {
     return ["li", 0]
@@ -97,6 +103,7 @@ const codeBlock: NodeSpec = {
   group: "block",
   code: true,
   defining: true,
+  draggable: true,
   marks: "",
   attrs: { language: { default: "" } },
   parseDOM: [{ tag: "pre", preserveWhitespace: "full" }],
@@ -107,6 +114,7 @@ const codeBlock: NodeSpec = {
 
 const horizontalRule: NodeSpec = {
   group: "block",
+  draggable: true,
   parseDOM: [{ tag: "hr" }],
   toDOM() {
     return ["hr"] as unknown as ReturnType<NonNullable<NodeSpec["toDOM"]>>
@@ -117,6 +125,7 @@ const toggleContainer: NodeSpec = {
   content: "toggleTitle toggleContent",
   group: "block",
   isolating: true,
+  draggable: true,
   attrs: { open: { default: true } },
   parseDOM: [
     {

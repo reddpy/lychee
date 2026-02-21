@@ -181,6 +181,50 @@ blockquote.is-placeholder {
   color: #383A42;
 }
 
+/* ── Block wrapper (NodeView) ─────────────────────────── */
+
+[data-node-view-root] {
+  position: relative;
+}
+
+.block-handle {
+  position: absolute;
+  left: -24px;
+  top: 0;
+  height: var(--block-line-h, 1.75rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  border-radius: 4px;
+  padding: 2px;
+  opacity: 0;
+  color: hsl(var(--foreground) / 0.55);
+  transition: opacity 120ms ease, background-color 120ms ease;
+  z-index: 10;
+  user-select: none;
+}
+
+[data-node-view-root]:hover > .block-handle {
+  opacity: 0.5;
+}
+
+.block-handle:hover {
+  opacity: 1 !important;
+  background-color: hsl(var(--muted));
+}
+
+.block-handle:active {
+  cursor: grabbing;
+}
+
+/* Selected node highlight (when dragging) */
+.ProseMirror-selectednode {
+  outline: none;
+  background-color: hsl(var(--primary) / 0.08);
+  border-radius: 4px;
+}
+
 /* ── TOC navigation highlight ──────────────────────────── */
 
 .heading-highlight {
