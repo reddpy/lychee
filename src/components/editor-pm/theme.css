@@ -95,95 +95,43 @@ blockquote.is-placeholder::before {
   content: "New Page";
 }
 
-.list-item.is-placeholder::after {
-  content: attr(data-placeholder);
-  color: hsl(var(--muted-foreground));
-  position: absolute;
-  left: 1.75rem;
-  top: 0;
-  pointer-events: none;
-}
-
 p.is-placeholder,
 h1.is-placeholder,
 h2.is-placeholder,
 h3.is-placeholder,
-blockquote.is-placeholder,
-.list-item.is-placeholder {
+blockquote.is-placeholder {
   position: relative;
 }
 
-/* ── Flat list item styles ─────────────────────────────── */
+/* ── Standard list styles (override Tailwind preflight) ── */
 
-.list-item {
-  position: relative;
-  padding-left: 1.75rem;
-  margin-top: 0.25rem;
+.ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.25rem 0;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.25rem 0;
+}
+
+.ProseMirror li {
   line-height: 1.75;
-  display: block;
-  list-style: none;
 }
 
-.list-item--bullet::before {
-  content: "";
-  position: absolute;
-  left: 0.3rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background-color: currentColor;
+.ProseMirror li p {
+  margin: 0;
 }
 
-.list-item--number::before {
-  content: attr(data-ordinal) ".";
-  position: absolute;
-  left: 0;
-  top: 0;
-  font-size: 0.9em;
-  line-height: 1.75;
-  color: currentColor;
-  font-variant-numeric: tabular-nums;
-  width: 1.2rem;
-  text-align: center;
+/* Nested list style variation */
+.ProseMirror ul ul {
+  list-style-type: circle;
 }
 
-.list-item--check {
-  outline: none;
-}
-
-.list-item--check::before {
-  content: "";
-  width: 18px;
-  height: 18px;
-  top: 50%;
-  transform: translateY(-50%);
-  left: 0;
-  cursor: pointer;
-  display: block;
-  position: absolute;
-  border: 2px solid hsl(var(--primary));
-  border-radius: 2px;
-  box-sizing: border-box;
-}
-
-.list-item--checked {
-  text-decoration: line-through;
-}
-
-.list-item--checked::before {
-  background-color: hsl(var(--primary));
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 8L6.5 11L12.5 5' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-size: 14px 14px;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-
-.list-item--checked.is-placeholder::after {
-  text-decoration: line-through;
-  text-decoration-thickness: 2px;
-  text-decoration-color: hsl(var(--muted-foreground) / 0.5);
+.ProseMirror ul ul ul {
+  list-style-type: square;
 }
 
 /* ── Code Block ────────────────────────────────────────── */

@@ -56,8 +56,6 @@ function formatToMarks(format: number): PMMark[] {
 
 /**
  * Convert Lexical inline children to PM inline nodes.
- * Handles text nodes (with format bitmask → marks), link/autolink wrappers,
- * linebreak nodes, and code-highlight nodes inside code blocks.
  */
 function migrateInlineChildren(
   children: LexicalNode[],
@@ -76,7 +74,6 @@ function migrateInlineChildren(
     } else if (child.type === "linebreak") {
       result.push({ type: "hardBreak" })
     } else if (child.type === "link" || child.type === "autolink") {
-      // Link wraps children — apply link mark to all inline children
       const linkMark: PMMark = { type: "link", attrs: { href: child.url || "" } }
       const linkChildren = migrateInlineChildren(
         child.children || [],
@@ -84,7 +81,6 @@ function migrateInlineChildren(
       )
       result.push(...linkChildren)
     } else if (child.type === "code-highlight") {
-      // Inside code blocks: just extract text
       if (child.text) {
         result.push({ type: "text", text: child.text })
       }
@@ -96,15 +92,10 @@ function migrateInlineChildren(
   return result
 }
 
-/**
- * Flatten old-format nested list structures (same logic as editor.tsx migrateChildren).
- */
-function flattenListItem(
-  item: LexicalNode,
-  indent: number,
-  listType: string
-): LexicalNode[] {
-  const result: LexicalNode[] = []
+// ── List migration helpers ────────────────────────────────
+
+/** Convert a Lexical listitem into a PM list_item (with nested sublists for indent). */
+function migrateListItem(item: LexicalNode): PMNode {
   const inlineChildren: LexicalNode[] = []
   const nestedLists: LexicalNode[] = []
 
@@ -116,19 +107,73 @@ function flattenListItem(
     }
   }
 
-  result.push({
-    type: "list-item",
-    listType,
-    checked: item.checked ?? false,
-    indent,
-    children: inlineChildren,
-  })
+  const inlineContent = migrateInlineChildren(inlineChildren)
+  const paragraph: PMNode = {
+    type: "paragraph",
+    content: inlineContent.length > 0 ? inlineContent : undefined,
+  }
 
+  const listItemContent: PMNode[] = [paragraph]
+
+  // Nested sublists become child lists inside this list_item
   for (const nested of nestedLists) {
-    const nestedType = nested.listType || listType
-    for (const nestedItem of nested.children || []) {
-      result.push(...flattenListItem(nestedItem, indent + 1, nestedType))
+    const sublist = migrateListNode(nested)
+    if (sublist) listItemContent.push(sublist)
+  }
+
+  return { type: "list_item", content: listItemContent }
+}
+
+/** Convert a Lexical list node to a PM bullet_list or ordered_list. */
+function migrateListNode(node: LexicalNode): PMNode | null {
+  const listType = node.listType || "bullet"
+  const pmType = listType === "number" ? "ordered_list" : "bullet_list"
+
+  const items: PMNode[] = []
+  for (const child of node.children || []) {
+    items.push(migrateListItem(child))
+  }
+
+  if (items.length === 0) return null
+  return { type: pmType, content: items }
+}
+
+/**
+ * Group consecutive flat list-item nodes (from our Lexical flat list format)
+ * into proper PM list wrappers. Handles indent via nesting.
+ */
+function groupFlatListItems(flatItems: LexicalNode[]): PMNode[] {
+  // For flat list-items, wrap each in list_item > paragraph, then group by type
+  const result: PMNode[] = []
+  let currentType: string | null = null
+  let currentItems: PMNode[] = []
+
+  for (const item of flatItems) {
+    const listType = item.listType || "bullet"
+    const pmListType = listType === "number" ? "ordered_list" : "bullet_list"
+
+    const inlineContent = migrateInlineChildren(item.children || [])
+    const paragraph: PMNode = {
+      type: "paragraph",
+      content: inlineContent.length > 0 ? inlineContent : undefined,
     }
+    const listItem: PMNode = { type: "list_item", content: [paragraph] }
+
+    if (pmListType !== currentType) {
+      // Flush previous group
+      if (currentType && currentItems.length > 0) {
+        result.push({ type: currentType, content: currentItems })
+      }
+      currentType = pmListType
+      currentItems = [listItem]
+    } else {
+      currentItems.push(listItem)
+    }
+  }
+
+  // Flush last group
+  if (currentType && currentItems.length > 0) {
+    result.push({ type: currentType, content: currentItems })
   }
 
   return result
@@ -158,7 +203,6 @@ function migrateBlockNode(node: LexicalNode): PMNode | PMNode[] | null {
     }
 
     case "quote": {
-      // Lexical quotes are flat inline content; PM blockquotes wrap block children
       const inlineContent = migrateInlineChildren(node.children || [])
       const innerParagraph: PMNode = {
         type: "paragraph",
@@ -170,21 +214,7 @@ function migrateBlockNode(node: LexicalNode): PMNode | PMNode[] | null {
       }
     }
 
-    case "list-item": {
-      const content = migrateInlineChildren(node.children || [])
-      return {
-        type: "listItem",
-        attrs: {
-          listType: node.listType || "bullet",
-          checked: node.checked ?? false,
-          indent: node.indent ?? 0,
-        },
-        content: content.length > 0 ? content : undefined,
-      }
-    }
-
     case "code": {
-      // Code blocks: concatenate all children text
       const textParts: string[] = []
       for (const child of node.children || []) {
         if (child.text) textParts.push(child.text)
@@ -202,24 +232,9 @@ function migrateBlockNode(node: LexicalNode): PMNode | PMNode[] | null {
       return { type: "horizontalRule" }
     }
 
-    // Old nested list format: flatten to individual list items
+    // Old nested list format → standard PM nested lists
     case "list": {
-      const listType = node.listType || "bullet"
-      const items: PMNode[] = []
-      for (const listItem of node.children || []) {
-        const flat = flattenListItem(listItem, 0, listType)
-        for (const flatItem of flat) {
-          const migrated = migrateBlockNode(flatItem)
-          if (migrated) {
-            if (Array.isArray(migrated)) {
-              items.push(...migrated)
-            } else {
-              items.push(migrated)
-            }
-          }
-        }
-      }
-      return items
+      return migrateListNode(node)
     }
 
     // Legacy node types — skip
@@ -250,7 +265,6 @@ function migrateBlockNode(node: LexicalNode): PMNode | PMNode[] | null {
           }
         }
       }
-      // Toggle content must have at least one block
       if (contentBlocks.length === 0) {
         contentBlocks.push({ type: "paragraph" })
       }
@@ -263,7 +277,6 @@ function migrateBlockNode(node: LexicalNode): PMNode | PMNode[] | null {
     }
 
     default:
-      // Unknown node type — try to treat as paragraph with inline children
       if (node.children && node.children.length > 0) {
         const content = migrateInlineChildren(node.children)
         return { type: "paragraph", content: content.length > 0 ? content : undefined }
@@ -306,8 +319,28 @@ export function migrateLexicalToProseMirror(lexicalState: Record<string, unknown
   const blocks: PMNode[] = []
   let hasTitle = false
 
+  // Collect flat list-item nodes to group them
+  let pendingListItems: LexicalNode[] = []
+
+  function flushListItems() {
+    if (pendingListItems.length > 0) {
+      blocks.push(...groupFlatListItems(pendingListItems))
+      pendingListItems = []
+    }
+  }
+
   for (const child of children) {
     if (child.type === "title") hasTitle = true
+
+    // Our flat list-item format: collect and group
+    if (child.type === "list-item") {
+      pendingListItems.push(child)
+      continue
+    }
+
+    // Non-list-item: flush any pending list items first
+    flushListItems()
+
     const migrated = migrateBlockNode(child)
     if (migrated) {
       if (Array.isArray(migrated)) {
@@ -318,12 +351,12 @@ export function migrateLexicalToProseMirror(lexicalState: Record<string, unknown
     }
   }
 
-  // Ensure title is first
+  flushListItems()
+
   if (!hasTitle) {
     blocks.unshift({ type: "title" })
   }
 
-  // Ensure at least one block after title
   if (blocks.length <= 1) {
     blocks.push({ type: "paragraph" })
   }

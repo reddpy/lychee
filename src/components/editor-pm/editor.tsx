@@ -15,6 +15,9 @@ import {
   isProseMirrorFormat,
   migrateLexicalToProseMirror,
 } from "./migrate-lexical"
+import { formatKeymap } from "./plugins/keymap"
+import { editorInputRules } from "./plugins/inputrules"
+import { blockKeymap, listKeymap } from "./plugins/block-keymap"
 
 import "./theme.css"
 
@@ -105,37 +108,18 @@ export function Editor({
     if (!editorRef.current) return
 
     // Build initial doc
-    const doc = editorSerializedState
-      ? parseDoc(editorSerializedState)
-      : parseDoc(null)
+    let doc = parseDoc(editorSerializedState)
 
     // If we have an initialTitle and the doc's title is empty, set it
-    if (initialTitle && getTitleText(doc) === "") {
-      const titleNode = doc.firstChild
-      if (titleNode && titleNode.type.name === "title") {
-        // We'll create a new doc with the title text
-        const titleContent = initialTitle
-          ? schema.text(initialTitle)
-          : undefined
-        const newTitle = schema.nodes.title.create(
-          null,
-          titleContent ? [titleContent] : undefined
-        )
-        const newContent = [newTitle]
-        for (let i = 1; i < doc.childCount; i++) {
-          newContent.push(doc.child(i))
-        }
-        const newDoc = schema.nodes.doc.create(null, newContent)
-        lastTitleRef.current = initialTitle
-        createView(newDoc)
-      } else {
-        lastTitleRef.current = getTitleText(doc)
-        createView(doc)
-      }
-    } else {
-      lastTitleRef.current = getTitleText(doc)
-      createView(doc)
+    if (initialTitle && getTitleText(doc) === "" && doc.firstChild?.type.name === "title") {
+      const newTitle = schema.nodes.title.create(null, [schema.text(initialTitle)])
+      const blocks = [newTitle]
+      for (let i = 1; i < doc.childCount; i++) blocks.push(doc.child(i))
+      doc = schema.nodes.doc.create(null, blocks)
     }
+
+    lastTitleRef.current = getTitleText(doc)
+    createView(doc)
 
     function createView(docNode: PMNode) {
       const state = EditorState.create({
@@ -143,6 +127,10 @@ export function Editor({
         plugins: [
           history(),
           keymap({ "Mod-z": undo, "Mod-Shift-z": redo, "Mod-y": redo }),
+          formatKeymap(),
+          listKeymap(),    // splitListItem on Enter — before blockKeymap
+          blockKeymap(),   // Notion-style overrides — before baseKeymap
+          editorInputRules(),
           keymap(baseKeymap),
           dropCursor(),
           gapCursor(),

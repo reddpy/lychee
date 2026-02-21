@@ -55,52 +55,41 @@ const blockquote: NodeSpec = {
   },
 }
 
-const listItem: NodeSpec = {
-  content: "inline*",
-  group: "block",
-  attrs: {
-    listType: { default: "bullet" },
-    checked: { default: false },
-    indent: { default: 0 },
-  },
-  parseDOM: [
-    {
-      tag: "div.list-item",
-      getAttrs(dom) {
-        const el = dom as HTMLElement
-        const classes = el.className
-        let listType = "bullet"
-        if (classes.includes("list-item--number")) listType = "number"
-        else if (classes.includes("list-item--check")) listType = "check"
-        return {
-          listType,
-          checked: el.getAttribute("aria-checked") === "true",
-          indent: parseInt(el.getAttribute("data-indent") || "0", 10),
-        }
-      },
-    },
-  ],
-  toDOM(node) {
-    const { listType, checked, indent } = node.attrs as {
-      listType: string
-      checked: boolean
-      indent: number
-    }
-    let cls = `list-item list-item--${listType}`
-    if (listType === "check" && checked) cls += " list-item--checked"
+// ── Standard PM list nodes ────────────────────────────────
 
-    const attrs: Record<string, string> = { class: cls }
-    if (listType === "check") {
-      attrs["role"] = "checkbox"
-      attrs["aria-checked"] = String(checked)
-      attrs["tabindex"] = "-1"
-    }
-    if (indent > 0) {
-      attrs["data-indent"] = String(indent)
-      attrs["style"] = `padding-left: ${1.75 + indent * 1.5}rem`
-    }
-    return ["div", attrs, 0]
+const orderedList: NodeSpec = {
+  content: "list_item+",
+  group: "block",
+  attrs: { order: { default: 1 } },
+  parseDOM: [{
+    tag: "ol",
+    getAttrs(dom) {
+      return { order: (dom as HTMLOListElement).start || 1 }
+    },
+  }],
+  toDOM(node) {
+    return node.attrs.order === 1
+      ? ["ol", 0]
+      : ["ol", { start: node.attrs.order }, 0]
   },
+}
+
+const bulletList: NodeSpec = {
+  content: "list_item+",
+  group: "block",
+  parseDOM: [{ tag: "ul" }],
+  toDOM() {
+    return ["ul", 0]
+  },
+}
+
+const listItem: NodeSpec = {
+  content: "paragraph block*",
+  parseDOM: [{ tag: "li" }],
+  toDOM() {
+    return ["li", 0]
+  },
+  defining: true,
 }
 
 const codeBlock: NodeSpec = {
@@ -260,7 +249,9 @@ export const schema = new Schema({
     paragraph,
     heading,
     blockquote,
-    listItem,
+    ordered_list: orderedList,
+    bullet_list: bulletList,
+    list_item: listItem,
     codeBlock,
     horizontalRule,
     toggleContainer,
