@@ -1,54 +1,89 @@
-## Lychee 🍋
+<br>
 
-**Natural notes, without the enterprise bloat.**
+<p align="center">
+  <img src="src/assets/logos/E-icon.svg" width="80" />
+</p>
 
-Lychee is a small, local‑first notes app. It borrows the good parts of early Notion (fast, clean, rich‑text editing) and deliberately skips the "all‑in‑one workspace" bloat. It's meant to feel like a personal notebook again. 📝
+<h1 align="center">Lychee</h1>
+
+<p align="center">
+  <strong>A fast, local-first notes app for people who just want to write.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS-black?style=flat-square" />
+  <img src="https://img.shields.io/badge/electron-40-47848f?style=flat-square&logo=electron&logoColor=white" />
+  <img src="https://img.shields.io/badge/react-19-58c4dc?style=flat-square&logo=react&logoColor=white" />
+  <img src="https://img.shields.io/badge/sqlite-local-003B57?style=flat-square&logo=sqlite&logoColor=white" />
+  <img src="https://img.shields.io/badge/license-MIT-C14B55?style=flat-square" />
+</p>
+
+<br>
+
+<p align="center">
+  <em>Notion circa 2019 — before the enterprise bloat and the feature creep.<br>Just a clean, fast place to write.</em>
+</p>
+
+<br>
 
 ---
 
-If you miss when tools like Notion felt fast and uncomplicated, Lychee is an attempt to get that feeling back in a focused desktop app. ✨
+<br>
 
----
+### Features
 
-## Getting started 🚀
+| | |
+|---|---|
+| **Block editor** | Notion-style rich text powered by [Lexical](https://lexical.dev) |
+| **Slash commands** | Type `/` to insert any block type |
+| **Drag & drop** | Grab the handle to reorder any block |
+| **Images** | Paste or drop images with resize + alignment controls |
+| **Nested pages** | Organize notes up to 5 levels deep |
+| **Tabs** | Open multiple notes side by side |
+| **Emoji icons** | Give each note a custom icon |
+| **Trash & restore** | Soft-delete with easy recovery |
+| **Keyboard-first** | Full shortcut support for formatting + navigation |
+| **100% local** | SQLite on your machine. No cloud. No account. |
+
+<br>
+
+### Quick start
 
 ```bash
 pnpm install
 pnpm start
 ```
 
-That runs the Electron + Webpack dev pipeline with hot reload for the renderer.
+<br>
 
----
-
-## What's in the box 📦
-
-- **Block editor** — Notion‑style rich text powered by Lexical (headings, lists, checkboxes, quotes, code blocks, images, horizontal rules)
-- **Slash commands** — type `/` to insert any block type
-- **Floating toolbar** — right‑click selected text to format (bold, italic, code, links, block type)
-- **Drag‑and‑drop blocks** — grab the handle to reorder any block
-- **Images** — paste or drop images directly into a note, with resize handles and alignment controls
-- **Nested notes** — organize pages up to 5 levels deep in the sidebar
-- **Tabs** — open multiple notes side by side
-- **Emoji icons** — give each note a custom icon
-- **Trash & restore** — soft‑delete with easy recovery
-- **Keyboard shortcuts** — undo/redo, formatting, navigation
-- **SQLite storage** — everything stays on your machine, no cloud
-
----
-
-## Rough map of the code 🗺️
+### Project structure
 
 ```
 src/
-├── main/               Electron main process, SQLite, IPC handlers
-├── renderer/           App shell, Zustand store, tabs
+├── main/           Electron main process, SQLite, IPC
+├── renderer/       App shell, Zustand store, tabs
 ├── components/
-│   ├── editor/         Lexical editor (nodes, plugins, themes)
-│   ├── sidebar/        Note tree, emoji picker, trash bin
-│   └── ui/             Shared UI primitives (Radix‑based)
-├── shared/             Types shared between main & renderer
-└── preload.ts          Bridge (window.lychee.invoke / on)
+│   ├── editor/     Block editor (nodes, plugins, themes)
+│   ├── sidebar/    Note tree, emoji picker, trash
+│   └── ui/         Shared primitives (Radix)
+├── shared/         Types shared across processes
+└── preload.ts      Bridge — window.lychee.invoke / on
 ```
 
-Lychee is still evolving, but the philosophy is stable: stay small, local, and pleasant to write in. 🌱
+<br>
+
+### Tech
+
+Electron &middot; React &middot; Lexical &middot; TypeScript &middot; Zustand &middot; SQLite &middot; Tailwind CSS
+
+<br>
+
+### License
+
+[MIT](LICENSE)
+
+<br>
+
+<p align="center">
+  <img src="src/assets/logos/E-horizontal.svg" width="100" />
+</p>
