@@ -209,6 +209,14 @@ blockquote.is-placeholder {
   opacity: 0.5;
 }
 
+/* Hide handles for blocks nested inside blockquotes, lists, and toggles */
+blockquote [data-node-view-root] > .block-handle,
+ul [data-node-view-root] > .block-handle,
+ol [data-node-view-root] > .block-handle,
+.Collapsible__container [data-node-view-root] > .block-handle {
+  display: none;
+}
+
 .block-handle:hover {
   opacity: 1 !important;
   background-color: hsl(var(--muted));

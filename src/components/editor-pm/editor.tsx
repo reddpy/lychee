@@ -197,7 +197,6 @@ function EditorInner({
       blockquote: factory({ component: BlockView, as: "div", contentAs: blockquoteContentAs }),
       bullet_list: factory({ component: BlockView, as: "div", contentAs: "ul" }),
       ordered_list: factory({ component: BlockView, as: "div", contentAs: "ol" }),
-      list_item: factory({ component: BlockView, as: "li", contentAs: "div" }),
       codeBlock: factory({ component: BlockView, as: "div", contentAs: codeBlockContentAs }),
       horizontalRule: factory({ component: HorizontalRuleView, as: "div" }),
       toggleContainer: factory({ component: BlockView, as: "div", contentAs: toggleContentAs }),

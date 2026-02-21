@@ -48,7 +48,7 @@ const heading: NodeSpec = {
 }
 
 const blockquote: NodeSpec = {
-  content: "block+",
+  content: "paragraph+",
   group: "block",
   defining: true,
   draggable: true,
@@ -90,7 +90,6 @@ const bulletList: NodeSpec = {
 
 const listItem: NodeSpec = {
   content: "paragraph block*",
-  draggable: true,
   parseDOM: [{ tag: "li" }],
   toDOM() {
     return ["li", 0]
