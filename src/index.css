@@ -138,4 +138,11 @@ body {
   100% { width: 1em; }
 }
 
+/* Show "Add Icon" button when hovering the zone itself or the title */
+.add-icon-zone:hover .add-icon-btn,
+.add-icon-zone:has(.add-icon-btn:focus-visible) .add-icon-btn,
+:has(.add-icon-zone):has(.editor-title:hover) .add-icon-btn {
+  opacity: 1;
+}
+
 /* Note tree: delete exit, section expand/collapse, chevron rotation (Framer Motion in NotesSection / NoteTreeItem). */
