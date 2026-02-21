@@ -198,6 +198,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const scrollHiddenRef = useRef(false);
   const visibleRef = useRef(false);
+  const pendingContextMenuRef = useRef(false);
 
   // Keep ref in sync so scroll handler has current value without re-subscribing
   visibleRef.current = state.isVisible;
@@ -251,7 +252,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
     return result;
   }, [editor]);
 
-  // Position toolbar at selection rect. Returns false if no valid rect.
+  // Position toolbar above the current native selection rect
   const positionToolbar = useCallback((minTop?: number) => {
     const nativeSelection = window.getSelection();
     if (!nativeSelection || nativeSelection.rangeCount === 0) return;
@@ -273,10 +274,16 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
 
     const handleContextMenu = (e: MouseEvent) => {
       const selState = readSelectionState();
-      if (!selState) return;
-      e.preventDefault();
-      setState({ ...selState, isVisible: true });
-      requestAnimationFrame(() => positionToolbar());
+      if (selState) {
+        // Selection already exists — show toolbar immediately
+        e.preventDefault();
+        setState({ ...selState, isVisible: true });
+        requestAnimationFrame(() => positionToolbar());
+      } else {
+        // No Lexical selection yet — the browser will word-select on right-click,
+        // but Lexical hasn't synced it. Set a flag so the update listener picks it up.
+        pendingContextMenuRef.current = true;
+      }
     };
 
     const handleMouseDown = () => {
@@ -293,14 +300,27 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   }, [editor, readSelectionState, positionToolbar]);
 
   // Update format states when editor changes (only while toolbar is visible)
+  // Also handles deferred context menu: when right-click fires before Lexical
+  // syncs the browser's word-selection, pendingContextMenuRef is set and we
+  // show the toolbar on the next update cycle once Lexical has the selection.
   useEffect(() => {
     return editor.registerUpdateListener(() => {
-      if (!visibleRef.current && !scrollHiddenRef.current) return;
+      const pending = pendingContextMenuRef.current;
+      if (!visibleRef.current && !scrollHiddenRef.current && !pending) return;
 
       const selState = readSelectionState();
       if (!selState) {
-        scrollHiddenRef.current = false;
-        setState(HIDDEN_STATE);
+        if (!pending) {
+          scrollHiddenRef.current = false;
+          setState(HIDDEN_STATE);
+        }
+        return;
+      }
+
+      if (pending) {
+        pendingContextMenuRef.current = false;
+        setState({ ...selState, isVisible: true });
+        requestAnimationFrame(() => positionToolbar());
         return;
       }
 
