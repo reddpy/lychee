@@ -193,6 +193,8 @@ function EditorInner({
           el.style.setProperty("--block-line-h", HEADING_LINE_H[node.attrs.level as number] || "1.75rem")
           return el
         },
+        // Always recreate so contentAs tag (h1/h2/h3) and --block-line-h update
+        update: () => false,
       }),
       blockquote: factory({ component: BlockView, as: "div", contentAs: blockquoteContentAs }),
       bullet_list: factory({ component: BlockView, as: "div", contentAs: "ul" }),
