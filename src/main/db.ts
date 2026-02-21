@@ -142,6 +142,35 @@ function runMigrations(database: BetterSqlite3Database) {
 
     tx();
   }
+
+  // v6: images table for stored image files
+  const tables = database
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='images'`)
+    .get() as { name: string } | undefined;
+
+  if (!tables) {
+    const tx = database.transaction(() => {
+      database.exec(`
+        CREATE TABLE images (
+          id TEXT PRIMARY KEY,
+          filename TEXT NOT NULL,
+          mimeType TEXT NOT NULL,
+          width INTEGER,
+          height INTEGER,
+          createdAt TEXT NOT NULL
+        );
+      `);
+
+      database
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run('6');
+    });
+
+    tx();
+  }
 }
 
 export function initDatabase(): { dbPath: string } {

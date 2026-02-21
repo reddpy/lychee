@@ -1,0 +1,178 @@
+import { useEffect } from "react"
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
+import {
+  $createNodeSelection,
+  $createParagraphNode,
+  $getNodeByKey,
+  $getSelection,
+  $insertNodes,
+  $isNodeSelection,
+  $setSelection,
+  COMMAND_PRIORITY_HIGH,
+  COMMAND_PRIORITY_EDITOR,
+  createCommand,
+  DROP_COMMAND,
+  DRAGOVER_COMMAND,
+  PASTE_COMMAND,
+  type LexicalCommand,
+} from "lexical"
+import { $createImageNode, ImageNode, $isImageNode, type CreateImageNodeParams } from "@/components/editor/nodes/image-node"
+
+export const INSERT_IMAGE_COMMAND: LexicalCommand<CreateImageNodeParams> = createCommand("INSERT_IMAGE")
+
+const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+
+function isImageFile(file: File): boolean {
+  return IMAGE_MIME_TYPES.has(file.type)
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function saveImageAndUpdate(
+  editor: ReturnType<typeof useLexicalComposerContext>[0],
+  nodeKey: string,
+  file: File,
+) {
+  const base64 = await readFileAsBase64(file)
+  const { id, filePath } = await window.lychee.invoke("images.save", {
+    data: base64,
+    mimeType: file.type,
+  })
+
+  editor.update(() => {
+    const node = $getNodeByKey(nodeKey)
+    if (!$isImageNode(node)) return
+    node.setImageId(id)
+    node.setSrc(filePath)
+    node.setLoading(false)
+    // Only select the image if the user hasn't moved the cursor elsewhere
+    const selection = $getSelection()
+    if (!selection || ($isNodeSelection(selection) && selection.has(nodeKey))) {
+      const nodeSelection = $createNodeSelection()
+      nodeSelection.add(nodeKey)
+      $setSelection(nodeSelection)
+    }
+  })
+}
+
+function getImageFiles(dataTransfer: DataTransfer): File[] {
+  const files: File[] = []
+  for (let i = 0; i < dataTransfer.files.length; i++) {
+    const file = dataTransfer.files[i]
+    if (isImageFile(file)) files.push(file)
+  }
+  return files
+}
+
+export function ImagePlugin(): null {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    // INSERT_IMAGE_COMMAND: insert a node (optionally in loading state)
+    const removeInsertCommand = editor.registerCommand(
+      INSERT_IMAGE_COMMAND,
+      (payload) => {
+        const imageNode = $createImageNode(payload)
+        $insertNodes([imageNode])
+        return true
+      },
+      COMMAND_PRIORITY_EDITOR,
+    )
+
+    // DROP_COMMAND: handle image file drops
+    const removeDropCommand = editor.registerCommand(
+      DROP_COMMAND,
+      (event) => {
+        const files = event.dataTransfer ? getImageFiles(event.dataTransfer) : []
+        if (files.length === 0) return false
+
+        event.preventDefault()
+
+        for (const file of files) {
+          // Insert a loading placeholder immediately (already in update context)
+          const node = $createImageNode({ loading: true })
+          $insertNodes([node])
+          // Save file in background, then update the node
+          saveImageAndUpdate(editor, node.getKey(), file)
+        }
+
+        return true
+      },
+      COMMAND_PRIORITY_HIGH,
+    )
+
+    // DRAGOVER_COMMAND: allow dropping
+    const removeDragOverCommand = editor.registerCommand(
+      DRAGOVER_COMMAND,
+      (event) => {
+        const hasFiles = event.dataTransfer?.types.includes("Files") ?? false
+        if (hasFiles) {
+          event.preventDefault()
+          return true
+        }
+        return false
+      },
+      COMMAND_PRIORITY_HIGH,
+    )
+
+    // PASTE_COMMAND: handle image pastes
+    const removePasteCommand = editor.registerCommand(
+      PASTE_COMMAND,
+      (event) => {
+        const clipboardData = event instanceof ClipboardEvent ? event.clipboardData : null
+        if (!clipboardData) return false
+
+        const files = getImageFiles(clipboardData)
+        if (files.length === 0) return false
+
+        event.preventDefault()
+
+        for (const file of files) {
+          // Already in update context from command handler
+          const node = $createImageNode({ loading: true })
+          $insertNodes([node])
+          saveImageAndUpdate(editor, node.getKey(), file)
+        }
+
+        return true
+      },
+      COMMAND_PRIORITY_HIGH,
+    )
+
+    // Always ensure a paragraph exists after every image so the cursor
+    // has somewhere to land
+    const removeMutationListener = editor.registerMutationListener(
+      ImageNode,
+      (mutations) => {
+        editor.update(() => {
+          for (const [key, type] of mutations) {
+            if (type === "destroyed") continue
+            const node = $getNodeByKey(key)
+            if (!$isImageNode(node)) continue
+            const next = node.getNextSibling()
+            if (!next || $isImageNode(next)) {
+              node.insertAfter($createParagraphNode())
+            }
+          }
+        })
+      },
+    )
+
+    return () => {
+      removeInsertCommand()
+      removeDropCommand()
+      removeDragOverCommand()
+      removePasteCommand()
+      removeMutationListener()
+    }
+  }, [editor])
+
+  return null
+}
