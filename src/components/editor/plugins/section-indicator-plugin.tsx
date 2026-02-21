@@ -1,10 +1,8 @@
-"use client"
-
 import { type ReactElement, useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
-import { $nodesOfType, $setSelection, type NodeKey } from "lexical"
-import { HeadingNode, type HeadingTagType } from "@lexical/rich-text"
+import { $getNodeByKey, $getRoot, $setSelection, type NodeKey, TextNode } from "lexical"
+import { $isHeadingNode, HeadingNode, type HeadingTagType } from "@lexical/rich-text"
 import { HIGHLIGHT_BLOCK_COMMAND } from "./block-highlight-plugin"
 
 interface HeadingInfo {
@@ -30,20 +28,49 @@ export function SectionIndicatorPlugin(): ReactElement | null {
   const [pillRight, setPillRight] = useState(0)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Rebuild heading list only when headings are created/updated/destroyed
+  // Rebuild heading list on heading structural changes AND text edits inside headings
   useEffect(() => {
-    return editor.registerMutationListener(HeadingNode, () => {
+    const readHeadings = () => {
       editor.getEditorState().read(() => {
-        const nodes = $nodesOfType(HeadingNode)
         const result: HeadingInfo[] = []
-        for (const node of nodes) {
+        for (const node of $getRoot().getChildren()) {
+          if (!$isHeadingNode(node)) continue
           const tag = node.getTag()
           if (tag !== "h1" && tag !== "h2" && tag !== "h3") continue
           result.push({ key: node.getKey(), tag, text: node.getTextContent() })
         }
-        setHeadings(result)
+        setHeadings((prev) => {
+          if (prev.length !== result.length) return result
+          for (let i = 0; i < prev.length; i++) {
+            if (prev[i].key !== result[i].key || prev[i].tag !== result[i].tag || prev[i].text !== result[i].text) return result
+          }
+          return prev
+        })
       })
+    }
+
+    // Heading added/removed/tag changed (also fires on init with existing nodes)
+    const removeHeadingListener = editor.registerMutationListener(HeadingNode, () => readHeadings())
+
+    // Text edited inside a heading — check if any mutated text node lives in a heading
+    const removeTextListener = editor.registerMutationListener(TextNode, (mutations) => {
+      let needsUpdate = false
+      editor.getEditorState().read(() => {
+        for (const [key] of mutations) {
+          const node = $getNodeByKey(key)
+          if (node && $isHeadingNode(node.getParent())) {
+            needsUpdate = true
+            return
+          }
+        }
+      })
+      if (needsUpdate) readHeadings()
     })
+
+    return () => {
+      removeHeadingListener()
+      removeTextListener()
+    }
   }, [editor])
 
   // Position the pill based on the scroll container — only on resize/layout
