@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 import { EditorState, Transaction } from "prosemirror-state"
 import { EditorView } from "prosemirror-view"
 import { Node as PMNode } from "prosemirror-model"
@@ -18,6 +18,7 @@ import {
 import { formatKeymap } from "./plugins/keymap"
 import { editorInputRules } from "./plugins/inputrules"
 import { blockKeymap, listKeymap } from "./plugins/block-keymap"
+import { FloatingToolbarPlugin } from "./plugins/floating-toolbar-plugin"
 
 import "./theme.css"
 
@@ -73,6 +74,7 @@ export function Editor({
 }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const [view, setView] = useState<EditorView | null>(null)
   const onSerializedChangeRef = useRef(onSerializedChange)
   const onTitleChangeRef = useRef(onTitleChange)
   const lastTitleRef = useRef<string>("")
@@ -88,6 +90,7 @@ export function Editor({
 
       const newState = view.state.apply(tr)
       view.updateState(newState)
+      view.dom.dispatchEvent(new Event("pm-update"))
 
       if (tr.docChanged) {
         // Notify parent of content change
@@ -137,27 +140,30 @@ export function Editor({
         ],
       })
 
-      const view = new EditorView(editorRef.current!, {
+      const v = new EditorView(editorRef.current!, {
         state,
         dispatchTransaction,
       })
 
-      viewRef.current = view
+      viewRef.current = v
+      setView(v)
     }
 
     return () => {
       viewRef.current?.destroy()
       viewRef.current = null
+      setView(null)
     }
     // Only run on mount — props are captured via refs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
-    <ProseMirrorProvider value={viewRef.current}>
+    <ProseMirrorProvider value={view}>
       <div className="bg-background overflow-hidden">
         <div ref={editorRef} className="ProseMirror-editor" />
       </div>
+      <FloatingToolbarPlugin />
     </ProseMirrorProvider>
   )
 }
