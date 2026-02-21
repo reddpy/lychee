@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react"
-import { EditorState, Transaction } from "prosemirror-state"
+import { EditorState, Transaction, NodeSelection, TextSelection } from "prosemirror-state"
 import { EditorView, NodeViewConstructor } from "prosemirror-view"
 import { Node as PMNode } from "prosemirror-model"
 import { history, undo, redo } from "prosemirror-history"
@@ -143,7 +143,18 @@ function EditorInner({
       const view = viewRef.current
       if (!view) return
 
-      const newState = view.state.apply(tr)
+      let newState = view.state.apply(tr)
+
+      // Never allow NodeSelection to reach the DOM — blocks handle their
+      // own visual feedback, so convert to a text cursor immediately.
+      if (newState.selection instanceof NodeSelection) {
+        const $pos = newState.doc.resolve(newState.selection.from)
+        const textSel = TextSelection.findFrom($pos, 1, true) || TextSelection.findFrom($pos, -1, true)
+        if (textSel) {
+          newState = newState.apply(newState.tr.setSelection(textSel))
+        }
+      }
+
       view.updateState(newState)
       view.dom.dispatchEvent(new Event("pm-update"))
 
@@ -215,7 +226,7 @@ function EditorInner({
         blockKeymap(),   // Notion-style overrides — before baseKeymap
         editorInputRules(),
         keymap(baseKeymap),
-        dropCursor(),
+        dropCursor({ color: false, class: "drop-cursor" }),
         gapCursor(),
       ],
     })

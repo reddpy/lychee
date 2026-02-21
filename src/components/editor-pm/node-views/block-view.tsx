@@ -1,5 +1,4 @@
 import { useNodeViewContext } from "@prosemirror-adapter/react"
-import { NodeSelection } from "prosemirror-state"
 import { EditorView } from "prosemirror-view"
 import { Fragment, Slice } from "prosemirror-model"
 import { GripVertical } from "lucide-react"
@@ -15,13 +14,12 @@ function DragHandle({ view, getPos }: { view: EditorView; getPos: () => number |
     const pos = getPos()
     if (pos == null) return
 
-    // Set NodeSelection so PM knows what's being dragged
-    const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos))
-    view.dispatch(tr)
+    // Resolve the block node directly — no NodeSelection dispatch,
+    // so PM never paints text selection highlights.
+    const node = view.state.doc.nodeAt(pos)
+    if (!node) return
 
-    // Serialize the selected node for clipboard
-    const sel = view.state.selection as NodeSelection
-    const slice = new Slice(Fragment.from(sel.node), 0, 0)
+    const slice = new Slice(Fragment.from(node), 0, 0)
     const { dom, text } = (view as any).serializeForClipboard(slice)
     e.dataTransfer.clearData()
     e.dataTransfer.setData("text/html", dom.innerHTML)

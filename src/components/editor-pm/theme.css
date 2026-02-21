@@ -226,11 +226,17 @@ ol [data-node-view-root] > .block-handle,
   cursor: grabbing;
 }
 
-/* Selected node highlight (when dragging) */
+/* Suppress default browser outline on node-selected blocks */
 .ProseMirror-selectednode {
   outline: none;
-  background-color: hsl(var(--primary) / 0.08);
-  border-radius: 4px;
+}
+
+/* Drop cursor — blue highlight bar */
+.drop-cursor {
+  background-color: hsl(212 95% 55% / 0.25) !important;
+  height: 4px !important;
+  border-radius: 9999px;
+  transition: top 80ms ease, left 80ms ease;
 }
 
 /* ── TOC navigation highlight ──────────────────────────── */
