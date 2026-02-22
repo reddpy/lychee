@@ -255,30 +255,32 @@ export function ImageComponent({
         </div>
       )}
 
-      {/* Alignment toolbar — visible when selected */}
-      <div className="image-toolbar">
-        <button
-          className={cn("image-toolbar-btn", currentAlignment === "left" && "active")}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onAlignmentChange("left")}
-        >
-          <AlignLeft className="size-3.5" />
-        </button>
-        <button
-          className={cn("image-toolbar-btn", currentAlignment === "center" && "active")}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onAlignmentChange("center")}
-        >
-          <AlignCenter className="size-3.5" />
-        </button>
-        <button
-          className={cn("image-toolbar-btn", currentAlignment === "right" && "active")}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onAlignmentChange("right")}
-        >
-          <AlignRight className="size-3.5" />
-        </button>
-      </div>
+      {/* Alignment toolbar — only when image is loaded */}
+      {isImageLoaded && (
+        <div className="image-toolbar">
+          <button
+            className={cn("image-toolbar-btn", currentAlignment === "left" && "active")}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onAlignmentChange("left")}
+          >
+            <AlignLeft className="size-3.5" />
+          </button>
+          <button
+            className={cn("image-toolbar-btn", currentAlignment === "center" && "active")}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onAlignmentChange("center")}
+          >
+            <AlignCenter className="size-3.5" />
+          </button>
+          <button
+            className={cn("image-toolbar-btn", currentAlignment === "right" && "active")}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onAlignmentChange("right")}
+          >
+            <AlignRight className="size-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Resize handles — only when selected and image is loaded */}
       {isSelected && isImageLoaded && (

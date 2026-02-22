@@ -328,15 +328,16 @@ blockquote.is-placeholder,
   border-radius: 6px;
 }
 
-/* Make container block-level when showing a placeholder so it fills the editor width */
-.image-container:has(.image-placeholder) {
+/* Make container block-level when showing a loading placeholder so it fills the editor width */
+.image-container:has(.image-placeholder:not(.image-error)) {
   display: block;
 }
 
 .image-error {
-  height: 100px;
-  border: 1px dashed hsl(var(--border));
-  background-color: transparent;
+  width: 320px;
+  height: 180px;
+  border: 2px dashed hsl(var(--border));
+  background-color: hsl(var(--muted) / 0.5);
 }
 
 /* Resize handles */
