@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
   $getRoot,
@@ -11,8 +11,7 @@ import {
   COMMAND_PRIORITY_HIGH,
   KEY_DOWN_COMMAND,
 } from "lexical"
-import { $createTitleNode, $isTitleNode, TitleNode } from "../nodes/title-node"
-import { mergeRegister } from "@lexical/utils"
+import { $createTitleNode, $isTitleNode } from "../nodes/title-node"
 
 interface TitlePluginProps {
   initialTitle?: string
@@ -60,6 +59,7 @@ export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): 
   }, [editor, initialTitle])
 
   // Listen for changes to sync title and toggle placeholder
+  const prevTitleRef = useRef(initialTitle ?? "")
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
@@ -68,54 +68,46 @@ export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): 
 
         if ($isTitleNode(firstChild)) {
           const titleText = firstChild.getTextContent()
-          onTitleChange?.(titleText)
+          if (titleText !== prevTitleRef.current) {
+            prevTitleRef.current = titleText
+            onTitleChange?.(titleText)
 
-          // Toggle placeholder class based on whether title is empty
-          const titleDom = editor.getElementByKey(firstChild.getKey())
-          if (titleDom) {
-            titleDom.classList.toggle("is-placeholder", titleText.length === 0)
+            // Toggle placeholder class based on whether title is empty
+            const titleDom = editor.getElementByKey(firstChild.getKey())
+            if (titleDom) {
+              titleDom.classList.toggle("is-placeholder", titleText.length === 0)
+            }
           }
         }
       })
     })
   }, [editor, onTitleChange])
 
-  // Prevent certain operations on title node
+  // Prevent Backspace at start of title from doing anything weird
   useEffect(() => {
-    return mergeRegister(
-      // Handle special key behaviors
-      editor.registerCommand(
-        KEY_DOWN_COMMAND,
-        (event: KeyboardEvent) => {
-          const selection = $getSelection()
-          if (!$isRangeSelection(selection)) return false
+    return editor.registerCommand(
+      KEY_DOWN_COMMAND,
+      (event: KeyboardEvent) => {
+        const selection = $getSelection()
+        if (!$isRangeSelection(selection)) return false
 
-          const anchorNode = selection.anchor.getNode()
-          const topElement = anchorNode.getTopLevelElement()
+        const anchorNode = selection.anchor.getNode()
+        const topElement = anchorNode.getTopLevelElement()
 
-          // If we're in the title node
-          if ($isTitleNode(topElement)) {
-            // Prevent Backspace at start from doing anything weird
-            if (event.key === "Backspace") {
-              const isAtStart =
-                selection.anchor.offset === 0 && selection.isCollapsed()
-              if (isAtStart) {
-                event.preventDefault()
-                return true
-              }
+        if ($isTitleNode(topElement)) {
+          if (event.key === "Backspace") {
+            const isAtStart =
+              selection.anchor.offset === 0 && selection.isCollapsed()
+            if (isAtStart) {
+              event.preventDefault()
+              return true
             }
           }
+        }
 
-          return false
-        },
-        COMMAND_PRIORITY_HIGH
-      ),
-
-      // Ensure title node is never deleted
-      editor.registerNodeTransform(TitleNode, (_node) => {
-        // This runs whenever a TitleNode is transformed
-        // We use this to ensure the node is preserved
-      })
+        return false
+      },
+      COMMAND_PRIORITY_HIGH
     )
   }, [editor])
 

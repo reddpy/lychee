@@ -118,12 +118,12 @@ function sanitizeSerializedState(
 
 export function Editor({
   editorSerializedState,
-  onSerializedChange,
+  onEditorStateChange,
   initialTitle,
   onTitleChange,
 }: {
   editorSerializedState?: SerializedEditorState
-  onSerializedChange?: (editorSerializedState: SerializedEditorState) => void
+  onEditorStateChange?: (editorState: EditorState) => void
   initialTitle?: string
   onTitleChange?: (title: string) => void
 }) {
@@ -147,7 +147,7 @@ export function Editor({
         <OnChangePlugin
           ignoreSelectionChange={true}
           onChange={(editorState: EditorState) => {
-            onSerializedChange?.(editorState.toJSON())
+            onEditorStateChange?.(editorState)
           }}
         />
       </LexicalComposer>

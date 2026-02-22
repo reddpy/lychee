@@ -14,7 +14,7 @@ import {
   type NodeKey,
 } from "lexical"
 import { mergeRegister } from "@lexical/utils"
-import { $isImageNode, type ImageAlignment } from "./image-node"
+import { $isImageNode, ImageNode, type ImageAlignment } from "./image-node"
 import { cn } from "@/lib/utils"
 import { Loader2, AlignLeft, AlignCenter, AlignRight, ImageOff, ExternalLink } from "lucide-react"
 
@@ -72,8 +72,9 @@ export function ImageComponent({
   stateRef.current = { isLoading, currentSrc, currentImageId, currentAlignment, currentSourceUrl }
 
   useEffect(() => {
-    return editor.registerUpdateListener(({ editorState }) => {
-      editorState.read(() => {
+    return editor.registerMutationListener(ImageNode, (mutations) => {
+      if (!mutations.has(nodeKey)) return
+      editor.getEditorState().read(() => {
         const node = $getNodeByKey(nodeKey)
         if (!$isImageNode(node)) return
         const s = stateRef.current

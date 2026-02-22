@@ -88,28 +88,41 @@ export function BlockPlaceholderPlugin(): null {
   // Focus-based placeholder for paragraphs only
   useEffect(() => {
     let prevParagraphDom: HTMLElement | null = null
+    let prevKey: string | null = null
 
     return editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
-        // Clear previous paragraph placeholder
+        const selection = $getSelection()
+        if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+          if (prevParagraphDom) {
+            prevParagraphDom.classList.remove(PLACEHOLDER_CLASS)
+            prevParagraphDom.removeAttribute("data-placeholder")
+            prevParagraphDom = null
+            prevKey = null
+          }
+          return
+        }
+
+        const anchorNode = selection.anchor.getNode()
+        const topElement = anchorNode.getTopLevelElement()
+
+        const key = topElement && $isParagraphNode(topElement) && topElement.getTextContent().length === 0
+          ? topElement.getKey()
+          : null
+
+        // Skip DOM work if same empty paragraph is still focused
+        if (key === prevKey) return
+
+        // Clear previous
         if (prevParagraphDom) {
           prevParagraphDom.classList.remove(PLACEHOLDER_CLASS)
           prevParagraphDom.removeAttribute("data-placeholder")
           prevParagraphDom = null
         }
+        prevKey = key
 
-        const selection = $getSelection()
-        if (!$isRangeSelection(selection) || !selection.isCollapsed()) return
-
-        const anchorNode = selection.anchor.getNode()
-        const topElement = anchorNode.getTopLevelElement()
-
-        if (
-          topElement &&
-          $isParagraphNode(topElement) &&
-          topElement.getTextContent().length === 0
-        ) {
-          const dom = editor.getElementByKey(topElement.getKey())
+        if (key && topElement) {
+          const dom = editor.getElementByKey(key)
           if (dom) {
             dom.classList.add(PLACEHOLDER_CLASS)
             dom.setAttribute("data-placeholder", getPlaceholderText(topElement)!)
