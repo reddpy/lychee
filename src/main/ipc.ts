@@ -13,6 +13,8 @@ import {
   updateDocument,
 } from './repos/documents';
 import { saveImage, getImagePath, deleteImage, downloadImage } from './repos/images';
+import { resolveUrl } from './repos/url-resolver';
+import { fetchUrlMetadata } from './repos/url-metadata';
 
 type Handler<C extends IpcChannel> = (
   payload: IpcContract[C]['req'],
@@ -75,5 +77,9 @@ export function registerIpcHandlers() {
     deleteImage(payload.id);
     return { ok: true };
   });
+
+  handle('url.resolve', (payload) => resolveUrl(payload.url));
+
+  handle('url.fetchMetadata', (payload) => fetchUrlMetadata(payload.url));
 }
 

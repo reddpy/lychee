@@ -1,5 +1,21 @@
 import type { DocumentRow } from './documents';
 
+// ── URL resolution types ─────────────────────────────────────────────
+
+export type ResolvedUrlResult =
+  | { type: 'image'; id: string; filePath: string; sourceUrl: string }
+  | { type: 'unsupported'; url: string; reason: string };
+
+export type UrlMetadataResult = {
+  title: string;
+  description: string;
+  imageUrl: string;
+  faviconUrl: string;
+  url: string;
+};
+
+// ── IPC contract ─────────────────────────────────────────────────────
+
 export type IpcContract = {
   'documents.list': {
     req: { limit?: number; offset?: number };
@@ -71,6 +87,14 @@ export type IpcContract = {
   'images.delete': {
     req: { id: string };
     res: { ok: true };
+  };
+  'url.resolve': {
+    req: { url: string };
+    res: ResolvedUrlResult;
+  };
+  'url.fetchMetadata': {
+    req: { url: string };
+    res: UrlMetadataResult;
   };
 };
 
