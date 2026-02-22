@@ -24,6 +24,7 @@ export type SerializedImageNode = Spread<
     width?: number
     height?: number
     alignment?: ImageAlignment
+    sourceUrl?: string
     version: 1
   },
   SerializedLexicalNode
@@ -37,6 +38,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
   __height: number | undefined
   __loading: boolean
   __alignment: ImageAlignment
+  __sourceUrl: string
 
   static getType(): string {
     return "image"
@@ -51,6 +53,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
       node.__height,
       node.__loading,
       node.__alignment,
+      node.__sourceUrl,
       node.__key,
     )
   }
@@ -63,6 +66,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
     height?: number,
     loading: boolean = false,
     alignment: ImageAlignment = "left",
+    sourceUrl: string = "",
     key?: NodeKey,
   ) {
     super(key)
@@ -73,6 +77,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
     this.__height = height
     this.__loading = loading
     this.__alignment = alignment
+    this.__sourceUrl = sourceUrl
   }
 
   createDOM(_config: EditorConfig): HTMLElement {
@@ -105,6 +110,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
       width: serializedNode.width,
       height: serializedNode.height,
       alignment: serializedNode.alignment,
+      sourceUrl: serializedNode.sourceUrl,
     })
   }
 
@@ -116,6 +122,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
       width: this.__width,
       height: this.__height,
       alignment: this.__alignment,
+      sourceUrl: this.__sourceUrl || undefined,
       version: 1,
     }
   }
@@ -168,6 +175,11 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
     writable.__alignment = alignment
   }
 
+  setSourceUrl(sourceUrl: string): void {
+    const writable = this.getWritable()
+    writable.__sourceUrl = sourceUrl
+  }
+
   decorate(_editor: LexicalEditor, _config: EditorConfig): ReactElement | null {
     return (
       <ImageComponent
@@ -179,6 +191,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
         height={this.__height}
         loading={this.__loading}
         alignment={this.__alignment}
+        sourceUrl={this.__sourceUrl}
       />
     )
   }
@@ -207,6 +220,7 @@ export interface CreateImageNodeParams {
   height?: number
   loading?: boolean
   alignment?: ImageAlignment
+  sourceUrl?: string
 }
 
 export function $createImageNode(params: CreateImageNodeParams = {}): ImageNode {
@@ -219,6 +233,7 @@ export function $createImageNode(params: CreateImageNodeParams = {}): ImageNode 
       params.height,
       params.loading ?? false,
       params.alignment ?? "left",
+      params.sourceUrl ?? "",
     ),
   )
 }

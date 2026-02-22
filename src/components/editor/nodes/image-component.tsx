@@ -16,7 +16,11 @@ import {
 import { mergeRegister } from "@lexical/utils"
 import { $isImageNode, type ImageAlignment } from "./image-node"
 import { cn } from "@/lib/utils"
-import { Loader2, AlignLeft, AlignCenter, AlignRight, ImageOff } from "lucide-react"
+import { Loader2, AlignLeft, AlignCenter, AlignRight, ImageOff, ExternalLink } from "lucide-react"
+
+function getHostname(url: string): string {
+  try { return new URL(url).hostname } catch { return url }
+}
 
 function toImageUrl(filename: string): string {
   if (!filename) return ""
@@ -33,6 +37,7 @@ interface ImageComponentProps {
   height: number | undefined
   loading: boolean
   alignment: ImageAlignment
+  sourceUrl: string
 }
 
 export function ImageComponent({
@@ -44,6 +49,7 @@ export function ImageComponent({
   height,
   loading: initialLoading,
   alignment: initialAlignment,
+  sourceUrl: initialSourceUrl,
 }: ImageComponentProps) {
   const [editor] = useLexicalComposerContext()
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
@@ -55,27 +61,30 @@ export function ImageComponent({
   const [currentSrc, setCurrentSrc] = useState(initialSrc)
   const [currentImageId, setCurrentImageId] = useState(initialImageId)
   const [currentAlignment, setCurrentAlignment] = useState(initialAlignment)
+  const [currentSourceUrl, setCurrentSourceUrl] = useState(initialSourceUrl)
   const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Reactively read node state — ensures component stays in sync even if
-  // decorate() isn't re-called (e.g. after async property updates)
+  // decorate() isn't re-called (e.g. after async property updates).
+  // Uses refs for current values to avoid re-registering the listener on every state change.
+  const stateRef = useRef({ isLoading, currentSrc, currentImageId, currentAlignment, currentSourceUrl })
+  stateRef.current = { isLoading, currentSrc, currentImageId, currentAlignment, currentSourceUrl }
+
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
         const node = $getNodeByKey(nodeKey)
         if (!$isImageNode(node)) return
-        const loading = node.__loading
-        const src = node.__src
-        const imageId = node.__imageId
-        const alignment = node.__alignment
-        if (loading !== isLoading) setIsLoading(loading)
-        if (src !== currentSrc) setCurrentSrc(src)
-        if (imageId !== currentImageId) setCurrentImageId(imageId)
-        if (alignment !== currentAlignment) setCurrentAlignment(alignment)
+        const s = stateRef.current
+        if (node.__loading !== s.isLoading) setIsLoading(node.__loading)
+        if (node.__src !== s.currentSrc) setCurrentSrc(node.__src)
+        if (node.__imageId !== s.currentImageId) setCurrentImageId(node.__imageId)
+        if (node.__alignment !== s.currentAlignment) setCurrentAlignment(node.__alignment)
+        if (node.__sourceUrl !== s.currentSourceUrl) setCurrentSourceUrl(node.__sourceUrl)
       })
     })
-  }, [editor, nodeKey, isLoading, currentSrc, currentImageId, currentAlignment])
+  }, [editor, nodeKey])
 
   // Preload image via offscreen Image object — avoids hacky hidden <img> tricks
   // Skip while isLoading (main process is downloading, src may be a remote URL)
@@ -96,7 +105,10 @@ export function ImageComponent({
       setResolvedSrc(toImageUrl(currentSrc))
       return
     }
-    if (!currentImageId) return
+    if (!currentImageId) {
+      setResolvedSrc("")
+      return
+    }
     let cancelled = false
     window.lychee.invoke("images.getPath", { id: currentImageId }).then(({ filePath }) => {
       if (cancelled) return
@@ -220,19 +232,13 @@ export function ImageComponent({
     [editor, nodeKey],
   )
 
-  // ── Loading state ──
-  if (isLoading) {
-    return (
-      <div className="image-placeholder">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        <span className="text-sm text-muted-foreground/70 mt-2">Loading media...</span>
-      </div>
-    )
-  }
+  const showError = !isLoading && (hasError || !resolvedSrc)
+  const showImage = !isLoading && resolvedSrc && !hasError && isImageLoaded
+  const showSpinner = isLoading || (!showImage && !showError)
 
   return (
     <div ref={containerRef} className={cn("image-container", isSelected && "selected")}>
-      {resolvedSrc && !hasError && isImageLoaded ? (
+      {showImage && (
         <img
           ref={imageRef}
           src={resolvedSrc}
@@ -243,20 +249,22 @@ export function ImageComponent({
           }}
           draggable={false}
         />
-      ) : hasError || !resolvedSrc ? (
+      )}
+      {showError && (
         <div className="image-placeholder image-error">
           <ImageOff className="size-5 text-muted-foreground" />
           <span className="text-xs text-muted-foreground mt-1">Failed to load image</span>
         </div>
-      ) : (
+      )}
+      {showSpinner && (
         <div className="image-placeholder">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
           <span className="text-sm text-muted-foreground/70 mt-2">Loading media...</span>
         </div>
       )}
 
-      {/* Alignment toolbar — only when image is loaded */}
-      {isImageLoaded && (
+      {/* Toolbar — always available when not loading */}
+      {!isLoading && (
         <div className="image-toolbar">
           <button
             className={cn("image-toolbar-btn", currentAlignment === "left" && "active")}
@@ -279,6 +287,20 @@ export function ImageComponent({
           >
             <AlignRight className="size-3.5" />
           </button>
+          {currentSourceUrl && (
+            <>
+              <div className="image-toolbar-divider" />
+              <button
+                className="image-toolbar-url"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => window.lychee.invoke("shell.openExternal", { url: currentSourceUrl })}
+                title={currentSourceUrl}
+              >
+                <ExternalLink className="size-3" />
+                <span>{getHostname(currentSourceUrl)}</span>
+              </button>
+            </>
+          )}
         </div>
       )}
 

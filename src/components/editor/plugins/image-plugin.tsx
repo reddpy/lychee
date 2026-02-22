@@ -25,6 +25,10 @@ export const INSERT_IMAGE_COMMAND: LexicalCommand<CreateImageNodeParams> = creat
 
 const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 
+function isExternalUrl(src: string): boolean {
+  return src.startsWith("http://") || src.startsWith("https://")
+}
+
 function isImageFile(file: File): boolean {
   return IMAGE_MIME_TYPES.has(file.type)
 }
@@ -65,11 +69,15 @@ async function saveImageAndUpdate(
   })
 }
 
+const downloadingNodes = new Set<string>()
+
 async function downloadAndSaveImage(
   editor: ReturnType<typeof useLexicalComposerContext>[0],
   nodeKey: string,
   url: string,
 ) {
+  if (downloadingNodes.has(nodeKey)) return
+  downloadingNodes.add(nodeKey)
   try {
     // Download via main process to bypass renderer CSP
     const { id, filePath } = await window.lychee.invoke("images.download", { url })
@@ -78,6 +86,7 @@ async function downloadAndSaveImage(
       if (!$isImageNode(node)) return
       node.setImageId(id)
       node.setSrc(filePath)
+      node.setSourceUrl(url)
       node.setLoading(false)
     })
   } catch {
@@ -85,18 +94,16 @@ async function downloadAndSaveImage(
       const node = $getNodeByKey(nodeKey)
       if (!$isImageNode(node)) return
       node.setSrc("")
+      node.setSourceUrl(url)
       node.setLoading(false)
     })
+  } finally {
+    downloadingNodes.delete(nodeKey)
   }
 }
 
 function getImageFiles(dataTransfer: DataTransfer): File[] {
-  const files: File[] = []
-  for (let i = 0; i < dataTransfer.files.length; i++) {
-    const file = dataTransfer.files[i]
-    if (isImageFile(file)) files.push(file)
-  }
-  return files
+  return Array.from(dataTransfer.files).filter(isImageFile)
 }
 
 export function ImagePlugin(): null {
@@ -187,7 +194,7 @@ export function ImagePlugin(): null {
 
         event.preventDefault()
         const [, altText, src] = match
-        const isExternal = src.startsWith("http://") || src.startsWith("https://")
+        const isExternal = isExternalUrl(src)
         const imageNode = $createImageNode({ src, altText, loading: isExternal })
         $insertNodeToNearestRoot(imageNode)
         // Download is triggered by the mutation listener
@@ -216,10 +223,15 @@ export function ImagePlugin(): null {
             // Download external URL images locally (e.g. from markdown shortcut or paste)
             if (type === "created") {
               const src = node.__src
-              if (src && !node.__imageId && (src.startsWith("http://") || src.startsWith("https://"))) {
+              if (src && !node.__imageId && isExternalUrl(src)) {
                 if (!node.__loading) node.setLoading(true)
                 downloadAndSaveImage(editor, key, src)
               }
+            }
+
+            // Undo can restore a node stuck in loading state — remove it
+            if (type === "updated" && node.__loading && !node.__imageId) {
+              node.remove()
             }
           }
         })

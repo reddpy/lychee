@@ -36,7 +36,7 @@ export const IMAGE: TextMatchTransformer = {
   regExp: /!(?:\[([^\[]*)\])(?:\(([^(]+)\))$/,
   replace: (textNode, match) => {
     const [, altText, src] = match
-    const isExternal = src.startsWith("http://") || src.startsWith("https://")
+    const isExternal = /^https?:\/\//.test(src)
     const imageNode = $createImageNode({ src, altText, loading: isExternal })
     // Remove the matched text node, then clean up the empty parent paragraph
     const parent = textNode.getParentOrThrow()
