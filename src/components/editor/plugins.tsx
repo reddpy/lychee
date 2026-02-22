@@ -41,6 +41,7 @@ import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indi
 import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highlight-plugin"
 import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
 import { FlatListPlugin } from "@/components/editor/plugins/flat-list-plugin"
+import { ClickToAppendPlugin } from "@/components/editor/plugins/click-to-append-plugin"
 import {
   FLAT_BULLET_LIST,
   FLAT_ORDERED_LIST,
@@ -139,6 +140,9 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
 
       {/* Drag and drop blocks */}
       <DraggableBlockPlugin anchorElem={editorContainerRef.current} />
+
+      {/* Click below last block to append paragraph */}
+      <ClickToAppendPlugin />
 
       {/* Section position indicator */}
       <SectionIndicatorPlugin />

@@ -146,7 +146,7 @@ export function LexicalEditor({
   );
 
   return (
-    <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto">
+    <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto cursor-text">
       <div className="mx-auto max-w-225 px-8 py-20">
         {/* Emoji above editor */}
         {document.emoji && (
