@@ -62,7 +62,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
     width?: number,
     height?: number,
     loading: boolean = false,
-    alignment: ImageAlignment = "center",
+    alignment: ImageAlignment = "left",
     key?: NodeKey,
   ) {
     super(key)
@@ -218,7 +218,7 @@ export function $createImageNode(params: CreateImageNodeParams = {}): ImageNode 
       params.width,
       params.height,
       params.loading ?? false,
-      params.alignment ?? "center",
+      params.alignment ?? "left",
     ),
   )
 }

@@ -46,6 +46,7 @@ import {
   FLAT_ORDERED_LIST,
   FLAT_CHECK_LIST,
 } from "@/components/editor/plugins/list-markdown-transformers"
+import { IMAGE, IMAGE_EXPORT } from "@/components/editor/plugins/image-markdown-transformer"
 
 // Custom transformers: standard ones minus the old list transformers, plus our flat ones
 const TRANSFORMERS = [
@@ -54,6 +55,7 @@ const TRANSFORMERS = [
   FLAT_BULLET_LIST,
   FLAT_ORDERED_LIST,
   FLAT_CHECK_LIST,
+  IMAGE_EXPORT,
   CODE,
   INLINE_CODE,
   BOLD_ITALIC_STAR,
@@ -64,6 +66,7 @@ const TRANSFORMERS = [
   ITALIC_STAR,
   ITALIC_UNDERSCORE,
   STRIKETHROUGH,
+  IMAGE,
   LINK,
 ]
 

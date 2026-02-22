@@ -12,7 +12,7 @@ import {
   trashDocument,
   updateDocument,
 } from './repos/documents';
-import { saveImage, getImagePath, deleteImage } from './repos/images';
+import { saveImage, getImagePath, deleteImage, downloadImage } from './repos/images';
 
 type Handler<C extends IpcChannel> = (
   payload: IpcContract[C]['req'],
@@ -68,6 +68,8 @@ export function registerIpcHandlers() {
   handle('images.save', (payload) => saveImage(payload.data, payload.mimeType));
 
   handle('images.getPath', (payload) => getImagePath(payload.id));
+
+  handle('images.download', (payload) => downloadImage(payload.url));
 
   handle('images.delete', (payload) => {
     deleteImage(payload.id);

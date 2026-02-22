@@ -64,6 +64,10 @@ export type IpcContract = {
     req: { id: string };
     res: { filePath: string };
   };
+  'images.download': {
+    req: { url: string };
+    res: { id: string; filePath: string };
+  };
   'images.delete': {
     req: { id: string };
     res: { ok: true };

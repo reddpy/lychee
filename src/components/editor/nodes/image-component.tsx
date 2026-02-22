@@ -16,7 +16,7 @@ import {
 import { mergeRegister } from "@lexical/utils"
 import { $isImageNode, type ImageAlignment } from "./image-node"
 import { cn } from "@/lib/utils"
-import { Loader2, AlignLeft, AlignCenter, AlignRight } from "lucide-react"
+import { Loader2, AlignLeft, AlignCenter, AlignRight, ImageOff } from "lucide-react"
 
 function toImageUrl(filename: string): string {
   if (!filename) return ""
@@ -50,6 +50,8 @@ export function ImageComponent({
   const [resolvedSrc, setResolvedSrc] = useState(() => toImageUrl(initialSrc))
   const [isResizing, setIsResizing] = useState(false)
   const [isLoading, setIsLoading] = useState(initialLoading)
+  const [hasError, setHasError] = useState(false)
+  const [isImageLoaded, setIsImageLoaded] = useState(false)
   const [currentSrc, setCurrentSrc] = useState(initialSrc)
   const [currentImageId, setCurrentImageId] = useState(initialImageId)
   const [currentAlignment, setCurrentAlignment] = useState(initialAlignment)
@@ -74,6 +76,19 @@ export function ImageComponent({
       })
     })
   }, [editor, nodeKey, isLoading, currentSrc, currentImageId, currentAlignment])
+
+  // Preload image via offscreen Image object — avoids hacky hidden <img> tricks
+  // Skip while isLoading (main process is downloading, src may be a remote URL)
+  useEffect(() => {
+    if (!resolvedSrc || isLoading) return
+    setHasError(false)
+    setIsImageLoaded(false)
+    const img = new Image()
+    img.src = resolvedSrc
+    img.onload = () => setIsImageLoaded(true)
+    img.onerror = () => setHasError(true)
+    return () => { img.onload = null; img.onerror = null }
+  }, [resolvedSrc, isLoading])
 
   // Resolve imageId → file path on mount (for nodes loaded from JSON that have imageId but no src)
   useEffect(() => {
@@ -209,14 +224,15 @@ export function ImageComponent({
   if (isLoading) {
     return (
       <div className="image-placeholder">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        <span className="text-sm text-muted-foreground/70 mt-2">Loading media...</span>
       </div>
     )
   }
 
   return (
     <div ref={containerRef} className={cn("image-container", isSelected && "selected")}>
-      {resolvedSrc ? (
+      {resolvedSrc && !hasError && isImageLoaded ? (
         <img
           ref={imageRef}
           src={resolvedSrc}
@@ -227,9 +243,15 @@ export function ImageComponent({
           }}
           draggable={false}
         />
+      ) : hasError || !resolvedSrc ? (
+        <div className="image-placeholder image-error">
+          <ImageOff className="size-5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground mt-1">Failed to load image</span>
+        </div>
       ) : (
         <div className="image-placeholder">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground/70 mt-2">Loading media...</span>
         </div>
       )}
 
@@ -259,7 +281,7 @@ export function ImageComponent({
       </div>
 
       {/* Resize handles — only when selected and image is loaded */}
-      {isSelected && resolvedSrc && (
+      {isSelected && isImageLoaded && (
         <>
           <div className="image-resizer image-resizer-nw" onPointerDown={(e) => onResizeStart(e, "nw")} />
           <div className="image-resizer image-resizer-ne" onPointerDown={(e) => onResizeStart(e, "ne")} />
