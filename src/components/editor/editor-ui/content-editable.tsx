@@ -10,7 +10,7 @@ export function ContentEditable({ className }: Props): JSX.Element {
     <LexicalContentEditable
       className={
         className ??
-        `ContentEditable__root relative block min-h-72 min-h-full overflow-auto px-8 focus:outline-none font-normal`
+        `ContentEditable__root relative block min-h-72 overflow-auto px-8 focus:outline-none font-normal`
       }
     />
   )
