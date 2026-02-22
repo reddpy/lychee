@@ -3,13 +3,13 @@
 import { JSX, useCallback, useEffect, useRef, useState } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
-  $getRoot,
-  $isElementNode,
+  $getNearestNodeFromDOMNode,
+  $setSelection,
   COMMAND_PRIORITY_HIGH,
   KEY_ESCAPE_COMMAND,
   type LexicalNode,
 } from "lexical"
-import { $isAutoLinkNode } from "@lexical/link"
+import { $isAutoLinkNode, $isLinkNode } from "@lexical/link"
 import { ExternalLink, Bookmark, Code, Loader2 } from "lucide-react"
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
@@ -86,8 +86,7 @@ export function LinkClickPlugin(): JSX.Element | null {
       // If mouse moved to another part of the same link, stay open
       if (related && linkElement.contains(related)) return
 
-      setHoverState(null)
-      setActionInProgress(null)
+      dismiss()
     }
 
     return editor.registerRootListener((rootElement, prevRootElement) => {
@@ -141,33 +140,50 @@ export function LinkClickPlugin(): JSX.Element | null {
   }, [hoverState, dismiss])
 
   /**
-   * Find the AutoLinkNode matching the URL and replace its containing
-   * paragraph. Walks backwards to find the last match.
+   * Find the link node from its DOM element and replace it with the given node.
    */
   const replaceUrlNode = useCallback(
-    (url: string, replacementNode: LexicalNode) => {
-      const root = $getRoot()
-      const children = root.getChildren()
-      for (let i = children.length - 1; i >= 0; i--) {
-        const child = children[i]
-        if (!$isElementNode(child)) continue
-        const inlines = child.getChildren()
-        for (let j = inlines.length - 1; j >= 0; j--) {
-          const inline = inlines[j]
-          if ($isAutoLinkNode(inline) && inline.getURL() === url) {
-            if (child.getChildrenSize() === 1) {
-              child.replace(replacementNode)
-            } else {
-              inline.remove()
-              child.insertAfter(replacementNode)
-            }
-            return
-          }
-        }
+    (linkEl: HTMLAnchorElement, replacementNode: LexicalNode) => {
+      const lexicalNode = $getNearestNodeFromDOMNode(linkEl)
+      if (!lexicalNode) return
+
+      // The nearest node might be a TextNode inside the link — walk up
+      const linkNode =
+        ($isAutoLinkNode(lexicalNode) || $isLinkNode(lexicalNode))
+          ? lexicalNode
+          : lexicalNode.getParent()
+
+      if (!linkNode || (!$isAutoLinkNode(linkNode) && !$isLinkNode(linkNode))) return
+
+      const parent = linkNode.getParent()
+      if (parent && parent.getChildrenSize() === 1) {
+        // The link is the only child of its paragraph — replace the whole paragraph
+        parent.replace(replacementNode)
+      } else {
+        linkNode.insertAfter(replacementNode)
+        linkNode.remove()
       }
+      // Clear selection so the editor doesn't jump to a stale cursor position
+      $setSelection(null)
     },
     [],
   )
+
+  const createBookmark = useCallback(async (url: string, linkEl: HTMLAnchorElement) => {
+    const meta: UrlMetadataResult = await window.lychee.invoke("url.fetchMetadata", { url })
+    editor.update(
+      () => {
+        replaceUrlNode(linkEl, $createBookmarkNode({
+          url: meta.url,
+          title: meta.title,
+          description: meta.description,
+          imageUrl: meta.imageUrl,
+          faviconUrl: meta.faviconUrl,
+        }))
+      },
+      { tag: "link-hover-action" },
+    )
+  }, [editor, replaceUrlNode])
 
   const handleEmbed = useCallback(async () => {
     if (!hoverState) return
@@ -176,58 +192,41 @@ export function LinkClickPlugin(): JSX.Element | null {
     try {
       const result: ResolvedUrlResult = await window.lychee.invoke("url.resolve", { url: hoverState.url })
 
-      switch (result.type) {
-        case "image": {
-          editor.update(
-            () => {
-              const imageNode = $createImageNode({
-                imageId: result.id,
-                src: result.filePath,
-                sourceUrl: result.sourceUrl,
-                loading: false,
-              })
-              replaceUrlNode(hoverState.url, imageNode)
-            },
-            { tag: "link-hover-action" },
-          )
-          break
-        }
-        case "unsupported":
-          break
+      if (result.type === "image") {
+        editor.update(
+          () => {
+            replaceUrlNode(hoverState.linkEl, $createImageNode({
+              imageId: result.id,
+              src: result.filePath,
+              sourceUrl: result.sourceUrl,
+              loading: false,
+            }))
+          },
+          { tag: "link-hover-action" },
+        )
+      } else {
+        // Not embeddable as media — fall back to bookmark
+        await createBookmark(hoverState.url, hoverState.linkEl)
       }
     } catch (err) {
       console.error("Failed to resolve URL:", err)
     } finally {
       dismiss()
     }
-  }, [editor, hoverState, replaceUrlNode, dismiss])
+  }, [editor, hoverState, replaceUrlNode, createBookmark, dismiss])
 
   const handleBookmark = useCallback(async () => {
     if (!hoverState) return
     setActionInProgress("bookmark")
 
     try {
-      const meta: UrlMetadataResult = await window.lychee.invoke("url.fetchMetadata", { url: hoverState.url })
-
-      editor.update(
-        () => {
-          const bookmarkNode = $createBookmarkNode({
-            url: meta.url,
-            title: meta.title,
-            description: meta.description,
-            imageUrl: meta.imageUrl,
-            faviconUrl: meta.faviconUrl,
-          })
-          replaceUrlNode(hoverState.url, bookmarkNode)
-        },
-        { tag: "link-hover-action" },
-      )
+      await createBookmark(hoverState.url, hoverState.linkEl)
     } catch (err) {
       console.error("Failed to fetch metadata:", err)
     } finally {
       dismiss()
     }
-  }, [editor, hoverState, replaceUrlNode, dismiss])
+  }, [hoverState, createBookmark, dismiss])
 
   const handleOpen = useCallback(() => {
     if (!hoverState) return
@@ -236,6 +235,8 @@ export function LinkClickPlugin(): JSX.Element | null {
   }, [hoverState, dismiss])
 
   if (!hoverState) return null
+
+  const btnClass = "flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs hover:bg-accent hover:text-accent-foreground transition-colors"
 
   const toolbarContent = actionInProgress ? (
     <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground">
@@ -246,7 +247,7 @@ export function LinkClickPlugin(): JSX.Element | null {
     <div className="flex items-center gap-0.5">
       <button
         type="button"
-        className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs hover:bg-accent hover:text-accent-foreground transition-colors"
+        className={btnClass}
         onClick={handleBookmark}
         title="Convert to bookmark"
       >
@@ -255,7 +256,7 @@ export function LinkClickPlugin(): JSX.Element | null {
       </button>
       <button
         type="button"
-        className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs hover:bg-accent hover:text-accent-foreground transition-colors"
+        className={btnClass}
         onClick={handleEmbed}
         title="Embed content"
       >
@@ -264,7 +265,7 @@ export function LinkClickPlugin(): JSX.Element | null {
       </button>
       <button
         type="button"
-        className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs hover:bg-accent hover:text-accent-foreground transition-colors"
+        className={btnClass}
         onClick={handleOpen}
         title="Open in browser"
       >
