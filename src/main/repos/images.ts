@@ -53,6 +53,31 @@ export function getImagePath(id: string): { filePath: string } {
   return { filePath: row.filename };
 }
 
+export async function downloadImage(url: string): Promise<{ id: string; filePath: string }> {
+  // Dynamic import: net.fetch requires app to be ready
+  const { net } = await import('electron');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await net.fetch(url, { signal: controller.signal as never });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type') || '';
+    const mimeType = Object.keys(MIME_TO_EXT).find((m) => contentType.includes(m)) || 'image/png';
+    const ext = MIME_TO_EXT[mimeType];
+    const id = randomUUID();
+    const filename = `${id}.${ext}`;
+    fs.writeFileSync(path.join(getImagesDir(), filename), buffer);
+    const db = getDb();
+    db.prepare(
+      `INSERT INTO images (id, filename, mimeType, createdAt) VALUES (?, ?, ?, ?)`,
+    ).run(id, filename, mimeType, new Date().toISOString());
+    return { id, filePath: filename };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function deleteImage(id: string): void {
   const db = getDb();
   const row = db.prepare(`SELECT filename FROM images WHERE id = ?`).get(id) as ImageRow | undefined;

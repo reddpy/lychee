@@ -28,6 +28,7 @@ const config: ForgeConfig = {
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
+      devContentSecurityPolicy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; img-src 'self' data: https: http: lychee-image:; connect-src 'self' ws:",
       mainConfig,
       renderer: {
         config: rendererConfig,

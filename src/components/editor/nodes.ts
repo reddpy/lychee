@@ -6,6 +6,7 @@ import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode"
 import { TitleNode } from "@/components/editor/nodes/title-node"
 import { ListItemNode } from "@/components/editor/nodes/list-item-node"
 import { ImageNode } from "@/components/editor/nodes/image-node"
+import { BookmarkNode } from "@/components/editor/nodes/bookmark-node"
 
 export const nodes: Array<Klass<LexicalNode>> = [
   TitleNode,
@@ -18,4 +19,5 @@ export const nodes: Array<Klass<LexicalNode>> = [
   AutoLinkNode,
   HorizontalRuleNode,
   ImageNode,
+  BookmarkNode,
 ]

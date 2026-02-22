@@ -11,6 +11,7 @@ import {
   COMMAND_PRIORITY_LOW,
   DELETE_CHARACTER_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
+  type LexicalNode,
 } from "lexical"
 import {
   $isListItemNode,
@@ -29,7 +30,12 @@ import {
 export function FlatListPlugin(): null {
   const [editor] = useLexicalComposerContext()
 
-  // ── Enter on empty list item ──────────────────────────────────────
+  // ── Enter inside a list item ─────────────────────────────────────
+  // Handles both empty (outdent/convert) and non-empty (split) cases.
+  // For non-empty items we let Lexical's insertParagraph() do the heavy
+  // lifting (text splits, inline element splits) then clean up any empty
+  // duplicate ListItemNodes caused by AutoLinkNode's insertNewAfter
+  // delegating to the parent block during $splitNodeAtPoint.
   useEffect(() => {
     return editor.registerCommand(
       INSERT_PARAGRAPH_COMMAND,
@@ -39,32 +45,79 @@ export function FlatListPlugin(): null {
           return false
         }
 
-        const anchor = selection.anchor.getNode()
-        // Walk up to find the list item (anchor could be a TextNode child)
-        const listItem = $isListItemNode(anchor)
-          ? anchor
-          : $isListItemNode(anchor.getParent())
-            ? (anchor.getParent() as ListItemNode)
-            : null
+        // Walk up from anchor to find the enclosing list item
+        let listItem: ListItemNode | null = null
+        let walk: LexicalNode | null = selection.anchor.getNode()
+        while (walk) {
+          if ($isListItemNode(walk)) { listItem = walk; break }
+          walk = walk.getParent()
+        }
+        if (!listItem) return false
 
-        if (!listItem || listItem.getChildrenSize() !== 0) {
-          return false
+        // ── Empty list item: outdent or convert to paragraph ──
+        if (listItem.getChildrenSize() === 0) {
+          const indent = listItem.getIndent()
+          if (indent > 0) {
+            listItem.setIndent(indent - 1)
+          } else {
+            const paragraph = $createParagraphNode()
+            paragraph
+              .setTextStyle(selection.style)
+              .setTextFormat(selection.format)
+            listItem.replace(paragraph)
+            paragraph.select()
+          }
+          return true
         }
 
-        // Empty list item
-        const indent = listItem.getIndent()
+        // ── Non-empty list item: let Lexical split, then clean up ──
+        // Snapshot the next sibling key so we know where the original
+        // neighbors end (anything between listItem and nextKey is new).
+        const nextKey = listItem.getNextSibling()?.getKey() ?? null
 
-        if (indent > 0) {
-          // Outdent
-          listItem.setIndent(indent - 1)
-        } else {
-          // Convert to paragraph
-          const paragraph = $createParagraphNode()
-          paragraph
-            .setTextStyle(selection.style)
-            .setTextFormat(selection.format)
-          listItem.replace(paragraph)
-          paragraph.select()
+        // Let Lexical's insertParagraph handle all the complex inline
+        // splitting (text nodes, link nodes, etc.)
+        selection.insertParagraph()
+
+        // Clean up: AutoLinkNode.insertNewAfter may have created extra
+        // ListItemNodes between the original and the pre-existing next sibling.
+        // A normal split should produce exactly 1 new ListItemNode. If there
+        // are 2+, merge the extras into the cursor's item then remove them.
+        const sel = $getSelection()
+        let cursorListItem: ListItemNode | null = null
+        if ($isRangeSelection(sel)) {
+          let cursorWalk: LexicalNode | null = sel.anchor.getNode()
+          while (cursorWalk) {
+            if ($isListItemNode(cursorWalk)) {
+              cursorListItem = cursorWalk
+              break
+            }
+            cursorWalk = cursorWalk.getParent()
+          }
+        }
+
+        // Collect all new ListItemNodes created between original and nextKey
+        const newItems: ListItemNode[] = []
+        let sibling = listItem.getNextSibling()
+        while (sibling) {
+          if (sibling.getKey() === nextKey) break
+          if ($isListItemNode(sibling)) {
+            newItems.push(sibling)
+          }
+          sibling = sibling.getNextSibling()
+        }
+
+        // If more than 1 new item, merge extras into the cursor's item
+        if (newItems.length > 1 && cursorListItem) {
+          for (const item of newItems) {
+            if (item.getKey() === cursorListItem.getKey()) continue
+            // Move children into cursor's item
+            const children = item.getChildren()
+            for (const child of children) {
+              cursorListItem.append(child)
+            }
+            item.remove()
+          }
         }
 
         return true
@@ -91,18 +144,26 @@ export function FlatListPlugin(): null {
         if (selection.anchor.offset !== 0) return false
 
         const anchor = selection.anchor.getNode()
-        const listItem = $isListItemNode(anchor)
-          ? anchor
-          : $isListItemNode(anchor.getParent())
-            ? (anchor.getParent() as ListItemNode)
-            : null
 
+        // Walk up to find the enclosing list item (anchor may be deeply nested,
+        // e.g. TextNode inside LinkNode inside ListItemNode).
+        let listItem: ListItemNode | null = null
+        let walk: LexicalNode | null = anchor
+        while (walk) {
+          if ($isListItemNode(walk)) { listItem = walk; break }
+          walk = walk.getParent()
+        }
         if (!listItem) return false
 
-        // Only handle when cursor is at the very start of the list item
+        // Only handle when cursor is at the very start of the list item.
+        // Walk from the anchor back up to the list item, verifying each node
+        // is the first child of its parent (i.e. nothing precedes the cursor).
         if (selection.anchor.type === "text") {
-          const firstChild = listItem.getFirstChild()
-          if (!firstChild || !anchor.is(firstChild)) return false
+          let node: LexicalNode | null = anchor
+          while (node && !node.is(listItem)) {
+            if (node !== node.getParent()?.getFirstChild()) return false
+            node = node.getParent()
+          }
         }
 
         const indent = listItem.getIndent()

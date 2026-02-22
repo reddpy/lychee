@@ -5,10 +5,10 @@ import {
   $createParagraphNode,
   $getNodeByKey,
   $getSelection,
-  $insertNodes,
   $isNodeSelection,
   $setSelection,
   COMMAND_PRIORITY_HIGH,
+  COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_EDITOR,
   createCommand,
   DROP_COMMAND,
@@ -16,11 +16,18 @@ import {
   PASTE_COMMAND,
   type LexicalCommand,
 } from "lexical"
+import { $insertNodeToNearestRoot } from "@lexical/utils"
 import { $createImageNode, ImageNode, $isImageNode, type CreateImageNodeParams } from "@/components/editor/nodes/image-node"
+
+const IMAGE_MARKDOWN_RE = /^!\[([^\]]*)\]\(([^)]+)\)$/
 
 export const INSERT_IMAGE_COMMAND: LexicalCommand<CreateImageNodeParams> = createCommand("INSERT_IMAGE")
 
 const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+
+function isExternalUrl(src: string): boolean {
+  return src.startsWith("http://") || src.startsWith("https://")
+}
 
 function isImageFile(file: File): boolean {
   return IMAGE_MIME_TYPES.has(file.type)
@@ -62,13 +69,41 @@ async function saveImageAndUpdate(
   })
 }
 
-function getImageFiles(dataTransfer: DataTransfer): File[] {
-  const files: File[] = []
-  for (let i = 0; i < dataTransfer.files.length; i++) {
-    const file = dataTransfer.files[i]
-    if (isImageFile(file)) files.push(file)
+const downloadingNodes = new Set<string>()
+
+async function downloadAndSaveImage(
+  editor: ReturnType<typeof useLexicalComposerContext>[0],
+  nodeKey: string,
+  url: string,
+) {
+  if (downloadingNodes.has(nodeKey)) return
+  downloadingNodes.add(nodeKey)
+  try {
+    // Download via main process to bypass renderer CSP
+    const { id, filePath } = await window.lychee.invoke("images.download", { url })
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey)
+      if (!$isImageNode(node)) return
+      node.setImageId(id)
+      node.setSrc(filePath)
+      node.setSourceUrl(url)
+      node.setLoading(false)
+    })
+  } catch {
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey)
+      if (!$isImageNode(node)) return
+      node.setSrc("")
+      node.setSourceUrl(url)
+      node.setLoading(false)
+    })
+  } finally {
+    downloadingNodes.delete(nodeKey)
   }
-  return files
+}
+
+function getImageFiles(dataTransfer: DataTransfer): File[] {
+  return Array.from(dataTransfer.files).filter(isImageFile)
 }
 
 export function ImagePlugin(): null {
@@ -80,7 +115,7 @@ export function ImagePlugin(): null {
       INSERT_IMAGE_COMMAND,
       (payload) => {
         const imageNode = $createImageNode(payload)
-        $insertNodes([imageNode])
+        $insertNodeToNearestRoot(imageNode)
         return true
       },
       COMMAND_PRIORITY_EDITOR,
@@ -98,7 +133,7 @@ export function ImagePlugin(): null {
         for (const file of files) {
           // Insert a loading placeholder immediately (already in update context)
           const node = $createImageNode({ loading: true })
-          $insertNodes([node])
+          $insertNodeToNearestRoot(node)
           // Save file in background, then update the node
           saveImageAndUpdate(editor, node.getKey(), file)
         }
@@ -137,7 +172,7 @@ export function ImagePlugin(): null {
         for (const file of files) {
           // Already in update context from command handler
           const node = $createImageNode({ loading: true })
-          $insertNodes([node])
+          $insertNodeToNearestRoot(node)
           saveImageAndUpdate(editor, node.getKey(), file)
         }
 
@@ -146,8 +181,30 @@ export function ImagePlugin(): null {
       COMMAND_PRIORITY_HIGH,
     )
 
+    // PASTE_COMMAND: handle pasted markdown image syntax (e.g. ![alt](url))
+    const removeMarkdownPasteCommand = editor.registerCommand(
+      PASTE_COMMAND,
+      (event) => {
+        const clipboardData = event instanceof ClipboardEvent ? event.clipboardData : null
+        if (!clipboardData) return false
+
+        const text = clipboardData.getData("text/plain").trim()
+        const match = text.match(IMAGE_MARKDOWN_RE)
+        if (!match) return false
+
+        event.preventDefault()
+        const [, altText, src] = match
+        const isExternal = isExternalUrl(src)
+        const imageNode = $createImageNode({ src, altText, loading: isExternal })
+        $insertNodeToNearestRoot(imageNode)
+        // Download is triggered by the mutation listener
+        return true
+      },
+      COMMAND_PRIORITY_LOW,
+    )
+
     // Always ensure a paragraph exists after every image so the cursor
-    // has somewhere to land
+    // has somewhere to land.  Also download external URL images locally.
     const removeMutationListener = editor.registerMutationListener(
       ImageNode,
       (mutations) => {
@@ -156,9 +213,25 @@ export function ImagePlugin(): null {
             if (type === "destroyed") continue
             const node = $getNodeByKey(key)
             if (!$isImageNode(node)) continue
+
+            // Ensure trailing paragraph
             const next = node.getNextSibling()
             if (!next || $isImageNode(next)) {
               node.insertAfter($createParagraphNode())
+            }
+
+            // Download external URL images locally (e.g. from markdown shortcut or paste)
+            if (type === "created") {
+              const src = node.__src
+              if (src && !node.__imageId && isExternalUrl(src)) {
+                if (!node.__loading) node.setLoading(true)
+                downloadAndSaveImage(editor, key, src)
+              }
+            }
+
+            // Undo can restore a node stuck in loading state — remove it
+            if (type === "updated" && node.__loading && !node.__imageId) {
+              node.remove()
             }
           }
         })
@@ -170,6 +243,7 @@ export function ImagePlugin(): null {
       removeDropCommand()
       removeDragOverCommand()
       removePasteCommand()
+      removeMarkdownPasteCommand()
       removeMutationListener()
     }
   }, [editor])
