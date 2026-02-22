@@ -154,8 +154,7 @@ export class ListItemNode extends ElementNode {
   ): ListItemNode {
     const newItem = $createListItemNode(this.__listType, false)
     newItem.setIndent(this.getIndent())
-    const direction = this.getDirection()
-    newItem.setDirection(direction)
+    newItem.setDirection(this.getDirection())
     this.insertAfter(newItem, restoreSelection)
     return newItem
   }
