@@ -159,7 +159,10 @@ export function ImageComponent({
         CLICK_COMMAND,
         (event) => {
           if (isResizing) return true
-          if (containerRef.current?.contains(event.target as Node)) {
+          const target = event.target as Node
+          if (containerRef.current?.contains(target)) {
+            // Don't select when clicking toolbar buttons
+            if ((target as HTMLElement).closest?.(".image-toolbar")) return true
             if (!event.shiftKey) clearSelection()
             setSelected(true)
             return true
@@ -187,7 +190,7 @@ export function ImageComponent({
 
   // ── Resize ──
   const onResizeStart = useCallback(
-    (e: React.PointerEvent, corner: string) => {
+    (e: React.PointerEvent, side: "left" | "right") => {
       e.preventDefault()
       e.stopPropagation()
       const img = imageRef.current
@@ -202,7 +205,7 @@ export function ImageComponent({
 
       const onMove = (me: PointerEvent) => {
         let dx = me.clientX - startX
-        if (corner.includes("w")) dx = -dx
+        if (side === "left") dx = -dx
 
         const newWidth = Math.max(100, Math.min(maxWidth, startWidth + dx))
         const newHeight = newWidth / aspect
@@ -237,7 +240,7 @@ export function ImageComponent({
   const showSpinner = isLoading || (!showImage && !showError)
 
   return (
-    <div ref={containerRef} className={cn("image-container", isSelected && "selected")}>
+    <div ref={containerRef} className={cn("image-container", isSelected && "selected", isResizing && "resizing")}>
       {showImage && (
         <img
           ref={imageRef}
@@ -304,13 +307,11 @@ export function ImageComponent({
         </div>
       )}
 
-      {/* Resize handles — only when selected and image is loaded */}
-      {isSelected && isImageLoaded && (
+      {/* Resize handles — visible on hover via CSS */}
+      {isImageLoaded && (
         <>
-          <div className="image-resizer image-resizer-nw" onPointerDown={(e) => onResizeStart(e, "nw")} />
-          <div className="image-resizer image-resizer-ne" onPointerDown={(e) => onResizeStart(e, "ne")} />
-          <div className="image-resizer image-resizer-sw" onPointerDown={(e) => onResizeStart(e, "sw")} />
-          <div className="image-resizer image-resizer-se" onPointerDown={(e) => onResizeStart(e, "se")} />
+          <div className="image-resizer image-resizer-left" onPointerDown={(e) => onResizeStart(e, "left")} />
+          <div className="image-resizer image-resizer-right" onPointerDown={(e) => onResizeStart(e, "right")} />
         </>
       )}
     </div>

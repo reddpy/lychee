@@ -250,7 +250,7 @@ blockquote.is-placeholder,
   cursor: default;
   user-select: none;
   margin: 0.25rem 0;
-  padding: 0.5rem;
+  padding: 0.25rem 0.5rem;
 }
 
 .image-container {
@@ -289,8 +289,18 @@ blockquote.is-placeholder,
   z-index: 10;
 }
 
-.image-container.selected .image-toolbar {
+.image-container:hover .image-toolbar {
   display: flex;
+}
+
+/* Bridge the 6px gap between toolbar and image so hover doesn't break */
+.image-toolbar::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
 }
 
 .image-toolbar-btn {
@@ -375,21 +385,33 @@ blockquote.is-placeholder,
   background-color: hsl(var(--muted) / 0.5);
 }
 
-/* Resize handles */
+/* Resize handles — Notion-style side bars */
 .image-resizer {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  background: hsl(var(--primary));
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 48px;
+  background: hsl(var(--foreground) / 0.5);
   border: 1.5px solid white;
-  border-radius: 2px;
+  border-radius: 4px;
   z-index: 10;
+  cursor: col-resize;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
 }
 
-.image-resizer-nw { top: -5px; left: -5px; cursor: nw-resize; }
-.image-resizer-ne { top: -5px; right: -5px; cursor: ne-resize; }
-.image-resizer-sw { bottom: -5px; left: -5px; cursor: sw-resize; }
-.image-resizer-se { bottom: -5px; right: -5px; cursor: se-resize; }
+.image-resizer:hover {
+  background: hsl(var(--foreground) / 0.7);
+}
+
+.image-container:hover .image-resizer,
+.image-container.resizing .image-resizer {
+  opacity: 1;
+}
+
+.image-resizer-left { left: 6px; }
+.image-resizer-right { right: 6px; }
 
 /* ── Bookmark block ─────────────────────────────────────── */
 
