@@ -4,7 +4,7 @@ import { Smile, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDocumentStore } from "@/renderer/document-store";
 import type { DocumentRow } from "@/shared/documents";
-import type { SerializedEditorState } from "lexical";
+import type { EditorState, SerializedEditorState } from "lexical";
 
 import { Editor } from "@/components/editor/editor";
 import { NoteEmojiPicker } from "@/components/sidebar/note-emoji-picker";
@@ -90,10 +90,10 @@ export function LexicalEditor({
       debounce(
         (
           id: string,
-          serialized: SerializedEditorState,
+          editorState: EditorState,
           onSaved?: (doc: DocumentRow) => void,
         ) => {
-          const content = JSON.stringify(serialized);
+          const content = JSON.stringify(editorState.toJSON());
           window.lychee
             .invoke("documents.update", { id, content })
             .then(({ document: doc }) => {
@@ -130,9 +130,9 @@ export function LexicalEditor({
     };
   }, [saveContent, saveTitle]);
 
-  const handleSerializedChange = React.useCallback(
-    (value: SerializedEditorState) => {
-      saveContent(documentId, value);
+  const handleEditorStateChange = React.useCallback(
+    (editorState: EditorState) => {
+      saveContent(documentId, editorState);
     },
     [documentId, saveContent],
   );
@@ -218,7 +218,7 @@ export function LexicalEditor({
         <Editor
           key={documentId}
           editorSerializedState={editorSerializedState}
-          onSerializedChange={handleSerializedChange}
+          onEditorStateChange={handleEditorStateChange}
           initialTitle={initialTitle}
           onTitleChange={handleTitleChange}
         />
