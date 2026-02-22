@@ -5,6 +5,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import {
   $createNodeSelection,
   $getNodeByKey,
+  $isTextNode,
   $setSelection,
   COMMAND_PRIORITY_HIGH,
   HISTORY_PUSH_TAG,
@@ -39,9 +40,10 @@ function $getLinkByKey(nodeKey: NodeKey): LexicalNode | null {
 
 interface HoverState {
   url: string
-  anchorRect: DOMRect
   linkEl: HTMLAnchorElement
   linkNodeKey: NodeKey
+  /** True when the link is the only child of its parent block (eligible for conversion). */
+  canConvert: boolean
 }
 
 type ActionInProgress = "embed" | "bookmark" | null
@@ -55,6 +57,10 @@ export function LinkClickPlugin(): JSX.Element | null {
   const [actionInProgress, setActionInProgress] = useState<ActionInProgress>(null)
   const hoverRef = useRef(hoverState)
   hoverRef.current = hoverState
+
+  // Virtual anchor for Radix Popover — always points to the live link element
+  const anchorRef = useRef<HTMLAnchorElement>(null)
+  anchorRef.current = hoverState?.linkEl ?? null
 
   const keyProp = `__lexicalKey_${(editor as any)._key}`
 
@@ -91,7 +97,20 @@ export function LinkClickPlugin(): JSX.Element | null {
       }
       if (!nodeKey) return
 
-      setHoverState({ url: href, anchorRect: a.getBoundingClientRect(), linkEl: a, linkNodeKey: nodeKey })
+      // Check if the link is the only meaningful content in its parent (eligible for conversion).
+      // Whitespace-only text siblings (e.g. trailing space after auto-link) don't count.
+      let canConvert = false
+      editor.getEditorState().read(() => {
+        const link = $getLinkByKey(nodeKey!)
+        if (!link) return
+        const parent = link.getParent()
+        if (!parent) return
+        canConvert = parent.getChildren().every(
+          (child) => child.is(link) || ($isTextNode(child) && child.getTextContent().trim() === ""),
+        )
+      })
+
+      setHoverState({ url: href, linkEl: a, linkNodeKey: nodeKey, canConvert })
     }
 
     function handleMouseOut(e: MouseEvent) {
@@ -145,11 +164,18 @@ export function LinkClickPlugin(): JSX.Element | null {
       if (!link) return
 
       const parent = link.getParent()
-      if (parent && parent.getChildrenSize() === 1) {
+      if (!parent) return
+
+      // Check if all siblings are just whitespace text (same logic as canConvert)
+      const onlyWhitespaceSiblings = parent.getChildren().every(
+        (child) => child.is(link) || ($isTextNode(child) && child.getTextContent().trim() === ""),
+      )
+
+      if (onlyWhitespaceSiblings) {
         parent.replace(replacement)
       } else {
-        link.insertAfter(replacement)
         link.remove()
+        parent.insertAfter(replacement)
       }
 
       const sel = $createNodeSelection()
@@ -234,15 +260,7 @@ export function LinkClickPlugin(): JSX.Element | null {
 
   return (
     <Popover open onOpenChange={(open) => { if (!open) dismiss() }}>
-      <PopoverAnchor
-        style={{
-          position: "fixed",
-          top: hoverState.anchorRect.bottom,
-          left: hoverState.anchorRect.left,
-          width: hoverState.anchorRect.width,
-          height: 0,
-        }}
-      />
+      <PopoverAnchor virtualRef={anchorRef} />
       <PopoverContent
         className="w-auto p-0 bg-transparent border-none shadow-none"
         side="bottom"
@@ -260,14 +278,18 @@ export function LinkClickPlugin(): JSX.Element | null {
               </div>
             ) : (
               <div className="flex items-center gap-0.5">
-                <button type="button" className={BTN} onClick={handleBookmark} title="Convert to bookmark">
-                  <Bookmark className="h-3 w-3" />
-                  Bookmark
-                </button>
-                <button type="button" className={BTN} onClick={handleEmbed} title="Embed content">
-                  <Code className="h-3 w-3" />
-                  Embed
-                </button>
+                {hoverState.canConvert && (
+                  <>
+                    <button type="button" className={BTN} onClick={handleBookmark} title="Convert to bookmark">
+                      <Bookmark className="h-3 w-3" />
+                      Bookmark
+                    </button>
+                    <button type="button" className={BTN} onClick={handleEmbed} title="Embed content">
+                      <Code className="h-3 w-3" />
+                      Embed
+                    </button>
+                  </>
+                )}
                 <button type="button" className={BTN} onClick={handleOpen} title="Open in browser">
                   <ExternalLink className="h-3 w-3" />
                   Open
