@@ -413,6 +413,41 @@ blockquote.is-placeholder,
 .image-resizer-left { left: 6px; }
 .image-resizer-right { right: 6px; }
 
+/* ── Loading placeholder ──────────────────────────────── */
+
+.editor-loading-placeholder {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  user-select: none;
+  margin: 0.25rem 0;
+}
+
+.loading-placeholder-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.loading-placeholder-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid hsl(var(--border));
+  border-top-color: hsl(var(--muted-foreground));
+  border-radius: 50%;
+  animation: lp-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes lp-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ── Bookmark block ─────────────────────────────────────── */
 
 .editor-bookmark {
