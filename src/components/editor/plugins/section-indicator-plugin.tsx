@@ -54,17 +54,16 @@ export function SectionIndicatorPlugin(): ReactElement | null {
 
     // Text edited inside a heading — check if any mutated text node lives in a heading
     const removeTextListener = editor.registerMutationListener(TextNode, (mutations) => {
-      let needsUpdate = false
       editor.getEditorState().read(() => {
-        for (const [key] of mutations) {
+        for (const [key, mutation] of mutations) {
+          if (mutation === "destroyed") continue
           const node = $getNodeByKey(key)
           if (node && $isHeadingNode(node.getParent())) {
-            needsUpdate = true
+            readHeadings()
             return
           }
         }
       })
-      if (needsUpdate) readHeadings()
     })
 
     return () => {

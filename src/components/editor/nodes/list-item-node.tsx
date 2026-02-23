@@ -79,8 +79,17 @@ export class ListItemNode extends ElementNode {
 
   __applyDOMAttributes(dom: HTMLElement): void {
     const listType = this.__listType
-    dom.className = `list-item list-item--${listType}`
+    const indent = this.__indent
 
+    dom.className = `list-item list-item--${listType}`
+    dom.setAttribute("data-list-type", listType)
+    dom.setAttribute("data-indent", String(indent))
+    dom.style.marginLeft = indent > 0 ? `${indent * 24}px` : ""
+
+    // Clean up attributes from other list types
+    if (listType !== "number") {
+      dom.removeAttribute("data-ordinal")
+    }
     if (listType === "check") {
       dom.setAttribute("role", "checkbox")
       dom.setAttribute("aria-checked", String(this.__checked))
@@ -88,21 +97,34 @@ export class ListItemNode extends ElementNode {
       if (this.__checked) {
         dom.classList.add("list-item--checked")
       }
+    } else {
+      dom.removeAttribute("role")
+      dom.removeAttribute("aria-checked")
     }
   }
 
   updateDOM(
     prevNode: ListItemNode,
-    _dom: HTMLElement,
+    dom: HTMLElement,
     _config: EditorConfig
   ): boolean {
-    if (
-      prevNode.__listType !== this.__listType ||
-      prevNode.__checked !== this.__checked
-    ) {
-      // Re-create DOM when type or checked state changes
-      return true
+    // Patch DOM in place rather than re-creating. Re-creation via
+    // createDOM() produces a detached element where getComputedStyle
+    // can't resolve our --lexical-indent-base-value: 0px CSS override,
+    // so Lexical falls back to 40px and adds unwanted padding-inline-start.
+    const typeChanged = prevNode.__listType !== this.__listType
+    const checkedChanged = prevNode.__checked !== this.__checked
+    const indentChanged = prevNode.__indent !== this.__indent
+
+    if (typeChanged || checkedChanged) {
+      this.__applyDOMAttributes(dom)
+    } else if (indentChanged) {
+      // Only update indent-related attributes (skip full __applyDOMAttributes)
+      const indent = this.__indent
+      dom.setAttribute("data-indent", String(indent))
+      dom.style.marginLeft = indent > 0 ? `${indent * 24}px` : ""
     }
+
     return false
   }
 

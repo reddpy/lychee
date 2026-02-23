@@ -8,9 +8,12 @@ import {
   $getNearestNodeFromDOMNode,
   $getSelection,
   $isRangeSelection,
+  COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   DELETE_CHARACTER_COMMAND,
+  INDENT_CONTENT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
+  KEY_TAB_COMMAND,
   type LexicalNode,
 } from "lexical"
 import {
@@ -18,24 +21,49 @@ import {
   ListItemNode,
 } from "@/components/editor/nodes/list-item-node"
 
+const MAX_INDENT = 6
+
+/** Walk ancestors from `node` to find the nearest ListItemNode. */
+function $findListItemAncestor(node: LexicalNode | null): ListItemNode | null {
+  let walk: LexicalNode | null = node
+  while (walk) {
+    if ($isListItemNode(walk)) return walk
+    walk = walk.getParent()
+  }
+  return null
+}
+
+/** Collect all unique ListItemNodes touched by the current selection. */
+function $getSelectedListItems(): ListItemNode[] {
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection)) return []
+
+  const items: ListItemNode[] = []
+  const seen = new Set<string>()
+  for (const node of selection.getNodes()) {
+    const item = $findListItemAncestor(node)
+    if (item && !seen.has(item.getKey())) {
+      seen.add(item.getKey())
+      items.push(item)
+    }
+  }
+  return items
+}
+
 /**
  * FlatListPlugin — replaces ListPlugin + CheckListPlugin.
  *
  * Handles:
  *  1. Enter on empty list item → outdent or convert to paragraph
- *  2. Checkbox click → toggle checked
- *  3. Pointer-down on checkbox → prevent caret move
- *  4. Ordered-list numbering via data-ordinal attribute
+ *  2. Tab/Shift+Tab → indent/outdent list items (capped at MAX_INDENT)
+ *  3. Backspace at start → outdent or convert to paragraph
+ *  4. Checkbox click → toggle checked
+ *  5. Ordered-list numbering via data-ordinal attribute
  */
 export function FlatListPlugin(): null {
   const [editor] = useLexicalComposerContext()
 
   // ── Enter inside a list item ─────────────────────────────────────
-  // Handles both empty (outdent/convert) and non-empty (split) cases.
-  // For non-empty items we let Lexical's insertParagraph() do the heavy
-  // lifting (text splits, inline element splits) then clean up any empty
-  // duplicate ListItemNodes caused by AutoLinkNode's insertNewAfter
-  // delegating to the parent block during $splitNodeAtPoint.
   useEffect(() => {
     return editor.registerCommand(
       INSERT_PARAGRAPH_COMMAND,
@@ -45,16 +73,10 @@ export function FlatListPlugin(): null {
           return false
         }
 
-        // Walk up from anchor to find the enclosing list item
-        let listItem: ListItemNode | null = null
-        let walk: LexicalNode | null = selection.anchor.getNode()
-        while (walk) {
-          if ($isListItemNode(walk)) { listItem = walk; break }
-          walk = walk.getParent()
-        }
+        const listItem = $findListItemAncestor(selection.anchor.getNode())
         if (!listItem) return false
 
-        // ── Empty list item: outdent or convert to paragraph ──
+        // Empty list item: outdent or convert to paragraph
         if (listItem.getChildrenSize() === 0) {
           const indent = listItem.getIndent()
           if (indent > 0) {
@@ -70,50 +92,29 @@ export function FlatListPlugin(): null {
           return true
         }
 
-        // ── Non-empty list item: let Lexical split, then clean up ──
-        // Snapshot the next sibling key so we know where the original
-        // neighbors end (anything between listItem and nextKey is new).
+        // Non-empty: let Lexical split, then clean up AutoLinkNode duplicates
         const nextKey = listItem.getNextSibling()?.getKey() ?? null
-
-        // Let Lexical's insertParagraph handle all the complex inline
-        // splitting (text nodes, link nodes, etc.)
         selection.insertParagraph()
 
-        // Clean up: AutoLinkNode.insertNewAfter may have created extra
-        // ListItemNodes between the original and the pre-existing next sibling.
-        // A normal split should produce exactly 1 new ListItemNode. If there
-        // are 2+, merge the extras into the cursor's item then remove them.
         const sel = $getSelection()
-        let cursorListItem: ListItemNode | null = null
-        if ($isRangeSelection(sel)) {
-          let cursorWalk: LexicalNode | null = sel.anchor.getNode()
-          while (cursorWalk) {
-            if ($isListItemNode(cursorWalk)) {
-              cursorListItem = cursorWalk
-              break
-            }
-            cursorWalk = cursorWalk.getParent()
-          }
-        }
+        const cursorListItem = $isRangeSelection(sel)
+          ? $findListItemAncestor(sel.anchor.getNode())
+          : null
 
-        // Collect all new ListItemNodes created between original and nextKey
+        // Collect new ListItemNodes created between original and nextKey
         const newItems: ListItemNode[] = []
         let sibling = listItem.getNextSibling()
         while (sibling) {
           if (sibling.getKey() === nextKey) break
-          if ($isListItemNode(sibling)) {
-            newItems.push(sibling)
-          }
+          if ($isListItemNode(sibling)) newItems.push(sibling)
           sibling = sibling.getNextSibling()
         }
 
-        // If more than 1 new item, merge extras into the cursor's item
+        // If AutoLinkNode created extras, merge them into the cursor's item
         if (newItems.length > 1 && cursorListItem) {
           for (const item of newItems) {
             if (item.getKey() === cursorListItem.getKey()) continue
-            // Move children into cursor's item
-            const children = item.getChildren()
-            for (const child of children) {
+            for (const child of item.getChildren()) {
               cursorListItem.append(child)
             }
             item.remove()
@@ -127,10 +128,6 @@ export function FlatListPlugin(): null {
   }, [editor])
 
   // ── Backspace at start of list item ──────────────────────────────
-  // Must intercept DELETE_CHARACTER_COMMAND before the default handler
-  // (COMMAND_PRIORITY_EDITOR) because Lexical's caret-based merge system
-  // in deleteCharacter() merges with the previous sibling block before
-  // collapseAtStart() is ever called.
   useEffect(() => {
     return editor.registerCommand(
       DELETE_CHARACTER_COMMAND,
@@ -144,20 +141,10 @@ export function FlatListPlugin(): null {
         if (selection.anchor.offset !== 0) return false
 
         const anchor = selection.anchor.getNode()
-
-        // Walk up to find the enclosing list item (anchor may be deeply nested,
-        // e.g. TextNode inside LinkNode inside ListItemNode).
-        let listItem: ListItemNode | null = null
-        let walk: LexicalNode | null = anchor
-        while (walk) {
-          if ($isListItemNode(walk)) { listItem = walk; break }
-          walk = walk.getParent()
-        }
+        const listItem = $findListItemAncestor(anchor)
         if (!listItem) return false
 
-        // Only handle when cursor is at the very start of the list item.
-        // Walk from the anchor back up to the list item, verifying each node
-        // is the first child of its parent (i.e. nothing precedes the cursor).
+        // Verify cursor is at the very start (each ancestor is the first child)
         if (selection.anchor.type === "text") {
           let node: LexicalNode | null = anchor
           while (node && !node.is(listItem)) {
@@ -184,6 +171,44 @@ export function FlatListPlugin(): null {
     )
   }, [editor])
 
+  // ── Tab/Shift+Tab and indent cap ─────────────────────────────────
+  useEffect(() => {
+    const unregisterTab = editor.registerCommand(
+      KEY_TAB_COMMAND,
+      (event) => {
+        const items = $getSelectedListItems()
+        if (items.length === 0) return false
+
+        event.preventDefault()
+        for (const item of items) {
+          const indent = item.getIndent()
+          if (event.shiftKey) {
+            if (indent > 0) item.setIndent(indent - 1)
+          } else {
+            if (indent < MAX_INDENT) item.setIndent(indent + 1)
+          }
+        }
+        return true
+      },
+      COMMAND_PRIORITY_HIGH
+    )
+
+    // Guard against non-Tab indent sources (e.g. toolbar) exceeding the cap
+    const unregisterIndent = editor.registerCommand(
+      INDENT_CONTENT_COMMAND,
+      () => {
+        const items = $getSelectedListItems()
+        return items.some((item) => item.getIndent() >= MAX_INDENT)
+      },
+      COMMAND_PRIORITY_HIGH
+    )
+
+    return () => {
+      unregisterTab()
+      unregisterIndent()
+    }
+  }, [editor])
+
   // ── Checkbox click and pointer-down ───────────────────────────────
   useEffect(() => {
     function handleCheckItemEvent(
@@ -192,20 +217,15 @@ export function FlatListPlugin(): null {
     ): void {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
-
-      // Only handle check-type list items
       if (!target.classList.contains("list-item--check")) return
 
       const rect = target.getBoundingClientRect()
-      const clientX = event.clientX
-
-      // Checkbox ::before is always 18px wide (defined in editor-theme.css)
       const checkboxWidth = 18
       const padding = (event as PointerEvent).pointerType === "touch" ? 32 : 4
 
       if (
-        clientX > rect.left - padding &&
-        clientX < rect.left + checkboxWidth + padding
+        event.clientX > rect.left - padding &&
+        event.clientX < rect.left + checkboxWidth + padding
       ) {
         callback()
       }
@@ -230,7 +250,6 @@ export function FlatListPlugin(): null {
 
     function handlePointerDown(event: PointerEvent): void {
       handleCheckItemEvent(event, () => {
-        // Prevent caret from moving when clicking checkbox
         event.preventDefault()
       })
     }
@@ -260,8 +279,8 @@ export function FlatListPlugin(): null {
 }
 
 /**
- * When a numbered list item is created/updated/destroyed, recompute ordinals
- * for the affected run of consecutive numbered siblings.
+ * Recompute ordinals for numbered list items affected by mutations.
+ * Skips non-number items early and avoids redundant DOM writes.
  */
 function updateOrdinalsForMutations(
   mutations: Map<string, "created" | "updated" | "destroyed">,
@@ -273,10 +292,8 @@ function updateOrdinalsForMutations(
     if (mutation === "destroyed") continue
 
     const node = $getNodeByKey(key)
-    if (!$isListItemNode(node)) continue
-    if (node.getListType() !== "number") continue
+    if (!$isListItemNode(node) || node.getListType() !== "number") continue
 
-    // Walk forward from this node to update the entire run
     let current: ListItemNode | null = node
     while (current !== null) {
       const k = current.getKey()
@@ -285,7 +302,10 @@ function updateOrdinalsForMutations(
 
       const dom = editor.getElementByKey(k)
       if (dom) {
-        dom.setAttribute("data-ordinal", String(computeOrdinal(current)))
+        const newOrdinal = formatOrdinal(computeOrdinal(current), current.getIndent())
+        if (dom.getAttribute("data-ordinal") !== newOrdinal) {
+          dom.setAttribute("data-ordinal", newOrdinal)
+        }
       }
 
       const next = current.getNextSibling()
@@ -302,10 +322,6 @@ function updateOrdinalsForMutations(
   }
 }
 
-/**
- * Compute the ordinal (1, 2, 3, ...) for a numbered list item by counting
- * consecutive preceding siblings of type "number" at the same indent level.
- */
 function computeOrdinal(node: ListItemNode): number {
   const indent = node.getIndent()
   let ordinal = 1
@@ -315,12 +331,49 @@ function computeOrdinal(node: ListItemNode): number {
     if (!$isListItemNode(sibling)) break
     if (sibling.getListType() !== "number") break
     if (sibling.getIndent() < indent) break
-    if (sibling.getIndent() === indent) {
-      ordinal++
-    }
-    // If sibling indent > our indent, skip it (it's a sub-item)
+    if (sibling.getIndent() === indent) ordinal++
     sibling = sibling.getPreviousSibling()
   }
 
   return ordinal
+}
+
+/**
+ * Format ordinal by indent level:
+ *   0, 3: decimal (1, 2, 3)
+ *   1, 4: letter  (a, b, c)
+ *   2, 5: roman   (i, ii, iii)
+ */
+function formatOrdinal(ordinal: number, indent: number): string {
+  switch (indent % 3) {
+    case 1:
+      return toLetter(ordinal)
+    case 2:
+      return toRoman(ordinal)
+    default:
+      return String(ordinal)
+  }
+}
+
+function toLetter(n: number): string {
+  let result = ""
+  while (n > 0) {
+    n--
+    result = String.fromCharCode(97 + (n % 26)) + result
+    n = Math.floor(n / 26)
+  }
+  return result
+}
+
+function toRoman(n: number): string {
+  const vals = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
+  const syms = ["m", "cm", "d", "cd", "c", "xc", "l", "xl", "x", "ix", "v", "iv", "i"]
+  let result = ""
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) {
+      result += syms[i]
+      n -= vals[i]
+    }
+  }
+  return result
 }

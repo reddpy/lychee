@@ -117,13 +117,14 @@ blockquote.is-placeholder,
 .list-item {
   position: relative;
   padding-left: 1.75rem;
+  padding-inline-start: 1.75rem !important;
   margin-top: 0.25rem;
   line-height: 1.75;
   display: block;
   list-style: none;
 }
 
-/* Bullet list: disc before each item */
+/* Bullet list: disc before each item (indent 0, default) */
 .list-item--bullet::before {
   content: "";
   position: absolute;
@@ -136,8 +137,33 @@ blockquote.is-placeholder,
   background-color: currentColor;
 }
 
-/* Numbered list: ordinal before each item */
-.list-item--number::before {
+/* Indent 1, 4: open circle */
+.list-item--bullet[data-indent="1"]::before,
+.list-item--bullet[data-indent="4"]::before {
+  background-color: transparent;
+  border: 1.5px solid currentColor;
+}
+
+/* Indent 2, 5: filled square */
+.list-item--bullet[data-indent="2"]::before,
+.list-item--bullet[data-indent="5"]::before {
+  border-radius: 1px;
+  width: 6px;
+  height: 6px;
+}
+
+/* Indent 3, 6: open square */
+.list-item--bullet[data-indent="3"]::before,
+.list-item--bullet[data-indent="6"]::before {
+  border-radius: 1px;
+  width: 6px;
+  height: 6px;
+  background-color: transparent;
+  border: 1.5px solid currentColor;
+}
+
+/* Numbered list: ordinal before each item (only when data-ordinal is set) */
+.list-item--number[data-ordinal]::before {
   content: attr(data-ordinal) ".";
   position: absolute;
   left: 0;
