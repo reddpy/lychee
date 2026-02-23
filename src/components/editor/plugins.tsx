@@ -9,11 +9,16 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin"
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin"
 import { TabIndentationPlugin } from "@lexical/react/LexicalTabIndentationPlugin"
+import { ListPlugin } from "@lexical/react/LexicalListPlugin"
+import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin"
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin"
 import {
   HEADING,
   QUOTE,
   CODE,
+  UNORDERED_LIST,
+  ORDERED_LIST,
+  CHECK_LIST,
   BOLD_ITALIC_STAR,
   BOLD_ITALIC_UNDERSCORE,
   BOLD_STAR,
@@ -40,22 +45,15 @@ import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
 import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highlight-plugin"
 import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
-import { FlatListPlugin } from "@/components/editor/plugins/flat-list-plugin"
 import { ClickToAppendPlugin } from "@/components/editor/plugins/click-to-append-plugin"
-import {
-  FLAT_BULLET_LIST,
-  FLAT_ORDERED_LIST,
-  FLAT_CHECK_LIST,
-} from "@/components/editor/plugins/list-markdown-transformers"
 import { IMAGE, IMAGE_EXPORT } from "@/components/editor/plugins/image-markdown-transformer"
 
-// Custom transformers: standard ones minus the old list transformers, plus our flat ones
 const TRANSFORMERS = [
   HEADING,
   QUOTE,
-  FLAT_BULLET_LIST,
-  FLAT_ORDERED_LIST,
-  FLAT_CHECK_LIST,
+  UNORDERED_LIST,
+  ORDERED_LIST,
+  CHECK_LIST,
   IMAGE_EXPORT,
   CODE,
   INLINE_CODE,
@@ -112,7 +110,8 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
 
       {/* Core plugins */}
       <HistoryPlugin />
-      <FlatListPlugin />
+      <ListPlugin />
+      <CheckListPlugin />
       <TabIndentationPlugin />
       <HorizontalRulePlugin />
       <MarkdownShortcutPlugin transformers={TRANSFORMERS} />

@@ -23,9 +23,11 @@ import { $setBlocksType } from "@lexical/selection";
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
 import { $isTitleNode } from "@/components/editor/nodes/title-node";
 import {
-  $isListItemNode,
-  $createListItemNode,
-} from "@/components/editor/nodes/list-item-node";
+  $isListNode,
+  INSERT_UNORDERED_LIST_COMMAND,
+  INSERT_ORDERED_LIST_COMMAND,
+  INSERT_CHECK_LIST_COMMAND,
+} from "@lexical/list";
 import {
   Bold,
   Italic,
@@ -97,28 +99,30 @@ function BlockTypeSelector({
 
   const handleSelect = useCallback(
     (newType: BlockType) => {
-      editor.update(() => {
-        const selection = $getSelection();
-        if (!$isRangeSelection(selection)) return;
+      if (newType === "bullet") {
+        editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+      } else if (newType === "number") {
+        editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+      } else if (newType === "check") {
+        editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
+      } else {
+        editor.update(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection)) return;
 
-        if (newType === "paragraph") {
-          $setBlocksType(selection, () => $createParagraphNode());
-        } else if (newType === "h1" || newType === "h2" || newType === "h3") {
-          $setBlocksType(selection, () =>
-            $createHeadingNode(newType as HeadingTagType)
-          );
-        } else if (newType === "bullet") {
-          $setBlocksType(selection, () => $createListItemNode("bullet"));
-        } else if (newType === "number") {
-          $setBlocksType(selection, () => $createListItemNode("number"));
-        } else if (newType === "check") {
-          $setBlocksType(selection, () => $createListItemNode("check"));
-        } else if (newType === "quote") {
-          $setBlocksType(selection, () => $createQuoteNode());
-        } else if (newType === "code") {
-          $setBlocksType(selection, () => $createCodeNode());
-        }
-      });
+          if (newType === "paragraph") {
+            $setBlocksType(selection, () => $createParagraphNode());
+          } else if (newType === "h1" || newType === "h2" || newType === "h3") {
+            $setBlocksType(selection, () =>
+              $createHeadingNode(newType as HeadingTagType)
+            );
+          } else if (newType === "quote") {
+            $setBlocksType(selection, () => $createQuoteNode());
+          } else if (newType === "code") {
+            $setBlocksType(selection, () => $createCodeNode());
+          }
+        });
+      }
       setOpen(false);
     },
     [editor]
@@ -229,8 +233,11 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
       if ($isHeadingNode(anchorElement)) {
         const tag = anchorElement.getTag();
         if (tag === "h1" || tag === "h2" || tag === "h3") blockType = tag;
-      } else if ($isListItemNode(anchorElement)) {
-        blockType = anchorElement.getListType();
+      } else if ($isListNode(anchorElement)) {
+        const listType = anchorElement.getListType();
+        if (listType === "bullet") blockType = "bullet";
+        else if (listType === "number") blockType = "number";
+        else if (listType === "check") blockType = "check";
       } else if ($isQuoteNode(anchorElement)) {
         blockType = "quote";
       } else if ($isCodeNode(anchorElement)) {

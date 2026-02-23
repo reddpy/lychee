@@ -15,7 +15,8 @@ import { $isTitleNode } from "@/components/editor/nodes/title-node"
 import {
   ListItemNode,
   $isListItemNode,
-} from "@/components/editor/nodes/list-item-node"
+  $isListNode,
+} from "@lexical/list"
 import { mergeRegister } from "@lexical/utils"
 
 const PLACEHOLDER_CLASS = "is-placeholder"
@@ -32,7 +33,8 @@ function getPlaceholderText(node: LexicalNode): string | null {
   }
   if ($isQuoteNode(node)) return "Enter a quote..."
   if ($isListItemNode(node)) {
-    if (node.getListType() === "check") return "To-do"
+    const parent = node.getParent()
+    if ($isListNode(parent) && parent.getListType() === "check") return "To-do"
     return "List item"
   }
   return null
