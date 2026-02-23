@@ -165,6 +165,16 @@ export async function getDocumentFromDb(page: Page, id: string): Promise<Documen
   return result.document;
 }
 
+/** Get the most recently updated document (for tests that just edited the current note). */
+export async function getLatestDocumentFromDb(page: Page): Promise<DocumentRow | null> {
+  const docs = await listDocumentsFromDb(page);
+  if (docs.length === 0) return null;
+  const sorted = [...docs].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  );
+  return sorted[0];
+}
+
 // ── Reusable launch helpers for persistence tests ───────────────────
 
 export { findPackagedBinary, hasDevBuild, getMainWindow, PROJECT_ROOT };

@@ -1,4 +1,10 @@
-import { test, expect, listDocumentsFromDb, getDocumentFromDb } from './electron-app';
+import {
+  test,
+  expect,
+  listDocumentsFromDb,
+  getDocumentFromDb,
+  getLatestDocumentFromDb,
+} from './electron-app';
 
 test.describe('Editor', () => {
   test.beforeEach(async ({ window }) => {
@@ -93,6 +99,13 @@ test.describe('Editor', () => {
     // Verify an h1 element exists in the editor (beyond the title)
     const headings = window.locator('.ContentEditable__root h1:not(.editor-title)');
     await expect(headings.first()).toContainText('My Heading');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const hasHeading = content.root.children.some((c: any) => c.type === 'heading' && c.tag === 'h1');
+    expect(hasHeading).toBe(true);
   });
 
   test('bold formatting via keyboard shortcut', async ({ window }) => {
@@ -546,6 +559,16 @@ test.describe('Editor — Block Behavior', () => {
     await expect(editorRoot).toContainText('Numbered');
     await expect(editorRoot).toContainText('Quote');
     await expect(editorRoot).toContainText('code');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const types = content.root.children.map((c: any) => c.type);
+    expect(types).toContain('heading');
+    expect(types).toContain('list-item');
+    expect(types).toContain('quote');
+    expect(types.some((t: string) => t === 'code' || t === 'code-block')).toBe(true);
   });
 });
 
@@ -607,5 +630,320 @@ test.describe('Editor — Content Persistence', () => {
     expect(content.root).toBeTruthy();
     expect(Array.isArray(content.root.children)).toBe(true);
     expect(content.root.children.length).toBeGreaterThan(0);
+  });
+});
+
+test.describe('Editor — Edge Cases', () => {
+  test.beforeEach(async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+  });
+
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+  test('backspace on empty paragraph merges with previous', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.type('First');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Second');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('Backspace');
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).toContainText('FirstSecond');
+  });
+
+  test('Tab in bullet list indents item', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('- ');
+    await window.keyboard.type('Parent');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Child');
+    await window.keyboard.press('Home');
+    await window.keyboard.press('Tab');
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).toContainText('Parent');
+    await expect(editorRoot).toContainText('Child');
+    await expect(editorRoot.locator('.list-item--bullet')).toHaveCount(2);
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const listItems = content.root.children.filter((c: any) => c.type === 'list-item');
+    expect(listItems).toHaveLength(2);
+    expect(listItems[0].indent).toBe(0);
+    expect(listItems[1].indent).toBe(1);
+  });
+
+  test('Shift+Tab in indented list outdents', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('- ');
+    await window.keyboard.type('One');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Two');
+    await window.keyboard.press('Home');
+    await window.keyboard.press('Tab');
+    await window.keyboard.press('Shift+Tab');
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).toContainText('One');
+    await expect(editorRoot).toContainText('Two');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const listItems = content.root.children.filter((c: any) => c.type === 'list-item');
+    expect(listItems).toHaveLength(2);
+    expect(listItems[0].indent).toBe(0);
+    expect(listItems[1].indent).toBe(0);
+  });
+
+  test('slash command at document start shows menu', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('/');
+
+    await expect(window.getByRole('option', { name: 'Text' })).toBeVisible();
+  });
+
+  test('formatting on empty selection applies to next typed text', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.press(`${mod}+b`);
+    await window.keyboard.type('bold');
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot.locator('strong, .font-bold').first()).toContainText('bold');
+  });
+
+  test('undo reverts last edit', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Original Gone');
+    await window.keyboard.press(`${mod}+z`);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).not.toContainText('Original');
+    await expect(editorRoot).not.toContainText('Gone');
+  });
+
+  test('redo restores undone edit', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Text');
+    await window.keyboard.press(`${mod}+z`);
+    await window.keyboard.press(`${mod}+Shift+z`);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).toContainText('Text');
+  });
+
+  test('paste plain text inserts at cursor', async ({ window }) => {
+    await window.evaluate(async () => {
+      await navigator.clipboard.writeText('Pasted content');
+    });
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.press(`${mod}+v`);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).toContainText('Pasted content');
+  });
+
+  test('paste image inserts image node', async ({ window }) => {
+    const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    await window.evaluate(async (base64: string) => {
+      const resp = await fetch(`data:image/png;base64,${base64}`);
+      const blob = await resp.blob();
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    }, pngBase64);
+
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.press(`${mod}+v`);
+    await window.waitForTimeout(2000);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot.locator('.image-container').or(editorRoot.locator('img')).first()).toBeVisible();
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const hasImage = content.root.children.some((c: any) => c.type === 'image');
+    expect(hasImage).toBe(true);
+  });
+
+  test('link insertion via Cmd+K', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('link text');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('ArrowLeft');
+    await window.keyboard.press('Shift+Home');
+    await window.keyboard.press(`${mod}+k`);
+    await window.waitForTimeout(300);
+
+    await window.getByPlaceholder('Enter URL...').fill('https://example.com');
+    await window.getByRole('button', { name: 'Apply' }).click();
+    await window.waitForTimeout(300);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    const link = editorRoot.locator('a[href*="example.com"]');
+    await expect(link).toBeVisible();
+    await expect(link).toContainText('link');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const contentStr = JSON.stringify(content);
+    expect(contentStr).toContain('example.com');
+    expect(contentStr).toContain('link');
+  });
+
+  test('markdown image ![](url) inserts image', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('![alt](https://example.com/image.png)');
+    await window.waitForTimeout(1500);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot.locator('.image-container').or(editorRoot.locator('img')).first()).toBeVisible();
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const hasImage = content.root.children.some((c: any) => c.type === 'image');
+    expect(hasImage).toBe(true);
+  });
+
+  test('code block: markdown shortcut creates code block', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    // ``` creates Lexical CodeNode (pre/code), slash creates same
+    await window.keyboard.type('```');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('const x = 1');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('```');
+    await window.waitForTimeout(300);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).toContainText('const x = 1');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const hasCode = content.root.children.some(
+      (c: any) => c.type === 'code' || c.type === 'code-block',
+    );
+    expect(hasCode).toBe(true);
+    expect(JSON.stringify(content)).toContain('const x = 1');
+  });
+
+  test('code block: Escape exits edit mode', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('```');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('code');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('```');
+    await window.waitForTimeout(200);
+    await window.keyboard.press('Escape');
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).toContainText('code');
+  });
+
+  test('document with only empty blocks', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.type('Title');
+    await window.keyboard.press('Enter');
+    await window.keyboard.press('Enter');
+    await window.keyboard.press('Enter');
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot).toContainText('Title');
+    await expect(window.locator('h1.editor-title')).toContainText('Title');
+  });
+
+  test('long content persists', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.type('Long');
+    await window.keyboard.press('Enter');
+    const longText = 'x'.repeat(500);
+    await window.keyboard.type(longText);
+    await window.waitForTimeout(1000);
+
+    const { listDocumentsFromDb } = await import('./electron-app');
+    const docs = await listDocumentsFromDb(window);
+    const doc = docs.find((d) => d.title === 'Long');
+    expect(doc).toBeTruthy();
+    expect(doc!.content).toContain(longText);
+  });
+
+  test('Backspace on empty list item converts to paragraph', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('- ');
+    await window.keyboard.press('Backspace');
+    await window.keyboard.press('Backspace');
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot.locator('.list-item--bullet')).toHaveCount(0);
+    await expect(editorRoot.locator('p')).toHaveCount(1);
+  });
+
+  test('paste markdown image syntax ![](url) inserts image', async ({ window }) => {
+    await window.evaluate(async () => {
+      await navigator.clipboard.writeText('![pasted](https://example.com/pic.png)');
+    });
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.press(`${mod}+v`);
+    await window.waitForTimeout(1500);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot.locator('.image-container').or(editorRoot.locator('img')).first()).toBeVisible();
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc?.content).toBeTruthy();
+    const content = JSON.parse(doc!.content);
+    const hasImage = content.root.children.some((c: any) => c.type === 'image');
+    expect(hasImage).toBe(true);
   });
 });
