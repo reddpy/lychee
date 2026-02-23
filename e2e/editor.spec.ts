@@ -1,4 +1,4 @@
-import { test, expect } from './electron-app';
+import { test, expect, listDocumentsFromDb, getDocumentFromDb } from './electron-app';
 
 test.describe('Editor', () => {
   test.beforeEach(async ({ window }) => {
@@ -30,9 +30,14 @@ test.describe('Editor', () => {
 
     // The tab should reflect the title
     await expect(window.locator('[data-tab-id]').first()).toContainText('Updated Title');
+
+    // ── Backend: title is persisted in SQLite ──
+    const docs = await listDocumentsFromDb(window);
+    expect(docs).toHaveLength(1);
+    expect(docs[0].title).toBe('Updated Title');
   });
 
-  test('editor body is editable', async ({ window }) => {
+  test('editor body is editable and persisted', async ({ window }) => {
     // Press Enter from the title to move to body
     const title = window.locator('h1.editor-title');
     await title.click();
@@ -43,6 +48,17 @@ test.describe('Editor', () => {
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('Hello, this is body text.');
+
+    // Wait for debounced content save (600ms debounce + buffer)
+    await window.waitForTimeout(1000);
+
+    // ── Backend: content is persisted as Lexical JSON in SQLite ──
+    const docs = await listDocumentsFromDb(window);
+    expect(docs).toHaveLength(1);
+    expect(docs[0].content).toBeTruthy();
+    const contentJson = JSON.parse(docs[0].content);
+    expect(contentJson.root).toBeTruthy();
+    expect(contentJson.root.children.length).toBeGreaterThan(0);
   });
 
   test('slash command menu appears when typing /', async ({ window }) => {

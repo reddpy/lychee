@@ -1,4 +1,4 @@
-import { test, expect } from './electron-app';
+import { test, expect, listDocumentsFromDb, getDocumentFromDb } from './electron-app';
 
 test.describe('Sidebar — Note Management', () => {
   test('create a new note via New Note button', async ({ window }) => {
@@ -8,6 +8,12 @@ test.describe('Sidebar — Note Management', () => {
     const noteItem = window.locator('[data-note-id]').first();
     await expect(noteItem).toBeVisible();
     await expect(noteItem).toContainText('New Page');
+
+    // ── Backend: document exists in SQLite ──
+    const docs = await listDocumentsFromDb(window);
+    expect(docs).toHaveLength(1);
+    expect(docs[0].id).toBeTruthy();
+    expect(docs[0].deletedAt).toBeNull();
   });
 
   test('creating a note opens it in a tab and shows the editor', async ({ window }) => {
@@ -29,9 +35,16 @@ test.describe('Sidebar — Note Management', () => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(300);
     await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(300);
 
     const noteItems = window.locator('[data-note-id]');
     await expect(noteItems).toHaveCount(3);
+
+    // ── Backend: all 3 documents exist with correct sort order ──
+    const docs = await listDocumentsFromDb(window);
+    expect(docs).toHaveLength(3);
+    const sortOrders = docs.map((d) => d.sortOrder).sort((a, b) => a - b);
+    expect(sortOrders).toEqual([0, 1, 2]);
   });
 
   test('clicking a note in sidebar opens it', async ({ window }) => {
@@ -98,6 +111,8 @@ test.describe('Sidebar — Note Management', () => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(300);
 
+    const parentNoteId = await window.locator('[data-note-id]').first().getAttribute('data-note-id');
+
     const parentNote = window.locator('[data-note-id]').first();
     await parentNote.click({ button: 'right' });
 
@@ -108,6 +123,13 @@ test.describe('Sidebar — Note Management', () => {
     // There should now be 2 notes (parent + child)
     const noteItems = window.locator('[data-note-id]');
     await expect(noteItems).toHaveCount(2);
+
+    // ── Backend: child document has correct parentId ──
+    const docs = await listDocumentsFromDb(window);
+    expect(docs).toHaveLength(2);
+    const child = docs.find((d) => d.parentId === parentNoteId);
+    expect(child).toBeTruthy();
+    expect(child!.parentId).toBe(parentNoteId);
   });
 
   test('"Open in new tab" from context menu opens a second tab', async ({ window }) => {

@@ -125,3 +125,46 @@ export const test = base.extend<Fixtures>({
 });
 
 export { expect } from '@playwright/test';
+
+// ── IPC helpers for backend verification ────────────────────────────
+
+type DocumentRow = {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  parentId: string | null;
+  emoji: string | null;
+  deletedAt: string | null;
+  sortOrder: number;
+};
+
+/** Query all active (non-trashed) documents from the database via IPC. */
+export async function listDocumentsFromDb(page: Page): Promise<DocumentRow[]> {
+  const result = await page.evaluate(() =>
+    (window as any).lychee.invoke('documents.list', { limit: 500, offset: 0 }),
+  );
+  return result.documents;
+}
+
+/** Query all trashed documents from the database via IPC. */
+export async function listTrashedFromDb(page: Page): Promise<DocumentRow[]> {
+  const result = await page.evaluate(() =>
+    (window as any).lychee.invoke('documents.listTrashed', { limit: 500, offset: 0 }),
+  );
+  return result.documents;
+}
+
+/** Fetch a single document by ID from the database via IPC. */
+export async function getDocumentFromDb(page: Page, id: string): Promise<DocumentRow | null> {
+  const result = await page.evaluate(
+    (docId) => (window as any).lychee.invoke('documents.get', { id: docId }),
+    id,
+  );
+  return result.document;
+}
+
+// ── Reusable launch helpers for persistence tests ───────────────────
+
+export { findPackagedBinary, hasDevBuild, getMainWindow, PROJECT_ROOT };

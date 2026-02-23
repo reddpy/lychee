@@ -1,4 +1,4 @@
-import { test, expect } from './electron-app';
+import { test, expect, listDocumentsFromDb, listTrashedFromDb, getDocumentFromDb } from './electron-app';
 
 test.describe('Trash Bin', () => {
   test('move a note to trash via context menu', async ({ window }) => {
@@ -8,6 +8,8 @@ test.describe('Trash Bin', () => {
     await window.locator('h1.editor-title').click();
     await window.keyboard.type('Trashable Note');
     await window.waitForTimeout(700);
+
+    const noteId = await window.locator('[data-note-id]').first().getAttribute('data-note-id');
 
     // Right-click the note in sidebar
     const note = window.locator('[data-note-id]').filter({ hasText: 'Trashable Note' });
@@ -22,6 +24,20 @@ test.describe('Trash Bin', () => {
 
     // Tab should be closed, back to empty state
     await expect(window.getByText('Start writing')).toBeVisible();
+
+    // ── Backend: document has deletedAt set in SQLite ──
+    const doc = await getDocumentFromDb(window, noteId!);
+    expect(doc).toBeTruthy();
+    expect(doc!.deletedAt).toBeTruthy();
+
+    // Active documents list should be empty
+    const activeDocs = await listDocumentsFromDb(window);
+    expect(activeDocs).toHaveLength(0);
+
+    // Trashed documents list should contain it
+    const trashedDocs = await listTrashedFromDb(window);
+    expect(trashedDocs).toHaveLength(1);
+    expect(trashedDocs[0].title).toBe('Trashable Note');
   });
 
   test('open trash bin popover', async ({ window }) => {
@@ -62,10 +78,16 @@ test.describe('Trash Bin', () => {
     await window.keyboard.type('Restore Me');
     await window.waitForTimeout(700);
 
+    const noteId = await window.locator('[data-note-id]').first().getAttribute('data-note-id');
+
     const note = window.locator('[data-note-id]').filter({ hasText: 'Restore Me' });
     await note.click({ button: 'right' });
     await window.getByText('Move to Trash Bin').click();
     await window.waitForTimeout(400);
+
+    // ── Backend: confirm it's trashed ──
+    let doc = await getDocumentFromDb(window, noteId!);
+    expect(doc!.deletedAt).toBeTruthy();
 
     // Open trash bin
     await window.locator('[aria-label="Trash Bin"]').click();
@@ -81,6 +103,15 @@ test.describe('Trash Bin', () => {
 
     // The note should reappear in the sidebar
     await expect(window.locator('[data-note-id]').filter({ hasText: 'Restore Me' })).toHaveCount(1);
+
+    // ── Backend: deletedAt is cleared after restore ──
+    doc = await getDocumentFromDb(window, noteId!);
+    expect(doc).toBeTruthy();
+    expect(doc!.deletedAt).toBeNull();
+
+    const activeDocs = await listDocumentsFromDb(window);
+    expect(activeDocs).toHaveLength(1);
+    expect(activeDocs[0].title).toBe('Restore Me');
   });
 
   test('permanently delete a note from trash', async ({ window }) => {
@@ -90,6 +121,8 @@ test.describe('Trash Bin', () => {
     await window.locator('h1.editor-title').click();
     await window.keyboard.type('Delete Forever');
     await window.waitForTimeout(700);
+
+    const noteId = await window.locator('[data-note-id]').first().getAttribute('data-note-id');
 
     const note = window.locator('[data-note-id]').filter({ hasText: 'Delete Forever' });
     await note.click({ button: 'right' });
@@ -113,6 +146,13 @@ test.describe('Trash Bin', () => {
 
     // Trash should be empty or the note should be gone
     await expect(window.getByText('Delete Forever')).not.toBeVisible();
+
+    // ── Backend: document is completely gone from SQLite ──
+    const doc = await getDocumentFromDb(window, noteId!);
+    expect(doc).toBeNull();
+
+    const trashedDocs = await listTrashedFromDb(window);
+    expect(trashedDocs).toHaveLength(0);
   });
 
   test('search within trash bin', async ({ window }) => {
@@ -138,6 +178,10 @@ test.describe('Trash Bin', () => {
     await note.click({ button: 'right' });
     await window.getByText('Move to Trash Bin').click();
     await window.waitForTimeout(400);
+
+    // ── Backend: both docs are trashed ──
+    const trashedDocs = await listTrashedFromDb(window);
+    expect(trashedDocs).toHaveLength(2);
 
     // Open trash bin
     await window.locator('[aria-label="Trash Bin"]').click();
