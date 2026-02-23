@@ -59,14 +59,13 @@ async function saveImageAndUpdate(
     node.setImageId(id)
     node.setSrc(filePath)
     node.setLoading(false)
-    // Only select the image if the user hasn't moved the cursor elsewhere
     const selection = $getSelection()
     if (!selection || ($isNodeSelection(selection) && selection.has(nodeKey))) {
       const nodeSelection = $createNodeSelection()
       nodeSelection.add(nodeKey)
       $setSelection(nodeSelection)
     }
-  })
+  }, { tag: "history-merge" })
 }
 
 const downloadingNodes = new Set<string>()
@@ -88,7 +87,7 @@ async function downloadAndSaveImage(
       node.setSrc(filePath)
       node.setSourceUrl(url)
       node.setLoading(false)
-    })
+    }, { tag: "history-merge" })
   } catch {
     editor.update(() => {
       const node = $getNodeByKey(nodeKey)
@@ -96,7 +95,7 @@ async function downloadAndSaveImage(
       node.setSrc("")
       node.setSourceUrl(url)
       node.setLoading(false)
-    })
+    }, { tag: "history-merge" })
   } finally {
     downloadingNodes.delete(nodeKey)
   }
@@ -234,7 +233,7 @@ export function ImagePlugin(): null {
               node.remove()
             }
           }
-        })
+        }, { tag: "history-merge" })
       },
     )
 

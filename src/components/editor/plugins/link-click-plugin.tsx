@@ -14,11 +14,12 @@ import {
   type NodeKey,
 } from "lexical"
 import { $isAutoLinkNode, $isLinkNode } from "@lexical/link"
-import { ExternalLink, Bookmark, Code, Loader2 } from "lucide-react"
+import { ExternalLink, Bookmark, Code } from "lucide-react"
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { $createImageNode } from "@/components/editor/nodes/image-node"
 import { $createBookmarkNode } from "@/components/editor/nodes/bookmark-node"
+import { $createLoadingPlaceholderNode } from "@/components/editor/nodes/loading-placeholder-node"
 import type { ResolvedUrlResult } from "@/shared/ipc-types"
 
 function openExternalUrl(url: string) {
@@ -46,15 +47,12 @@ interface HoverState {
   canConvert: boolean
 }
 
-type ActionInProgress = "embed" | "bookmark" | null
-
 const BTN =
   "flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs hover:bg-accent hover:text-accent-foreground transition-colors"
 
 export function LinkClickPlugin(): JSX.Element | null {
   const [editor] = useLexicalComposerContext()
   const [hoverState, setHoverState] = useState<HoverState | null>(null)
-  const [actionInProgress, setActionInProgress] = useState<ActionInProgress>(null)
   const hoverRef = useRef(hoverState)
   hoverRef.current = hoverState
 
@@ -64,11 +62,28 @@ export function LinkClickPlugin(): JSX.Element | null {
 
   const keyProp = `__lexicalKey_${(editor as any)._key}`
 
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearDismissTimer = useCallback(() => {
+    if (dismissTimerRef.current !== null) {
+      clearTimeout(dismissTimerRef.current)
+      dismissTimerRef.current = null
+    }
+  }, [])
+
   const dismiss = useCallback((refocus = false) => {
+    clearDismissTimer()
     setHoverState(null)
-    setActionInProgress(null)
     if (refocus) editor.getRootElement()?.focus({ preventScroll: true })
-  }, [editor])
+  }, [editor, clearDismissTimer])
+
+  const scheduleDismiss = useCallback(() => {
+    clearDismissTimer()
+    dismissTimerRef.current = setTimeout(() => {
+      dismissTimerRef.current = null
+      setHoverState(null)
+    }, 150)
+  }, [clearDismissTimer])
 
   // ── DOM events: Cmd+click, hover in/out ──
   useEffect(() => {
@@ -86,7 +101,15 @@ export function LinkClickPlugin(): JSX.Element | null {
       const a = (e.target as HTMLElement).closest("a") as HTMLAnchorElement | null
       if (!a) return
       const href = a.getAttribute("href")
-      if (!href || hoverRef.current?.linkEl === a) return
+      if (!href) return
+
+      if (hoverRef.current?.linkEl === a) {
+        if (dismissTimerRef.current !== null) {
+          clearTimeout(dismissTimerRef.current)
+          dismissTimerRef.current = null
+        }
+        return
+      }
 
       // Walk DOM to find Lexical node key
       let nodeKey: NodeKey | undefined
@@ -119,7 +142,7 @@ export function LinkClickPlugin(): JSX.Element | null {
       const related = e.relatedTarget as HTMLElement | null
       if (related?.closest("[data-slot='popover-content']")) return
       if (related && a.contains(related)) return
-      dismiss()
+      scheduleDismiss()
     }
 
     return editor.registerRootListener((root, prev) => {
@@ -130,15 +153,14 @@ export function LinkClickPlugin(): JSX.Element | null {
       root?.addEventListener("mouseover", handleMouseOver)
       root?.addEventListener("mouseout", handleMouseOut)
     })
-  }, [editor, keyProp, dismiss])
+  }, [editor, keyProp, scheduleDismiss])
 
   // ── Popover mouse leave ──
   const onPopoverMouseLeave = useCallback((e: React.MouseEvent) => {
-    if (actionInProgress) return
     const related = e.relatedTarget as HTMLElement | null
     if (related && hoverRef.current?.linkEl.contains(related)) return
-    dismiss()
-  }, [actionInProgress, dismiss])
+    scheduleDismiss()
+  }, [scheduleDismiss])
 
   // ── ESC dismisses ──
   useEffect(() => {
@@ -156,6 +178,9 @@ export function LinkClickPlugin(): JSX.Element | null {
     window.addEventListener("scroll", onScroll, true)
     return () => window.removeEventListener("scroll", onScroll, true)
   }, [hoverState, dismiss])
+
+  // ── Clean up pending timer on unmount ──
+  useEffect(() => clearDismissTimer, [clearDismissTimer])
 
   // ── Core: replace a link node with a block-level replacement ──
   const replaceLink = useCallback(
@@ -197,58 +222,107 @@ export function LinkClickPlugin(): JSX.Element | null {
     [editor],
   )
 
-  const convertToBookmark = useCallback(async (url: string, nodeKey: NodeKey) => {
-    const meta = await window.lychee.invoke("url.fetchMetadata", { url })
-    editor.update(() => {
-      replaceLink(nodeKey, $createBookmarkNode({
-        url: meta.url,
-        title: meta.title,
-        description: meta.description,
-        imageUrl: meta.imageUrl,
-        faviconUrl: meta.faviconUrl,
-      }))
-    }, { tag: HISTORY_PUSH_TAG })
-  }, [editor, replaceLink])
-
+  /** Replace the link with a loading placeholder inline, run the async work,
+   *  then swap the placeholder for the real node. Popover dismisses immediately. */
   const handleEmbed = useCallback(async () => {
     if (!hoverState) return
     const { url, linkNodeKey } = hoverState
-    setActionInProgress("embed")
+
     snapshotAndFocusLink(linkNodeKey)
+
+    let placeholderKey: string | undefined
+    editor.update(() => {
+      const placeholder = $createLoadingPlaceholderNode("Embedding…")
+      replaceLink(linkNodeKey, placeholder)
+      placeholderKey = placeholder.getKey()
+    }, { tag: HISTORY_PUSH_TAG })
+
+    dismiss(true)
+
     try {
       const result: ResolvedUrlResult = await window.lychee.invoke("url.resolve", { url })
       if (result.type === "image") {
         editor.update(() => {
-          replaceLink(linkNodeKey, $createImageNode({
+          const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
+          if (!ph) return
+          const img = $createImageNode({
             imageId: result.id,
             src: result.filePath,
             sourceUrl: result.sourceUrl,
             loading: false,
-          }))
-        }, { tag: HISTORY_PUSH_TAG })
+          })
+          ph.replace(img)
+          const sel = $createNodeSelection()
+          sel.add(img.getKey())
+          $setSelection(sel)
+        }, { tag: "history-merge" })
       } else {
-        await convertToBookmark(url, linkNodeKey)
+        const meta = await window.lychee.invoke("url.fetchMetadata", { url })
+        editor.update(() => {
+          const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
+          if (!ph) return
+          const bm = $createBookmarkNode({
+            url: meta.url,
+            title: meta.title,
+            description: meta.description,
+            imageUrl: meta.imageUrl,
+            faviconUrl: meta.faviconUrl,
+          })
+          ph.replace(bm)
+          const sel = $createNodeSelection()
+          sel.add(bm.getKey())
+          $setSelection(sel)
+        }, { tag: "history-merge" })
       }
     } catch (err) {
       console.error("Failed to embed URL:", err)
-    } finally {
-      dismiss(true)
+      editor.update(() => {
+        const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
+        if (ph) ph.remove()
+      }, { tag: "history-merge" })
     }
-  }, [editor, hoverState, replaceLink, convertToBookmark, snapshotAndFocusLink, dismiss])
+  }, [editor, hoverState, replaceLink, snapshotAndFocusLink, dismiss])
 
   const handleBookmark = useCallback(async () => {
     if (!hoverState) return
     const { url, linkNodeKey } = hoverState
-    setActionInProgress("bookmark")
+
     snapshotAndFocusLink(linkNodeKey)
+
+    let placeholderKey: string | undefined
+    editor.update(() => {
+      const placeholder = $createLoadingPlaceholderNode("Creating bookmark…")
+      replaceLink(linkNodeKey, placeholder)
+      placeholderKey = placeholder.getKey()
+    }, { tag: HISTORY_PUSH_TAG })
+
+    dismiss(true)
+
     try {
-      await convertToBookmark(url, linkNodeKey)
+      const meta = await window.lychee.invoke("url.fetchMetadata", { url })
+      editor.update(() => {
+        const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
+        if (!ph) return
+        const bm = $createBookmarkNode({
+          url: meta.url,
+          title: meta.title,
+          description: meta.description,
+          imageUrl: meta.imageUrl,
+          faviconUrl: meta.faviconUrl,
+        })
+        ph.replace(bm)
+        const sel = $createNodeSelection()
+        sel.add(bm.getKey())
+        $setSelection(sel)
+      }, { tag: "history-merge" })
     } catch (err) {
       console.error("Failed to create bookmark:", err)
-    } finally {
-      dismiss(true)
+      editor.update(() => {
+        const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
+        if (ph) ph.remove()
+      }, { tag: "history-merge" })
     }
-  }, [hoverState, convertToBookmark, snapshotAndFocusLink, dismiss])
+  }, [editor, hoverState, replaceLink, snapshotAndFocusLink, dismiss])
 
   const handleOpen = useCallback(() => {
     if (!hoverState) return
@@ -267,35 +341,29 @@ export function LinkClickPlugin(): JSX.Element | null {
         align="start"
         sideOffset={0}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onMouseEnter={clearDismissTimer}
         onMouseLeave={onPopoverMouseLeave}
       >
         <div className="pt-1.5">
           <div className="rounded-md border border-[hsl(var(--border))] bg-popover p-1 shadow-md">
-            {actionInProgress ? (
-              <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>{actionInProgress === "embed" ? "Embedding..." : "Creating bookmark..."}</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-0.5">
-                {hoverState.canConvert && (
-                  <>
-                    <button type="button" className={BTN} onClick={handleBookmark} title="Convert to bookmark">
-                      <Bookmark className="h-3 w-3" />
-                      Bookmark
-                    </button>
-                    <button type="button" className={BTN} onClick={handleEmbed} title="Embed content">
-                      <Code className="h-3 w-3" />
-                      Embed
-                    </button>
-                  </>
-                )}
-                <button type="button" className={BTN} onClick={handleOpen} title="Open in browser">
-                  <ExternalLink className="h-3 w-3" />
-                  Open
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-0.5">
+              {hoverState.canConvert && (
+                <>
+                  <button type="button" className={BTN} onClick={handleBookmark} title="Convert to bookmark">
+                    <Bookmark className="h-3 w-3" />
+                    Bookmark
+                  </button>
+                  <button type="button" className={BTN} onClick={handleEmbed} title="Embed content">
+                    <Code className="h-3 w-3" />
+                    Embed
+                  </button>
+                </>
+              )}
+              <button type="button" className={BTN} onClick={handleOpen} title="Open in browser">
+                <ExternalLink className="h-3 w-3" />
+                Open
+              </button>
+            </div>
           </div>
         </div>
       </PopoverContent>
