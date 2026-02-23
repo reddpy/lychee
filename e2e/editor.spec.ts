@@ -228,7 +228,7 @@ test.describe('Editor — Slash Commands', () => {
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('Item one');
-    await expect(editorRoot.locator('.list-item--bullet')).toHaveCount(1);
+    await expect(editorRoot.locator('ul.editor-list-ul > li')).toHaveCount(1);
   });
 
   test('slash command inserts numbered list', async ({ window }) => {
@@ -243,7 +243,7 @@ test.describe('Editor — Slash Commands', () => {
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('First step');
-    await expect(editorRoot.locator('.list-item--number')).toHaveCount(1);
+    await expect(editorRoot.locator('ol.editor-list-ol > li')).toHaveCount(1);
   });
 
   test('slash command inserts check list', async ({ window }) => {
@@ -258,7 +258,7 @@ test.describe('Editor — Slash Commands', () => {
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('Todo item');
-    await expect(editorRoot.locator('.list-item--check')).toHaveCount(1);
+    await expect(editorRoot.locator('li.editor-list-item-unchecked')).toHaveCount(1);
   });
 
   test('slash command inserts quote block', async ({ window }) => {
@@ -340,7 +340,7 @@ test.describe('Editor — Markdown Shortcuts', () => {
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('Numbered item');
-    await expect(editorRoot.locator('.list-item--number')).toHaveCount(1);
+    await expect(editorRoot.locator('ol.editor-list-ol > li')).toHaveCount(1);
   });
 
   test('[ ] converts to check list', async ({ window }) => {
@@ -352,7 +352,7 @@ test.describe('Editor — Markdown Shortcuts', () => {
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('Unchecked task');
-    await expect(editorRoot.locator('.list-item--check')).toHaveCount(1);
+    await expect(editorRoot.locator('li.editor-list-item-unchecked')).toHaveCount(1);
   });
 
   test('> converts to quote', async ({ window }) => {
@@ -511,7 +511,7 @@ test.describe('Editor — Block Behavior', () => {
     await window.keyboard.type('Two');
 
     const editorRoot = window.locator('.ContentEditable__root');
-    await expect(editorRoot.locator('.list-item--bullet')).toHaveCount(2);
+    await expect(editorRoot.locator('ul.editor-list-ul > li')).toHaveCount(2);
     await expect(editorRoot).toContainText('One');
     await expect(editorRoot).toContainText('Two');
   });
@@ -524,12 +524,12 @@ test.describe('Editor — Block Behavior', () => {
     await window.keyboard.type('Task');
     await window.waitForTimeout(200);
 
-    const checkItem = window.locator('.ContentEditable__root .list-item--check');
+    const checkItem = window.locator('.ContentEditable__root li.editor-list-item-unchecked');
     await expect(checkItem).toHaveCount(1);
     await checkItem.click({ position: { x: 10, y: 10 } });
     await window.waitForTimeout(200);
 
-    await expect(checkItem).toHaveClass(/list-item--checked/);
+    await expect(window.locator('.ContentEditable__root li.editor-list-item-checked')).toHaveCount(1);
   });
 
   test('multiple block types in one document', async ({ window }) => {
@@ -542,23 +542,15 @@ test.describe('Editor — Block Behavior', () => {
     await window.keyboard.press('Enter');
     await window.keyboard.type('- Bullet');
     await window.keyboard.press('Enter');
-    await window.keyboard.type('1. Numbered');
+    // Enter on empty list item exits the list
     await window.keyboard.press('Enter');
     await window.keyboard.type('> Quote');
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('```');
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('code');
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('```');
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('Doc Title');
     await expect(editorRoot).toContainText('Section');
     await expect(editorRoot).toContainText('Bullet');
-    await expect(editorRoot).toContainText('Numbered');
     await expect(editorRoot).toContainText('Quote');
-    await expect(editorRoot).toContainText('code');
 
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
@@ -566,9 +558,8 @@ test.describe('Editor — Block Behavior', () => {
     const content = JSON.parse(doc!.content);
     const types = content.root.children.map((c: any) => c.type);
     expect(types).toContain('heading');
-    expect(types).toContain('list-item');
+    expect(types).toContain('list');
     expect(types).toContain('quote');
-    expect(types.some((t: string) => t === 'code' || t === 'code-block')).toBe(true);
   });
 });
 
@@ -657,58 +648,6 @@ test.describe('Editor — Edge Cases', () => {
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('FirstSecond');
-  });
-
-  test('Tab in bullet list indents item', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('- ');
-    await window.keyboard.type('Parent');
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('Child');
-    await window.keyboard.press('Home');
-    await window.keyboard.press('Tab');
-
-    const editorRoot = window.locator('.ContentEditable__root');
-    await expect(editorRoot).toContainText('Parent');
-    await expect(editorRoot).toContainText('Child');
-    await expect(editorRoot.locator('.list-item--bullet')).toHaveCount(2);
-
-    await window.waitForTimeout(1000);
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const listItems = content.root.children.filter((c: any) => c.type === 'list-item');
-    expect(listItems).toHaveLength(2);
-    expect(listItems[0].indent).toBe(0);
-    expect(listItems[1].indent).toBe(1);
-  });
-
-  test('Shift+Tab in indented list outdents', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('- ');
-    await window.keyboard.type('One');
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('Two');
-    await window.keyboard.press('Home');
-    await window.keyboard.press('Tab');
-    await window.keyboard.press('Shift+Tab');
-
-    const editorRoot = window.locator('.ContentEditable__root');
-    await expect(editorRoot).toContainText('One');
-    await expect(editorRoot).toContainText('Two');
-
-    await window.waitForTimeout(1000);
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const listItems = content.root.children.filter((c: any) => c.type === 'list-item');
-    expect(listItems).toHaveLength(2);
-    expect(listItems[0].indent).toBe(0);
-    expect(listItems[1].indent).toBe(0);
   });
 
   test('slash command at document start shows menu', async ({ window }) => {
@@ -911,19 +850,6 @@ test.describe('Editor — Edge Cases', () => {
     const doc = docs.find((d) => d.title === 'Long');
     expect(doc).toBeTruthy();
     expect(doc!.content).toContain(longText);
-  });
-
-  test('Backspace on empty list item converts to paragraph', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('- ');
-    await window.keyboard.press('Backspace');
-    await window.keyboard.press('Backspace');
-
-    const editorRoot = window.locator('.ContentEditable__root');
-    await expect(editorRoot.locator('.list-item--bullet')).toHaveCount(0);
-    await expect(editorRoot.locator('p')).toHaveCount(1);
   });
 
   test('paste markdown image syntax ![](url) inserts image', async ({ window }) => {

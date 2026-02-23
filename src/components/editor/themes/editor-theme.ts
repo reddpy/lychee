@@ -16,7 +16,21 @@ export const editorTheme: EditorThemeClasses = {
   paragraph: "leading-7",
   quote: "mt-1 border-l-2 pl-6 italic",
   link: "text-blue-600 underline cursor-text",
-  // list theme removed — flat list items are styled via CSS classes on the node's <div>
+  list: {
+    ol: "editor-list-ol",
+    ul: "editor-list-ul",
+    olDepth: [
+      "editor-list-ol-depth0",
+      "editor-list-ol-depth1",
+      "editor-list-ol-depth2",
+      "editor-list-ol-depth3",
+      "editor-list-ol-depth4",
+    ],
+    listitem: "editor-list-item",
+    listitemChecked: "editor-list-item-checked",
+    listitemUnchecked: "editor-list-item-unchecked",
+    nested: { listitem: "editor-nested-list-item" },
+  },
   hashtag: "text-blue-600 bg-blue-100 rounded-md px-1",
   text: {
     bold: "font-bold",

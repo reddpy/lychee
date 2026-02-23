@@ -80,25 +80,26 @@ hr.selected:after {
 
 /* ── Placeholder styles ─────────────────────────────────── */
 
-/* Non-list blocks use ::before for placeholder */
+/* Placeholder text via ::before (check items use ::after since ::before is the checkbox) */
 .editor-title.is-placeholder::before,
 p.is-placeholder::before,
 h1.is-placeholder::before,
 h2.is-placeholder::before,
 h3.is-placeholder::before,
-blockquote.is-placeholder::before {
+blockquote.is-placeholder::before,
+.editor-list-item:not(.editor-list-item-unchecked):not(.editor-list-item-checked).is-placeholder::before {
   content: attr(data-placeholder);
   color: hsl(var(--muted-foreground));
   position: absolute;
   pointer-events: none;
 }
 
-/* All list items use ::after for placeholder (::before is the marker/checkbox) */
-.list-item.is-placeholder::after {
+.editor-list-item-unchecked.is-placeholder::after,
+.editor-list-item-checked.is-placeholder::after {
   content: attr(data-placeholder);
   color: hsl(var(--muted-foreground));
   position: absolute;
-  left: 1.75rem;
+  left: 1.5em;
   top: 0;
   pointer-events: none;
 }
@@ -108,82 +109,84 @@ h1.is-placeholder,
 h2.is-placeholder,
 h3.is-placeholder,
 blockquote.is-placeholder,
-.list-item.is-placeholder {
+.editor-list-item.is-placeholder,
+.editor-list-item-unchecked.is-placeholder,
+.editor-list-item-checked.is-placeholder {
   position: relative;
 }
 
-/* ── Flat list item styles ──────────────────────────────── */
+/* ── List styles (undo Tailwind preflight reset) ───────── */
 
-.list-item {
+.editor-list-ul,
+.editor-list-ol {
+  padding: 0;
+  margin: 0;
+  list-style-position: outside;
+}
+
+.editor-list-ul { list-style-type: disc; }
+.editor-list-ol-depth0 { list-style-type: decimal; }
+.editor-list-ol-depth1 { list-style-type: upper-alpha; }
+.editor-list-ol-depth2 { list-style-type: lower-alpha; }
+.editor-list-ol-depth3 { list-style-type: upper-roman; }
+.editor-list-ol-depth4 { list-style-type: lower-roman; }
+
+.editor-list-item:not(.editor-list-item-unchecked):not(.editor-list-item-checked) {
+  margin: 0 2rem;
+}
+
+.editor-nested-list-item {
+  list-style-type: none;
+}
+
+.editor-nested-list-item::before,
+.editor-nested-list-item::after,
+.editor-nested-list-item.editor-list-item-unchecked::before,
+.editor-nested-list-item.editor-list-item-checked::before {
+  display: none;
+}
+
+/* ── Check list ────────────────────────────────────────── */
+
+.editor-list-item-unchecked,
+.editor-list-item-checked {
   position: relative;
-  padding-left: 1.75rem;
-  margin-top: 0.25rem;
-  line-height: 1.75;
-  display: block;
-  list-style: none;
-}
-
-/* Bullet list: disc before each item */
-.list-item--bullet::before {
-  content: "";
-  position: absolute;
-  left: 0.3rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background-color: currentColor;
-}
-
-/* Numbered list: ordinal before each item */
-.list-item--number::before {
-  content: attr(data-ordinal) ".";
-  position: absolute;
-  left: 0;
-  top: 0;
-  line-height: inherit;
-  color: currentColor;
-  font-variant-numeric: tabular-nums;
-  width: 1.2rem;
-  text-align: center;
-}
-
-/* Check list: checkbox before each item */
-.list-item--check {
+  margin-left: 0.5em;
+  margin-right: 0.5em;
+  padding-left: 1.5em;
+  list-style-type: none;
   outline: none;
 }
 
-.list-item--check::before {
+.editor-list-item-unchecked::before,
+.editor-list-item-checked::before {
   content: "";
-  width: 18px;
-  height: 18px;
+  width: 1.1em;
+  height: 1.1em;
   top: 50%;
-  transform: translateY(-50%);
   left: 0;
   cursor: pointer;
   display: block;
   position: absolute;
+  transform: translateY(-50%);
   border: 2px solid hsl(var(--primary));
-  border-radius: 2px;
+  border-radius: 3px;
   box-sizing: border-box;
 }
 
-/* Checked state */
-.list-item--checked {
+.editor-list-item-checked {
   text-decoration: line-through;
 }
 
-.list-item--checked::before {
+.editor-list-item-checked::before {
   background-color: hsl(var(--primary));
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 8L6.5 11L12.5 5' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-size: 14px 14px;
+  background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-/* Checked list item placeholder gets strikethrough */
-.list-item--checked.is-placeholder::after {
+.editor-list-item-checked.is-placeholder::after {
   text-decoration: line-through;
   text-decoration-thickness: 2px;
   text-decoration-color: hsl(var(--muted-foreground) / 0.5);
