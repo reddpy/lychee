@@ -28,6 +28,7 @@ export type SerializedListItemNode = Spread<
 export class ListItemNode extends ElementNode {
   __listType: ListType
   __checked: boolean
+  static readonly INDENT_PX = 40
 
   static getType(): string {
     return "list-item"
@@ -80,6 +81,10 @@ export class ListItemNode extends ElementNode {
   __applyDOMAttributes(dom: HTMLElement): void {
     const listType = this.__listType
     dom.className = `list-item list-item--${listType}`
+    dom.style.setProperty(
+      "--flat-list-indent-offset",
+      `${this.getIndent() * ListItemNode.INDENT_PX}px`
+    )
 
     if (listType === "check") {
       dom.setAttribute("role", "checkbox")
@@ -93,9 +98,14 @@ export class ListItemNode extends ElementNode {
 
   updateDOM(
     prevNode: ListItemNode,
-    _dom: HTMLElement,
+    dom: HTMLElement,
     _config: EditorConfig
   ): boolean {
+    dom.style.setProperty(
+      "--flat-list-indent-offset",
+      `${this.getIndent() * ListItemNode.INDENT_PX}px`
+    )
+
     if (
       prevNode.__listType !== this.__listType ||
       prevNode.__checked !== this.__checked
@@ -122,7 +132,7 @@ export class ListItemNode extends ElementNode {
     return $createListItemNode(
       serializedNode.listType,
       serializedNode.checked
-    )
+    ).updateFromJSON(serializedNode)
   }
 
   exportJSON(): SerializedListItemNode {

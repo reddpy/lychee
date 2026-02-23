@@ -116,7 +116,9 @@ blockquote.is-placeholder,
 
 .list-item {
   position: relative;
+  margin-inline-start: var(--flat-list-indent-offset, 0px);
   padding-left: 1.75rem;
+  padding-inline-start: 1.75rem !important;
   margin-top: 0.25rem;
   line-height: 1.75;
   display: block;

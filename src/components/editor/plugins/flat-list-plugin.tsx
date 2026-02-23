@@ -8,9 +8,12 @@ import {
   $getNearestNodeFromDOMNode,
   $getSelection,
   $isRangeSelection,
+  COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   DELETE_CHARACTER_COMMAND,
+  INSERT_TAB_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
+  KEY_TAB_COMMAND,
   type LexicalNode,
 } from "lexical"
 import {
@@ -29,6 +32,133 @@ import {
  */
 export function FlatListPlugin(): null {
   const [editor] = useLexicalComposerContext()
+
+  const updateIndentForSelectedListItems = (
+    delta: 1 | -1,
+    domTarget?: EventTarget | null
+  ): boolean => {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return false
+
+    const selectedListItems = new Map<string, ListItemNode>()
+    const candidateNodes = selection.getNodes()
+
+    // Collapsed selections can produce an empty node list; use anchor/focus as fallback.
+    if (candidateNodes.length === 0) {
+      candidateNodes.push(selection.anchor.getNode(), selection.focus.getNode())
+    }
+
+    for (const node of candidateNodes) {
+      let walk: LexicalNode | null = node
+      while (walk) {
+        if ($isListItemNode(walk)) {
+          selectedListItems.set(walk.getKey(), walk)
+          break
+        }
+        walk = walk.getParent()
+      }
+    }
+
+    if (selectedListItems.size === 0 && domTarget instanceof Node) {
+      let walk = $getNearestNodeFromDOMNode(domTarget)
+      while (walk) {
+        if ($isListItemNode(walk)) {
+          selectedListItems.set(walk.getKey(), walk)
+          break
+        }
+        walk = walk.getParent()
+      }
+    }
+
+    if (selectedListItems.size === 0) return false
+
+    for (const listItem of selectedListItems.values()) {
+      const nextIndent = Math.max(0, listItem.getIndent() + delta)
+      if (nextIndent !== listItem.getIndent()) {
+        listItem.setIndent(nextIndent)
+      }
+    }
+
+    return true
+  }
+
+  // ── Tab / Shift+Tab inside flat list items ────────────────────────
+  // Lexical's generic TabIndentationPlugin only indents in some caret
+  // positions; in our flat-list model we always want Tab to nest/outdent
+  // the current list item(s).
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_TAB_COMMAND,
+      (event: KeyboardEvent) => {
+        const didHandle = updateIndentForSelectedListItems(
+          event.shiftKey ? -1 : 1,
+          event.target
+        )
+        if (!didHandle) return false
+
+        event.preventDefault()
+        return true
+      },
+      COMMAND_PRIORITY_HIGH
+    )
+  }, [editor])
+
+  // Fallback: if another Tab handler dispatches INSERT_TAB_COMMAND while the
+  // cursor is inside a flat list item, convert it to indent instead of a tab char.
+  useEffect(() => {
+    return editor.registerCommand(
+      INSERT_TAB_COMMAND,
+      () => updateIndentForSelectedListItems(1),
+      COMMAND_PRIORITY_HIGH
+    )
+  }, [editor])
+
+  // Last-resort fallback: intercept native Tab on the document in capture
+  // phase (before Lexical's root listener) and indent flat list items directly.
+  // This avoids focus navigation or literal tab insertion if command routing
+  // doesn't hit our handlers in some environments.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "Tab") return
+
+      const rootElement = editor.getRootElement()
+      const target = event.target
+      if (
+        rootElement == null ||
+        !(target instanceof Node) ||
+        !rootElement.contains(target)
+      ) {
+        return
+      }
+
+      let handled = false
+      editor.update(() => {
+        handled = updateIndentForSelectedListItems(
+          event.shiftKey ? -1 : 1,
+          event.target
+        )
+      })
+
+      if (handled) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        event.stopPropagation()
+      }
+    }
+
+    return editor.registerRootListener((rootElement, prevElement) => {
+      const nextDoc = rootElement?.ownerDocument ?? null
+      const prevDoc = prevElement?.ownerDocument ?? null
+
+      if (prevDoc !== null) {
+        prevDoc.removeEventListener("keydown", handleKeyDown, true)
+      }
+
+      if (nextDoc !== null) {
+        nextDoc.addEventListener("keydown", handleKeyDown, true)
+      }
+    })
+  }, [editor])
 
   // ── Enter inside a list item ─────────────────────────────────────
   // Handles both empty (outdent/convert) and non-empty (split) cases.
