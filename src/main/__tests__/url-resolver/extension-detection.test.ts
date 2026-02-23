@@ -339,7 +339,7 @@ describe('URL Resolver — Extension Detection', () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 404,
-      headers: { get: () => null },
+      headers: { get: (): null => null },
     });
 
     const result = await resolveUrl('https://example.com/deleted.png');

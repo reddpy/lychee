@@ -334,7 +334,7 @@ describe('URL Resolver — Content-Type Probe', () => {
   it('returns unsupported when content-type header is null', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      headers: { get: () => null },
+      headers: { get: (): null => null },
     });
 
     const result = await resolveUrl('https://example.com/api/mystery');

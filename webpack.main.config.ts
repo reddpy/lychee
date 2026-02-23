@@ -16,8 +16,4 @@ export const mainConfig: Configuration = {
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
-  externals: {
-    // Native module: must be required at runtime from node_modules, not bundled.
-    'better-sqlite3': 'commonjs2 better-sqlite3',
-  },
 };
