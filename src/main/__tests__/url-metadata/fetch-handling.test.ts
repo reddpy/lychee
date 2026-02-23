@@ -142,7 +142,7 @@ describe('URL Metadata — Fetch & Response Handling', () => {
       headers: {
         get: vi.fn().mockReturnValue('text/html'),
       },
-      body: { getReader: () => undefined },
+      body: { getReader: (): undefined => undefined },
     });
 
     return fetchUrlMetadata('https://example.com').then((result) => {

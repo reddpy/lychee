@@ -13,6 +13,8 @@
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:build": "E2E=1 pnpm run package && playwright test",
     "rebuild:sqlite": "cd node_modules/better-sqlite3 && npx node-gyp rebuild --release",
     "pretest": "pnpm rebuild:sqlite"
   },
@@ -38,6 +40,7 @@
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-webpack": "^7.11.1",
     "@electron/fuses": "^1.0.0",
+    "@playwright/test": "^1.58.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/better-sqlite3": "^7.6.13",

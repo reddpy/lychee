@@ -13,6 +13,9 @@ import path from 'path';
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
 
+// When building for E2E tests, relax fuses so Playwright can connect
+const isE2E = process.env.E2E === '1';
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -51,9 +54,9 @@ const config: ForgeConfig = {
       [FuseV1Options.RunAsNode]: false,
       [FuseV1Options.EnableCookieEncryption]: true,
       [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+      [FuseV1Options.EnableNodeCliInspectArguments]: isE2E,
+      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: !isE2E,
+      [FuseV1Options.OnlyLoadAppFromAsar]: !isE2E,
     }),
   ],
 };
