@@ -10,7 +10,11 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "rebuild:sqlite": "cd node_modules/better-sqlite3 && npx node-gyp rebuild --release",
+    "pretest": "pnpm rebuild:sqlite"
   },
   "keywords": [],
   "author": {
@@ -60,7 +64,8 @@
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
     "ts-loader": "^9.2.2",
-    "typescript": "~4.5.4"
+    "typescript": "~4.5.4",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.7.7",
