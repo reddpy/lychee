@@ -265,5 +265,6 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       await get().loadDocuments(true);
     }
   },
+
 }));
 

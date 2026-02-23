@@ -27,9 +27,11 @@ const LEGACY_UNTITLED = "Untitled";
 export function LexicalEditor({
   documentId,
   document,
+  hidden,
 }: {
   documentId: string;
   document: DocumentRow;
+  hidden: boolean;
 }) {
   const [emojiPickerOpen, setEmojiPickerOpen] = React.useState(false);
   const [addIconPickerOpen, setAddIconPickerOpen] = React.useState(false);
@@ -129,8 +131,8 @@ export function LexicalEditor({
 
   React.useEffect(() => {
     return () => {
-      saveContent.cancel();
-      saveTitle.cancel();
+      saveContent.flush();
+      saveTitle.flush();
     };
   }, [saveContent, saveTitle]);
 
@@ -150,7 +152,10 @@ export function LexicalEditor({
   );
 
   return (
-    <main className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto cursor-text">
+    <main
+      className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto cursor-text"
+      style={hidden ? { display: "none" } : undefined}
+    >
       <div className="mx-auto max-w-225 px-8 py-20">
         {/* Emoji above editor */}
         {document.emoji && (
@@ -220,7 +225,6 @@ export function LexicalEditor({
 
         {/* Editor with title as first block */}
         <Editor
-          key={documentId}
           editorSerializedState={editorSerializedState}
           onEditorStateChange={handleEditorStateChange}
           initialTitle={initialTitle}
