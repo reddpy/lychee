@@ -94,12 +94,16 @@ function EditorArea() {
   const selectedId = useDocumentStore((s) => s.selectedId);
   const openTabs = useDocumentStore((s) => s.openTabs);
   const documents = useDocumentStore((s) => s.documents);
-  const selected = selectedId
-    ? documents.find((d) => d.id === selectedId)
-    : undefined;
 
-  // Only show editor if selectedId has a corresponding open tab
-  if (!selectedId || !selected || !openTabs.includes(selectedId)) {
+  const hasActiveTab = selectedId && openTabs.includes(selectedId);
+
+  const docById = React.useMemo(() => {
+    const map = new Map<string, (typeof documents)[number]>();
+    for (const d of documents) map.set(d.id, d);
+    return map;
+  }, [documents]);
+
+  if (!hasActiveTab) {
     return (
       <main className="flex h-full flex-1 items-start justify-center bg-[hsl(var(--background))] pt-[20vh]">
         <div className="flex flex-col items-center gap-6 select-none">
@@ -117,7 +121,20 @@ function EditorArea() {
   }
 
   return (
-    <LexicalEditor key={selectedId} documentId={selected.id} document={selected} />
+    <>
+      {openTabs.map((tabId) => {
+        const doc = docById.get(tabId);
+        if (!doc) return null;
+        return (
+          <LexicalEditor
+            key={tabId}
+            documentId={doc.id}
+            document={doc}
+            hidden={tabId !== selectedId}
+          />
+        );
+      })}
+    </>
   );
 }
 

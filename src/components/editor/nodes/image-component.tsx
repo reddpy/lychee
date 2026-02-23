@@ -255,13 +255,19 @@ export function ImageComponent({
         />
       )}
       {showError && (
-        <div className="image-placeholder image-error">
+        <div
+          className="image-placeholder image-error"
+          style={width && height ? { width: `${width}px`, height: `${height}px` } : undefined}
+        >
           <ImageOff className="size-5 text-muted-foreground" />
           <span className="text-xs text-muted-foreground mt-1">Failed to load image</span>
         </div>
       )}
       {showSpinner && (
-        <div className="image-placeholder">
+        <div
+          className="image-placeholder"
+          style={width && height ? { width: `${width}px`, height: `${height}px` } : undefined}
+        >
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
           <span className="text-sm text-muted-foreground/70 mt-2">Loading media...</span>
         </div>
