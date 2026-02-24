@@ -34,14 +34,14 @@ function resolveBackgroundColor(): string {
   }
 }
 
-const createWindow = (bgColor: string): BrowserWindow => {
+const createWindow = (): BrowserWindow => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     height: 600,
     width: 800,
     icon: iconPath,
     show: false,
-    backgroundColor: bgColor,
+    backgroundColor: resolveBackgroundColor(),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition:
       process.platform === 'darwin' ? { x: 12, y: 14 } : undefined,
@@ -81,7 +81,7 @@ app.whenReady().then(() => {
   const { dbPath } = initDatabase();
   console.log(`[db] sqlite: ${dbPath}`);
 
-  createWindow(resolveBackgroundColor());
+  createWindow();
   registerIpcHandlers();
 });
 
@@ -98,7 +98,7 @@ app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow(resolveBackgroundColor());
+    createWindow();
   }
 });
 
