@@ -96,6 +96,18 @@ export type IpcContract = {
     req: { url: string };
     res: UrlMetadataResult;
   };
+  'settings.get': {
+    req: { key: string };
+    res: { value: string | null };
+  };
+  'settings.set': {
+    req: { key: string; value: string };
+    res: { ok: true };
+  };
+  'settings.getAll': {
+    req: Record<string, never>;
+    res: { settings: Record<string, string> };
+  };
 };
 
 export type IpcChannel = keyof IpcContract;

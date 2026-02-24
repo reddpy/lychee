@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Map CSS variables to Tailwind theme */
   --color-background: hsl(var(--background));
@@ -63,9 +65,52 @@
   --sidebar-ring: 355 49% 53%;
 }
 
+.dark {
+  --background: 20 12% 10%;
+  --foreground: 20 10% 88%;
+
+  --muted: 20 10% 16%;
+  --muted-foreground: 20 8% 55%;
+
+  --border: 20 8% 20%;
+  --input: 20 8% 20%;
+
+  --primary: 355 49% 53%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 20 10% 16%;
+  --secondary-foreground: 20 10% 88%;
+
+  --ring: 20 10% 88%;
+
+  --popover: 20 12% 12%;
+  --popover-foreground: 20 10% 88%;
+
+  --accent: 20 8% 18%;
+  --accent-foreground: 20 10% 88%;
+
+  --destructive: 0 84% 60%;
+
+  --sidebar-background: 20 12% 11%;
+  --sidebar-foreground: 20 8% 70%;
+  --sidebar-primary: 355 49% 53%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 20 8% 16%;
+  --sidebar-accent-foreground: 20 8% 88%;
+  --sidebar-border: 20 8% 18%;
+  --sidebar-ring: 355 49% 53%;
+}
+
 html,
 body {
   height: 100%;
+}
+
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
 }
 
 body {

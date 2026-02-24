@@ -86,7 +86,7 @@ function TopBar() {
         {hasTabs ? <TabStrip /> : null}
       </div>
       {/* Bottom border — last child so it paints above inactive tabs; active tab z-10 breaks through */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-black/8" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-foreground/8" />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import path from 'path';
-import { app, BrowserWindow, nativeImage, net, protocol } from 'electron';
+import { app, BrowserWindow, nativeImage, nativeTheme, net, protocol } from 'electron';
 import { closeDatabase, initDatabase } from './main/db';
 import { registerIpcHandlers } from './main/ipc';
+import { getSetting } from './main/repos/settings';
 
 // Register custom protocol for serving local image files
 protocol.registerSchemesAsPrivileged([
@@ -20,12 +21,27 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
-const createWindow = (): BrowserWindow => {
+function resolveBackgroundColor(): string {
+  try {
+    const mode = getSetting('theme');
+    const dark =
+      mode === 'dark' ||
+      (mode === 'system' && nativeTheme.shouldUseDarkColors);
+    return dark ? '#1d1816' : '#fefefd';
+  } catch {
+    // DB not initialized or table missing (e.g. hot-reload before migration)
+    return '#fefefd';
+  }
+}
+
+const createWindow = (bgColor: string): BrowserWindow => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     height: 600,
     width: 800,
     icon: iconPath,
+    show: false,
+    backgroundColor: bgColor,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition:
       process.platform === 'darwin' ? { x: 12, y: 14 } : undefined,
@@ -34,6 +50,11 @@ const createWindow = (): BrowserWindow => {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  // Show window once the renderer has painted — prevents white flash
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
   });
 
   // and load the index.html of the app.
@@ -59,7 +80,8 @@ app.whenReady().then(() => {
   }
   const { dbPath } = initDatabase();
   console.log(`[db] sqlite: ${dbPath}`);
-  createWindow();
+
+  createWindow(resolveBackgroundColor());
   registerIpcHandlers();
 });
 
@@ -76,7 +98,7 @@ app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    createWindow(resolveBackgroundColor());
   }
 });
 

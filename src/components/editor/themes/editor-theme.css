@@ -10,7 +10,7 @@
 }
 .Collapsible__container {
   background-color: var(--background);
-  border: 1px solid #ccc;
+  border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
   margin-bottom: 0.5rem;
 }
@@ -30,7 +30,7 @@
   display: inline-flex;
 }
 .Collapsible__title::marker{
-  color: lightgray;
+  color: hsl(var(--muted-foreground));
 }
 .Collapsible__container[open] >.Collapsible__title {
   list-style-type: disclosure-open;
@@ -200,7 +200,7 @@ blockquote.is-placeholder,
   font-size: 13px;
   line-height: 1.53;
   padding: 12px;
-  color: #383A42;
+  color: hsl(var(--foreground));
   tab-size: 2;
   overflow-x: auto;
   position: relative;
@@ -236,6 +236,33 @@ blockquote.is-placeholder,
 }
 .editor-tokenPunctuation {
   color: #383A42;
+}
+
+/* Atom One Dark syntax highlighting */
+.dark .editor-tokenComment {
+  color: #5C6370;
+  font-style: italic;
+}
+.dark .editor-tokenSelector {
+  color: #98C379;
+}
+.dark .editor-tokenProperty {
+  color: #D19A66;
+}
+.dark .editor-tokenAttr {
+  color: #C678DD;
+}
+.dark .editor-tokenFunction {
+  color: #61AFEF;
+}
+.dark .editor-tokenVariable {
+  color: #E06C75;
+}
+.dark .editor-tokenOperator {
+  color: #ABB2BF;
+}
+.dark .editor-tokenPunctuation {
+  color: #ABB2BF;
 }
 
 /* TOC navigation highlight */

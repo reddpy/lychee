@@ -246,8 +246,8 @@ export function NoteTreeItem({
             style={{ paddingLeft: depth * 10 }}
             title="Insert as sibling"
           >
-            <div className="h-2 w-2 rounded-full border-2 border-blue-500 shrink-0 bg-[hsl(var(--background))]" />
-            <div className="h-0.5 flex-1 bg-blue-500 rounded-full" />
+            <div className="h-2 w-2 rounded-full border-2 border-primary shrink-0 bg-[hsl(var(--background))]" />
+            <div className="h-0.5 flex-1 bg-primary rounded-full" />
           </div>
         )}
 
@@ -258,8 +258,8 @@ export function NoteTreeItem({
             style={{ paddingLeft: (depth + 1) * 10 }}
             title="Insert as first child"
           >
-            <div className="h-2 w-2 rounded-full border-2 border-blue-500 shrink-0 bg-[hsl(var(--background))]" />
-            <div className="h-0.5 flex-1 bg-blue-500 rounded-full" />
+            <div className="h-2 w-2 rounded-full border-2 border-primary shrink-0 bg-[hsl(var(--background))]" />
+            <div className="h-0.5 flex-1 bg-primary rounded-full" />
           </div>
         )}
 
@@ -271,7 +271,7 @@ export function NoteTreeItem({
             onAuxClick={handleAuxClick}
             className={cn(
               'group cursor-pointer text-sm',
-              showNestIndicator && 'bg-blue-500/20 !text-blue-600 dark:!text-blue-400 rounded-md',
+              showNestIndicator && 'bg-primary/20 !text-primary rounded-md',
             )}
           >
             <div
