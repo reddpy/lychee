@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppSidebar } from '../components/app-sidebar';
 import { CollapsedSidebarWidget } from '../components/collapsed-sidebar-widget';
 import { LexicalEditor } from '../components/lexical-editor';
+import { SettingsDialog } from '../components/settings/settings-dialog';
 import { LycheeLogoHorizontal } from '../components/sidebar/lychee-logo';
 import { TabStrip } from '../components/tab-strip';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
@@ -153,6 +154,7 @@ export function App() {
           <CollapsedSidebarWidget />
         </div>
       </div>
+      <SettingsDialog />
     </SidebarProvider>
   );
 }

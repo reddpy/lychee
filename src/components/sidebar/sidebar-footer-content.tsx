@@ -6,11 +6,13 @@ import {
   SidebarMenuButton,
   useSidebar,
 } from "../ui/sidebar";
+import { useSettingsStore } from "../../renderer/settings-store";
 import { TrashBinPopover } from "./trash-bin-popover";
 
 export function SidebarFooterContent() {
   const { open, hoverOpen } = useSidebar();
   const isFloating = !open && hoverOpen;
+  const openSettings = useSettingsStore((s) => s.openSettings);
 
   return (
     <>
@@ -18,7 +20,7 @@ export function SidebarFooterContent() {
         <TrashBinPopover />
         {!isFloating && (
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Settings">
+            <SidebarMenuButton tooltip="Settings" onClick={openSettings}>
               <Settings className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
               <span className="truncate text-sm font-semibold">Settings</span>
             </SidebarMenuButton>
