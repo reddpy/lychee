@@ -1,10 +1,12 @@
 import { Settings } from 'lucide-react';
 
 import { useSidebar } from './ui/sidebar';
+import { useSettingsStore } from '../renderer/settings-store';
 import { LycheeLogo } from './sidebar/lychee-logo';
 
 export function CollapsedSidebarWidget() {
   const { open, setHoverOpen } = useSidebar();
+  const openSettings = useSettingsStore((s) => s.openSettings);
 
   if (open) return null;
 
@@ -21,6 +23,7 @@ export function CollapsedSidebarWidget() {
       <div className="absolute left-0 bottom-0 z-20 flex w-[3.25rem] flex-col items-center gap-2 pb-4">
         <button
           type="button"
+          onClick={openSettings}
           className="flex h-8 w-8 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors"
           title="Settings"
           aria-label="Settings"
