@@ -48,8 +48,9 @@ const initialMode = readStoredMode();
 const initialResolved = resolve(initialMode);
 applyClass(initialResolved);
 
-// Reconcile: seed DB from localStorage so the main process has a value on
-// first launch after this migration.
+// Reconcile: ensure both stores have the resolved mode.
+// Handles empty/invalid localStorage and first launch after migration.
+localStorage.setItem(STORAGE_KEY, initialMode);
 persistToDb(initialMode);
 
 export const useThemeStore = create<ThemeStore>((set, get) => {
