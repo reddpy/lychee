@@ -5,8 +5,9 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { useSettingsStore } from '@/renderer/settings-store';
 import { useThemeStore } from '@/renderer/theme-store';
+import { AISettings } from '@/components/settings/ai-settings';
 
-const sections = ['General', 'Appearance', 'Editor'] as const;
+const sections = ['General', 'Appearance', 'Editor', 'AI'] as const;
 type Section = (typeof sections)[number];
 
 type Mode = 'light' | 'dark' | 'system';
@@ -55,6 +56,7 @@ function AppearanceSettings() {
 
 function SectionContent({ section }: { section: Section }) {
   if (section === 'Appearance') return <AppearanceSettings />;
+  if (section === 'AI') return <AISettings />;
   return (
     <>
       <h3 className="text-sm font-semibold mb-1">{section}</h3>

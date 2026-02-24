@@ -113,8 +113,10 @@
     "lexical": "^0.39.0",
     "linkifyjs": "^4.3.2",
     "lodash": "^4.17.23",
+    "openai": "^6.25.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
     "zustand": "^5.0.10"
   }
 }

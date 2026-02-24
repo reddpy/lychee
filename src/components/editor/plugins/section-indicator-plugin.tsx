@@ -14,6 +14,7 @@ interface HeadingInfo {
 function getScrollContainer(element: HTMLElement | null): HTMLElement | null {
   let el = element
   while (el) {
+    if (el.hasAttribute("data-editor-scroll")) return el
     if (el.tagName === "MAIN") return el
     el = el.parentElement
   }

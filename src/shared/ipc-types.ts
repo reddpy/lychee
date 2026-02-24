@@ -108,6 +108,17 @@ export type IpcContract = {
     req: Record<string, never>;
     res: { settings: Record<string, string> };
   };
+  'ai.chatStart': {
+    req: {
+      requestId: string;
+      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    };
+    res: { ok: true } | { ok: false; error: string };
+  };
+  'ai.chatStop': {
+    req: { requestId: string };
+    res: { ok: true };
+  };
 };
 
 export type IpcChannel = keyof IpcContract;
@@ -120,6 +131,12 @@ export type IpcInvoke = <C extends IpcChannel>(
 // ── Event-based IPC (main → renderer push) ─────────────────────────
 
 export type IpcEvents = {
+  'ai.stream': {
+    requestId: string;
+    chunk?: string;
+    done?: boolean;
+    error?: string;
+  };
 };
 
 export type IpcEventChannel = keyof IpcEvents;

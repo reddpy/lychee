@@ -9,6 +9,7 @@ import { LycheeLogoHorizontal } from '../components/sidebar/lychee-logo';
 import { TabStrip } from '../components/tab-strip';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
 import { useDocumentStore } from '../renderer/document-store';
+import { useAIPanelStore } from '../renderer/ai-panel-store';
 
 /** Unified top bar: left section aligns with sidebar, right section holds tabs. */
 function TopBar() {
@@ -140,6 +141,14 @@ function EditorArea() {
 }
 
 export function App() {
+  const setAIEnabled = useAIPanelStore((s) => s.setAIEnabled);
+
+  React.useEffect(() => {
+    window.lychee.invoke('settings.get', { key: 'ai_enabled' }).then((res) => {
+      setAIEnabled(res.value === 'true');
+    });
+  }, [setAIEnabled]);
+
   return (
     <SidebarProvider defaultOpen>
       <div className="flex h-full w-full flex-col">

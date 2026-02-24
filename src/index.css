@@ -197,4 +197,47 @@ body {
   opacity: 1;
 }
 
+/* AI panel markdown prose */
+.ai-panel-prose h1,
+.ai-panel-prose h2,
+.ai-panel-prose h3 {
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.4em;
+  line-height: 1.3;
+}
+.ai-panel-prose h1 { font-size: 1.1em; }
+.ai-panel-prose h2 { font-size: 1em; }
+.ai-panel-prose h3 { font-size: 0.95em; }
+.ai-panel-prose p { margin-bottom: 0.6em; }
+.ai-panel-prose ul,
+.ai-panel-prose ol { padding-left: 1.4em; margin-bottom: 0.6em; }
+.ai-panel-prose ul { list-style: disc; }
+.ai-panel-prose ol { list-style: decimal; }
+.ai-panel-prose li { margin-bottom: 0.2em; }
+.ai-panel-prose code {
+  font-size: 0.85em;
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: hsl(var(--muted));
+}
+.ai-panel-prose pre {
+  margin-bottom: 0.6em;
+  padding: 0.6em;
+  border-radius: 6px;
+  background: hsl(var(--muted));
+  overflow-x: auto;
+}
+.ai-panel-prose pre code {
+  padding: 0;
+  background: none;
+}
+.ai-panel-prose strong { font-weight: 600; }
+.ai-panel-prose blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 0.8em;
+  margin-bottom: 0.6em;
+  color: hsl(var(--muted-foreground));
+}
+
 /* Note tree: delete exit, section expand/collapse, chevron rotation (Framer Motion in NotesSection / NoteTreeItem). */

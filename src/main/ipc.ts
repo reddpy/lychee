@@ -95,5 +95,38 @@ export function registerIpcHandlers() {
   handle('settings.getAll', () => ({
     settings: getAllSettings(),
   }));
+
+  // AI streaming — lazy import to avoid crashing other handlers if openai fails to load
+  ipcMain.handle('ai.chatStart', async (event, payload: { requestId: string; messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> }) => {
+    const { streamChat } = await import('./repos/ai');
+    const { requestId, messages } = payload;
+    const sender = event.sender;
+
+    streamChat(requestId, messages, {
+      onChunk: (text) => {
+        if (!sender.isDestroyed()) {
+          sender.send('ai.stream', { requestId, chunk: text });
+        }
+      },
+      onDone: () => {
+        if (!sender.isDestroyed()) {
+          sender.send('ai.stream', { requestId, done: true });
+        }
+      },
+      onError: (error) => {
+        if (!sender.isDestroyed()) {
+          sender.send('ai.stream', { requestId, error });
+        }
+      },
+    });
+
+    return { ok: true as const };
+  });
+
+  ipcMain.handle('ai.chatStop', async (_event, payload: { requestId: string }) => {
+    const { stopStream } = await import('./repos/ai');
+    stopStream(payload.requestId);
+    return { ok: true as const };
+  });
 }
 
