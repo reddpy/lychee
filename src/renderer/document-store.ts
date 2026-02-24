@@ -268,3 +268,9 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
 }));
 
+// Expose store for e2e testing so drag-and-drop helpers can call moveDocument
+// (Playwright synthetic DragEvents don't trigger atlaskit's internal state machine)
+if (typeof window !== 'undefined') {
+  (window as any).__documentStore = useDocumentStore;
+}
+

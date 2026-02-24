@@ -5,7 +5,6 @@ import fs from 'fs';
 import {
   findPackagedBinary,
   hasDevBuild,
-  getMainWindow,
   PROJECT_ROOT,
   listDocumentsFromDb,
 } from './electron-app';
@@ -18,7 +17,7 @@ import {
 function buildLaunchOpts(tmpDir: string) {
   const packagedBinary = findPackagedBinary();
   const opts: Parameters<typeof _electron.launch>[0] = {
-    env: { ...process.env, NODE_ENV: 'test', LYCHEE_E2E: '1' },
+    env: { ...process.env, NODE_ENV: 'test' },
     timeout: 30_000,
   };
 
@@ -36,7 +35,7 @@ function buildLaunchOpts(tmpDir: string) {
 
 async function launchAndGetWindow(tmpDir: string): Promise<{ app: ElectronApplication; window: Page }> {
   const app = await _electron.launch(buildLaunchOpts(tmpDir));
-  const window = await getMainWindow(app);
+  const window = await app.firstWindow();
   await window.waitForLoadState('domcontentloaded');
   await window.waitForSelector('aside[data-state]', { timeout: 15_000 });
   return { app, window };

@@ -50,31 +50,6 @@ function hasDevBuild(): boolean {
   );
 }
 
-/**
- * Find the main app window (not DevTools). Waits up to 10s for it to appear.
- */
-async function getMainWindow(app: ElectronApplication): Promise<Page> {
-  // Close DevTools via the main process
-  await app.evaluate(({ BrowserWindow }) => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (win.webContents.isDevToolsOpened()) {
-        win.webContents.closeDevTools();
-      }
-    }
-  });
-
-  // After closing DevTools, find the window whose URL isn't devtools://
-  for (const page of app.windows()) {
-    const url = page.url();
-    if (!url.startsWith('devtools://')) {
-      return page;
-    }
-  }
-
-  // If no windows yet, wait for one
-  return app.firstWindow();
-}
-
 type Fixtures = {
   electronApp: ElectronApplication;
   window: Page;
@@ -96,7 +71,7 @@ export const test = base.extend<Fixtures>({
     }
 
     const launchOpts: Parameters<typeof _electron.launch>[0] = {
-      env: { ...process.env, NODE_ENV: 'test', LYCHEE_E2E: '1' },
+      env: { ...process.env, NODE_ENV: 'test' },
       timeout: 30_000,
     };
 
@@ -116,7 +91,7 @@ export const test = base.extend<Fixtures>({
   },
 
   window: async ({ electronApp }, use) => {
-    const window = await getMainWindow(electronApp);
+    const window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
     // Wait for React to hydrate — the sidebar aside element
     await window.waitForSelector('aside[data-state]', { timeout: 15_000 });
@@ -177,4 +152,4 @@ export async function getLatestDocumentFromDb(page: Page): Promise<DocumentRow |
 
 // ── Reusable launch helpers for persistence tests ───────────────────
 
-export { findPackagedBinary, hasDevBuild, getMainWindow, PROJECT_ROOT };
+export { findPackagedBinary, hasDevBuild, PROJECT_ROOT };

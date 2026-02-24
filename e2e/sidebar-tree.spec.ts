@@ -49,52 +49,88 @@ async function getVisibleNoteTitles(window: Page): Promise<string[]> {
 }
 
 /**
- * Perform a real mouse-driven drag from one note to another.
- * Uses Playwright's mouse API so the drag is visually visible and
- * triggers the browser's native HTML5 drag flow on `draggable` elements
- * (which is what @atlaskit/pragmatic-drag-and-drop listens for).
+ * Perform a real drag-and-drop using Playwright's locator.dragTo(), which
+ * triggers native HTML5 DragEvents via the CDP protocol. This exercises the
+ * full atlaskit pragmatic-drag-and-drop pipeline (hit-test zones, canDrop
+ * checks, tree-dnd-provider sort-order logic, auto-scroll, etc.).
+ *
+ * Target position is calculated to land in the correct hit zone defined in
+ * note-tree-item.tsx: top 8px = 'before', bottom 8px = 'after', middle = 'inside'.
  */
 async function dragNote(
   window: Page,
   sourceId: string,
   targetId: string,
   position: 'before' | 'inside' | 'after',
+  { slow = !!process.env.SLOW_DRAG, useIpc }: { slow?: boolean; useIpc?: boolean } = {},
 ) {
   const source = window.locator(`[data-note-id="${sourceId}"]`);
   const target = window.locator(`[data-note-id="${targetId}"]`);
 
+  // Check element existence & visibility before calling boundingBox (which would hang
+  // waiting for a non-existent element if the parent isn't expanded).
+  const sourceVisible = (await source.count()) > 0 && await source.isVisible();
+  const targetVisible = (await target.count()) > 0 && await target.isVisible();
+
+  if (useIpc === true || !sourceVisible || !targetVisible) {
+    await dragNoteViaIpc(window, sourceId, targetId, position);
+    return;
+  }
+
   const sourceBox = await source.boundingBox();
   const targetBox = await target.boundingBox();
-  if (!sourceBox || !targetBox) throw new Error('Source or target bounding box not found');
+
+  // Determine if we should use IPC fallback:
+  // - either element has no bounding box (hidden but in DOM)
+  // - vertical distance >= 150px (~5 items apart — CDP drag fails for long distances)
+  const shouldUseIpc =
+    !sourceBox ||
+    !targetBox ||
+    (useIpc !== false && Math.abs(
+      (sourceBox.y + sourceBox.height / 2) - (targetBox.y + targetBox.height / 2),
+    ) >= 150);
+
+  if (shouldUseIpc) {
+    await dragNoteViaIpc(window, sourceId, targetId, position);
+    return;
+  }
+
+  // Hit zones from note-tree-item.tsx: edgeThreshold = Math.min(8, height * 0.25)
+  // 'before' = top edgeThreshold, 'after' = bottom edgeThreshold, 'inside' = middle
+  let targetY: number;
+  if (position === 'before') {
+    targetY = 1; // Top edge — firmly in 'before' zone
+  } else if (position === 'after') {
+    targetY = targetBox.height - 1; // Bottom edge — firmly in 'after' zone
+  } else {
+    targetY = targetBox.height / 2; // Middle zone = 'inside'
+  }
+
+  const destX = targetBox.x + targetBox.width / 2;
+  const destY = targetBox.y + targetY;
 
   const srcX = sourceBox.x + sourceBox.width / 2;
   const srcY = sourceBox.y + sourceBox.height / 2;
 
-  let destY: number;
-  if (position === 'before') {
-    destY = targetBox.y + 3;
-  } else if (position === 'after') {
-    destY = targetBox.y + targetBox.height - 3;
+  if (slow) {
+    // Slow-motion drag so you can visually see the blue drop indicators
+    await window.mouse.move(srcX, srcY);
+    await window.mouse.down();
+    await window.mouse.move(srcX + 5, srcY + 5, { steps: 5 });
+    await window.waitForTimeout(300);
+    await window.mouse.move(destX, destY, { steps: 30 });
+    await window.waitForTimeout(500);
+    await window.mouse.up();
   } else {
-    destY = targetBox.y + targetBox.height / 2;
+    // Fast drag: use source position to ensure dragTo starts from the right spot
+    await source.dragTo(target, {
+      sourcePosition: { x: sourceBox.width / 2, y: sourceBox.height / 2 },
+      targetPosition: { x: targetBox.width / 2, y: targetY },
+    });
   }
-  const destX = targetBox.x + targetBox.width / 2;
 
-  // Hover source, then press and hold
-  await window.mouse.move(srcX, srcY);
-  await window.mouse.down();
-
-  // Small initial move to trigger the browser's drag initiation threshold
-  await window.mouse.move(srcX + 5, srcY + 5, { steps: 3 });
-  await window.waitForTimeout(150);
-
-  // Glide to the target position so the user can see the drag
-  await window.mouse.move(destX, destY, { steps: 15 });
-  await window.waitForTimeout(200);
-
-  // Drop
-  await window.mouse.up();
-  await window.waitForTimeout(800);
+  // Wait for the move IPC + store refresh + React re-render
+  await window.waitForTimeout(600);
 }
 
 /** Scroll the notes sidebar container to top or bottom. */
@@ -108,50 +144,179 @@ async function scrollNotesTo(window: Page, where: 'top' | 'bottom') {
 }
 
 /**
- * Drag when source and target may be far apart (overflow). Scrolls each into view
- * as needed so the drag works in a long list.
+ * Bulk-create documents via IPC (no UI interaction). Each spec is created
+ * sequentially with sortOrder=0 (shifts siblings), matching createNote behavior.
+ * Returns IDs in creation order.
  */
-async function dragNoteInLongList(
+async function seedNotes(
+  window: Page,
+  specs: Array<{ title: string; parentId?: string }>,
+): Promise<string[]> {
+  const ids: string[] = await window.evaluate(async (s) => {
+    const result: string[] = [];
+    for (const spec of s) {
+      const { document } = await (window as any).lychee.invoke('documents.create', {
+        title: spec.title,
+        parentId: spec.parentId ?? null,
+      });
+      // Update title (create sets 'Untitled' by default)
+      await (window as any).lychee.invoke('documents.update', {
+        id: document.id,
+        title: spec.title,
+      });
+      result.push(document.id);
+    }
+    return result;
+  }, specs);
+
+  // Refresh the Zustand store once
+  await window.evaluate(async () => {
+    const store = (window as any).__documentStore;
+    if (store) await store.getState().loadDocuments(true);
+  });
+
+  // Expand parents by triggering lastCreatedId for one child per unique parent.
+  // Each trigger fires the useLayoutEffect in notes-section.tsx which expands ancestors.
+  const parentToChild = new Map<string, string>();
+  for (let i = 0; i < specs.length; i++) {
+    if (specs[i].parentId) parentToChild.set(specs[i].parentId!, ids[i]);
+  }
+  for (const childId of parentToChild.values()) {
+    await window.evaluate((id) => {
+      (window as any).__documentStore.setState({ lastCreatedId: id });
+    }, childId);
+    await window.waitForTimeout(100);
+  }
+
+  if (parentToChild.size === 0) {
+    await window.waitForTimeout(200);
+  }
+  return ids;
+}
+
+/**
+ * Convenience wrapper for seedNotes that resolves parentTitle references
+ * within the same batch. Returns a Map<title, id>.
+ */
+async function seedTree(
+  window: Page,
+  specs: Array<{ title: string; parentTitle?: string }>,
+): Promise<Map<string, string>> {
+  // Resolve parentTitle → parentId using earlier entries in the batch
+  const titleToId = new Map<string, string>();
+  const resolvedSpecs: Array<{ title: string; parentId?: string }> = [];
+
+  // We need to process sequentially since children reference parent titles
+  // from earlier in the array. We'll pass the full specs and resolve inside evaluate.
+  const ids: string[] = await window.evaluate(async (s) => {
+    const localMap: Record<string, string> = {};
+    const result: string[] = [];
+    for (const spec of s) {
+      const parentId = spec.parentTitle ? localMap[spec.parentTitle] : null;
+      const { document } = await (window as any).lychee.invoke('documents.create', {
+        title: spec.title,
+        parentId,
+      });
+      await (window as any).lychee.invoke('documents.update', {
+        id: document.id,
+        title: spec.title,
+      });
+      localMap[spec.title] = document.id;
+      result.push(document.id);
+    }
+    return result;
+  }, specs);
+
+  // Refresh the Zustand store
+  await window.evaluate(async () => {
+    const store = (window as any).__documentStore;
+    if (store) await store.getState().loadDocuments(true);
+  });
+
+  for (let i = 0; i < specs.length; i++) {
+    titleToId.set(specs[i].title, ids[i]);
+  }
+
+  // Expand parents by triggering lastCreatedId for one child per unique parent
+  const parentToChild = new Map<string, string>();
+  for (let i = 0; i < specs.length; i++) {
+    if (specs[i].parentTitle) {
+      const parentId = titleToId.get(specs[i].parentTitle!)!;
+      parentToChild.set(parentId, ids[i]);
+    }
+  }
+  for (const childId of parentToChild.values()) {
+    await window.evaluate((id) => {
+      (window as any).__documentStore.setState({ lastCreatedId: id });
+    }, childId);
+    await window.waitForTimeout(100);
+  }
+
+  if (parentToChild.size === 0) {
+    await window.waitForTimeout(200);
+  }
+  return titleToId;
+}
+
+/**
+ * Move a document via IPC, replicating tree-dnd-provider.tsx sort-order logic.
+ * Fetches fresh docs from DB to compute correct sort order, then calls
+ * documents.move and refreshes the store.
+ */
+async function dragNoteViaIpc(
   window: Page,
   sourceId: string,
   targetId: string,
   position: 'before' | 'inside' | 'after',
 ) {
-  const source = window.locator(`[data-note-id="${sourceId}"]`);
-  const target = window.locator(`[data-note-id="${targetId}"]`);
+  await window.evaluate(
+    async ({ sourceId, targetId, position }) => {
+      const lychee = (window as any).lychee;
+      const store = (window as any).__documentStore;
 
-  await source.scrollIntoViewIfNeeded();
-  await window.waitForTimeout(200);
-  const sourceBox = await source.boundingBox();
-  if (!sourceBox) throw new Error('Source bounding box not found');
+      // Fetch fresh docs from DB (not the store — avoids stale sortOrder)
+      const { documents: docs } = await lychee.invoke('documents.list', { limit: 500, offset: 0 });
+      const docsById = new Map(docs.map((d: any) => [d.id, d]));
+      const targetDoc = docsById.get(targetId);
+      const sourceDoc = docsById.get(sourceId);
+      if (!targetDoc || !sourceDoc) throw new Error('Source or target not found');
 
-  const srcX = sourceBox.x + sourceBox.width / 2;
-  const srcY = sourceBox.y + sourceBox.height / 2;
+      let newParentId: string | null;
+      let newSortOrder: number;
 
-  await window.mouse.move(srcX, srcY);
-  await window.mouse.down();
-  await window.mouse.move(srcX + 5, srcY + 5, { steps: 3 });
-  await window.waitForTimeout(150);
+      if (position === 'inside') {
+        newParentId = targetId;
+        const children = docs.filter((d: any) => d.parentId === targetId);
+        const maxSortOrder = children.reduce((max: number, c: any) => Math.max(max, c.sortOrder), -1);
+        newSortOrder = maxSortOrder + 1;
+      } else {
+        newParentId = targetDoc.parentId;
+        const targetSortOrder = targetDoc.sortOrder;
+        if (position === 'before') {
+          newSortOrder = targetSortOrder;
+        } else {
+          newSortOrder = targetSortOrder + 1;
+        }
+        // Adjust for same-parent moves (matches tree-dnd-provider.tsx logic)
+        if (sourceDoc.parentId === newParentId && sourceDoc.sortOrder < targetSortOrder) {
+          newSortOrder = newSortOrder - 1;
+        }
+      }
 
-  await target.scrollIntoViewIfNeeded();
+      await lychee.invoke('documents.move', { id: sourceId, parentId: newParentId, sortOrder: newSortOrder });
+
+      // Refresh the store
+      if (store) {
+        await store.getState().loadDocuments(true);
+        if (position === 'inside') {
+          // Trigger parent expansion
+          store.setState({ lastCreatedId: sourceId });
+        }
+      }
+    },
+    { sourceId, targetId, position },
+  );
   await window.waitForTimeout(300);
-  const targetBox = await target.boundingBox();
-  if (!targetBox) throw new Error('Target bounding box not found');
-
-  let destY: number;
-  if (position === 'before') {
-    destY = targetBox.y + 3;
-  } else if (position === 'after') {
-    destY = targetBox.y + targetBox.height - 3;
-  } else {
-    destY = targetBox.y + targetBox.height / 2;
-  }
-  const destX = targetBox.x + targetBox.width / 2;
-
-  await window.mouse.move(destX, destY, { steps: 15 });
-  await window.waitForTimeout(200);
-  await window.mouse.up();
-  await window.waitForTimeout(800);
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -277,9 +442,9 @@ test.describe('Sidebar Tree — Structure & Nesting', () => {
 
 test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   test('reorder siblings: move last note to first position', async ({ window }) => {
-    const a = await createNote(window, 'DnD A');
-    const b = await createNote(window, 'DnD B');
-    const c = await createNote(window, 'DnD C');
+    const [a, b, c] = await seedNotes(window, [
+      { title: 'DnD A' }, { title: 'DnD B' }, { title: 'DnD C' },
+    ]);
 
     // Current order: C(0), B(1), A(2). Drag A before C (first).
     await dragNote(window, a, c, 'before');
@@ -292,8 +457,9 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('nest a root note inside another and verify parentId', async ({ window }) => {
-    const parent = await createNote(window, 'Nest Target');
-    const child = await createNote(window, 'Will Be Nested');
+    const [parent, child] = await seedNotes(window, [
+      { title: 'Nest Target' }, { title: 'Will Be Nested' },
+    ]);
 
     await dragNote(window, child, parent, 'inside');
 
@@ -305,8 +471,12 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('un-nest: move a child to root level', async ({ window }) => {
-    const parent = await createNote(window, 'Former Parent');
-    const child = await createNote(window, 'Leaving Nest', parent);
+    const m = await seedTree(window, [
+      { title: 'Former Parent' },
+      { title: 'Leaving Nest', parentTitle: 'Former Parent' },
+    ]);
+    const parent = m.get('Former Parent')!;
+    const child = m.get('Leaving Nest')!;
 
     let childDoc = await getDocumentFromDb(window, child);
     expect(childDoc!.parentId).toBe(parent);
@@ -323,9 +493,14 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('move a note between two different parents', async ({ window }) => {
-    const parentA = await createNote(window, 'Parent A');
-    const parentB = await createNote(window, 'Parent B');
-    const mover = await createNote(window, 'Moving Note', parentA);
+    const m = await seedTree(window, [
+      { title: 'Parent A' },
+      { title: 'Parent B' },
+      { title: 'Moving Note', parentTitle: 'Parent A' },
+    ]);
+    const parentA = m.get('Parent A')!;
+    const parentB = m.get('Parent B')!;
+    const mover = m.get('Moving Note')!;
 
     let doc = await getDocumentFromDb(window, mover);
     expect(doc!.parentId).toBe(parentA);
@@ -344,8 +519,12 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('circular reference prevention: cannot move parent into its own child', async ({ window }) => {
-    const parent = await createNote(window, 'Circ Parent');
-    const child = await createNote(window, 'Circ Child', parent);
+    const m = await seedTree(window, [
+      { title: 'Circ Parent' },
+      { title: 'Circ Child', parentTitle: 'Circ Parent' },
+    ]);
+    const parent = m.get('Circ Parent')!;
+    const child = m.get('Circ Child')!;
 
     // Try to drag parent into child — DnD/backend should reject
     await dragNote(window, parent, child, 'inside');
@@ -355,9 +534,9 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('reorder three siblings to reversed order', async ({ window }) => {
-    const a = await createNote(window, 'Rev A');
-    const b = await createNote(window, 'Rev B');
-    const c = await createNote(window, 'Rev C');
+    const [a, b, c] = await seedNotes(window, [
+      { title: 'Rev A' }, { title: 'Rev B' }, { title: 'Rev C' },
+    ]);
 
     // Initial order: C, B, A. Reverse to A, B, C.
     await dragNote(window, a, c, 'before');
@@ -369,9 +548,9 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('drag a note before another to reorder', async ({ window }) => {
-    const a = await createNote(window, 'Drag A');
-    const b = await createNote(window, 'Drag B');
-    const c = await createNote(window, 'Drag C');
+    const [a, b, c] = await seedNotes(window, [
+      { title: 'Drag A' }, { title: 'Drag B' }, { title: 'Drag C' },
+    ]);
 
     await dragNote(window, a, c, 'before');
 
@@ -383,9 +562,9 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('drag a note after another to reorder', async ({ window }) => {
-    const a = await createNote(window, 'ND A');
-    const b = await createNote(window, 'ND B');
-    const c = await createNote(window, 'ND C');
+    const [a, b, c] = await seedNotes(window, [
+      { title: 'ND A' }, { title: 'ND B' }, { title: 'ND C' },
+    ]);
 
     // Order: C, B, A. Drag A after C (so A moves up to be right after C).
     await dragNote(window, a, c, 'after');
@@ -398,9 +577,13 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('drag a nested child to root level — un-nest', async ({ window }) => {
-    const parent = await createNote(window, 'ND Parent');
-    const child = await createNote(window, 'ND Child', parent);
-    const rootSib = await createNote(window, 'ND Root Sib');
+    const m = await seedTree(window, [
+      { title: 'ND Parent' },
+      { title: 'ND Child', parentTitle: 'ND Parent' },
+      { title: 'ND Root Sib' },
+    ]);
+    const child = m.get('ND Child')!;
+    const rootSib = m.get('ND Root Sib')!;
 
     // Drag child and drop before root sibling → becomes root-level
     await dragNote(window, child, rootSib, 'before');
@@ -410,9 +593,13 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('drag a note from one parent to another', async ({ window }) => {
-    const parentA = await createNote(window, 'ND Parent A');
-    const parentB = await createNote(window, 'ND Parent B');
-    const mover = await createNote(window, 'ND Mover', parentA);
+    const m = await seedTree(window, [
+      { title: 'ND Parent A' },
+      { title: 'ND Parent B' },
+      { title: 'ND Mover', parentTitle: 'ND Parent A' },
+    ]);
+    const parentB = m.get('ND Parent B')!;
+    const mover = m.get('ND Mover')!;
 
     await dragNote(window, mover, parentB, 'inside');
 
@@ -421,10 +608,15 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('drag to reorder siblings within same parent', async ({ window }) => {
-    const parent = await createNote(window, 'ND Sib Parent');
-    const c1 = await createNote(window, 'ND Sib 1', parent);
-    const c2 = await createNote(window, 'ND Sib 2', parent);
-    const c3 = await createNote(window, 'ND Sib 3', parent);
+    const m = await seedTree(window, [
+      { title: 'ND Sib Parent' },
+      { title: 'ND Sib 1', parentTitle: 'ND Sib Parent' },
+      { title: 'ND Sib 2', parentTitle: 'ND Sib Parent' },
+      { title: 'ND Sib 3', parentTitle: 'ND Sib Parent' },
+    ]);
+    const parent = m.get('ND Sib Parent')!;
+    const c1 = m.get('ND Sib 1')!;
+    const c3 = m.get('ND Sib 3')!;
 
     // Order: Sib 3, Sib 2, Sib 1. Drag Sib 1 before Sib 3 (to first).
     await dragNote(window, c1, c3, 'before');
@@ -435,8 +627,9 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('drag root note into another root to nest', async ({ window }) => {
-    const target = await createNote(window, 'ND Nest Target');
-    const dragee = await createNote(window, 'ND Root Nester');
+    const [target, dragee] = await seedNotes(window, [
+      { title: 'ND Nest Target' }, { title: 'ND Root Nester' },
+    ]);
 
     await dragNote(window, dragee, target, 'inside');
 
@@ -445,9 +638,14 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
   });
 
   test('drag child after sibling to reorder', async ({ window }) => {
-    const parent = await createNote(window, 'ND After Parent');
-    const first = await createNote(window, 'ND First', parent);
-    const last = await createNote(window, 'ND Last', parent);
+    const m = await seedTree(window, [
+      { title: 'ND After Parent' },
+      { title: 'ND First', parentTitle: 'ND After Parent' },
+      { title: 'ND Last', parentTitle: 'ND After Parent' },
+    ]);
+    const parent = m.get('ND After Parent')!;
+    const first = m.get('ND First')!;
+    const last = m.get('ND Last')!;
 
     // Order: Last, First. Drag First after Last (so First becomes last).
     await dragNote(window, first, last, 'after');
@@ -460,28 +658,22 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
 
 test.describe('Sidebar Tree — Ordering Variability', () => {
   test('bottom to top: move last of 5 to first', async ({ window }) => {
-    const a = await createNote(window, 'Ord A');
-    const b = await createNote(window, 'Ord B');
-    const c = await createNote(window, 'Ord C');
-    const d = await createNote(window, 'Ord D');
-    const e = await createNote(window, 'Ord E');
-    const ids = [a, b, c, d, e];
-    // Order: E, D, C, B, A. Drag A (last) before E (first).
+    const ids = await seedNotes(window, [
+      { title: 'Ord A' }, { title: 'Ord B' }, { title: 'Ord C' }, { title: 'Ord D' }, { title: 'Ord E' },
+    ]);
+    // Order: E, D, C, B, A. Drag A (last) before E (first). Result: A, E, D, C, B.
     await dragNote(window, ids[0], ids[4], 'before');
 
     const docs = await listDocumentsFromDb(window);
     const roots = docs.filter((d) => d.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder);
     expect(roots[0].title).toBe('Ord A');
-    expect(roots[roots.length - 1].title).toBe('Ord E');
+    expect(roots[roots.length - 1].title).toBe('Ord B');
   });
 
   test('top to bottom: move first of 5 to last', async ({ window }) => {
-    const a = await createNote(window, 'Ord2 A');
-    const b = await createNote(window, 'Ord2 B');
-    const c = await createNote(window, 'Ord2 C');
-    const d = await createNote(window, 'Ord2 D');
-    const e = await createNote(window, 'Ord2 E');
-    const ids = [a, b, c, d, e];
+    const ids = await seedNotes(window, [
+      { title: 'Ord2 A' }, { title: 'Ord2 B' }, { title: 'Ord2 C' }, { title: 'Ord2 D' }, { title: 'Ord2 E' },
+    ]);
     // Order: E, D, C, B, A. Drag E (first) after A (last).
     await dragNote(window, ids[4], ids[0], 'after');
 
@@ -492,12 +684,9 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
   });
 
   test('middle to top: move 3rd of 5 to first', async ({ window }) => {
-    const a = await createNote(window, 'Mid A');
-    const b = await createNote(window, 'Mid B');
-    const c = await createNote(window, 'Mid C');
-    const d = await createNote(window, 'Mid D');
-    const e = await createNote(window, 'Mid E');
-    const ids = [a, b, c, d, e];
+    const ids = await seedNotes(window, [
+      { title: 'Mid A' }, { title: 'Mid B' }, { title: 'Mid C' }, { title: 'Mid D' }, { title: 'Mid E' },
+    ]);
     // Order: E, D, C, B, A. C is middle (index 2). Drag C before E (first).
     await dragNote(window, ids[2], ids[4], 'before');
 
@@ -507,12 +696,9 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
   });
 
   test('middle to bottom: move 3rd of 5 to last', async ({ window }) => {
-    const a = await createNote(window, 'Mid2 A');
-    const b = await createNote(window, 'Mid2 B');
-    const c = await createNote(window, 'Mid2 C');
-    const d = await createNote(window, 'Mid2 D');
-    const e = await createNote(window, 'Mid2 E');
-    const ids = [a, b, c, d, e];
+    const ids = await seedNotes(window, [
+      { title: 'Mid2 A' }, { title: 'Mid2 B' }, { title: 'Mid2 C' }, { title: 'Mid2 D' }, { title: 'Mid2 E' },
+    ]);
     // Order: E, D, C, B, A. C is middle. Drag C after A (last).
     await dragNote(window, ids[2], ids[0], 'after');
 
@@ -522,12 +708,9 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
   });
 
   test('middle to second: move 4th of 5 to position 2', async ({ window }) => {
-    const a = await createNote(window, 'M2 A');
-    const b = await createNote(window, 'M2 B');
-    const c = await createNote(window, 'M2 C');
-    const d = await createNote(window, 'M2 D');
-    const e = await createNote(window, 'M2 E');
-    const ids = [a, b, c, d, e];
+    const ids = await seedNotes(window, [
+      { title: 'M2 A' }, { title: 'M2 B' }, { title: 'M2 C' }, { title: 'M2 D' }, { title: 'M2 E' },
+    ]);
     // Order: E, D, C, B, A. B is 4th from top. Drag B before C (so B becomes 3rd, between D and C).
     await dragNote(window, ids[1], ids[2], 'before');
 
@@ -539,12 +722,9 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
   });
 
   test('second to second-last: move 2nd of 5 to 4th', async ({ window }) => {
-    const a = await createNote(window, 'S2 A');
-    const b = await createNote(window, 'S2 B');
-    const c = await createNote(window, 'S2 C');
-    const d = await createNote(window, 'S2 D');
-    const e = await createNote(window, 'S2 E');
-    const ids = [a, b, c, d, e];
+    const ids = await seedNotes(window, [
+      { title: 'S2 A' }, { title: 'S2 B' }, { title: 'S2 C' }, { title: 'S2 D' }, { title: 'S2 E' },
+    ]);
     // Order: E, D, C, B, A. D is 2nd. Drag D after B (so D becomes 4th).
     await dragNote(window, ids[3], ids[1], 'after');
 
@@ -556,10 +736,9 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
   });
 
   test('7 items: move 5th from top to 1st', async ({ window }) => {
-    const ids: string[] = [];
-    for (const name of ['L7 A', 'L7 B', 'L7 C', 'L7 D', 'L7 E', 'L7 F', 'L7 G']) {
-      ids.push(await createNote(window, name));
-    }
+    const ids = await seedNotes(window,
+      ['L7 A', 'L7 B', 'L7 C', 'L7 D', 'L7 E', 'L7 F', 'L7 G'].map((t) => ({ title: t })),
+    );
     // Order: G, F, E, D, C, B, A. C is 5th from top. Drag C before G (first).
     await dragNote(window, ids[2], ids[6], 'before');
 
@@ -569,10 +748,9 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
   });
 
   test('7 items: move 2nd from top to 6th', async ({ window }) => {
-    const ids: string[] = [];
-    for (const name of ['L72 A', 'L72 B', 'L72 C', 'L72 D', 'L72 E', 'L72 F', 'L72 G']) {
-      ids.push(await createNote(window, name));
-    }
+    const ids = await seedNotes(window,
+      ['L72 A', 'L72 B', 'L72 C', 'L72 D', 'L72 E', 'L72 F', 'L72 G'].map((t) => ({ title: t })),
+    );
     // Order: G, F, E, D, C, B, A. F is 2nd. Drag F after B (so F becomes 6th).
     await dragNote(window, ids[5], ids[1], 'after');
 
@@ -583,12 +761,13 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
   });
 
   test('nested: middle child to first within parent', async ({ window }) => {
-    const parent = await createNote(window, 'NestOrd Parent');
-    const c1 = await createNote(window, 'NestOrd 1', parent);
-    const c2 = await createNote(window, 'NestOrd 2', parent);
-    const c3 = await createNote(window, 'NestOrd 3', parent);
-    const c4 = await createNote(window, 'NestOrd 4', parent);
-    const c5 = await createNote(window, 'NestOrd 5', parent);
+    const m = await seedTree(window, [
+      { title: 'NestOrd Parent' },
+      ...Array.from({ length: 5 }, (_, i) => ({ title: `NestOrd ${i + 1}`, parentTitle: 'NestOrd Parent' })),
+    ]);
+    const parent = m.get('NestOrd Parent')!;
+    const c3 = m.get('NestOrd 3')!;
+    const c5 = m.get('NestOrd 5')!;
 
     // Order: 5, 4, 3, 2, 1. Drag 3 (middle) before 5 (first).
     await dragNote(window, c3, c5, 'before');
@@ -599,12 +778,13 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
   });
 
   test('nested: middle child to last within parent', async ({ window }) => {
-    const parent = await createNote(window, 'NestOrd2 Parent');
-    const c1 = await createNote(window, 'NestOrd2 1', parent);
-    const c2 = await createNote(window, 'NestOrd2 2', parent);
-    const c3 = await createNote(window, 'NestOrd2 3', parent);
-    const c4 = await createNote(window, 'NestOrd2 4', parent);
-    const c5 = await createNote(window, 'NestOrd2 5', parent);
+    const m = await seedTree(window, [
+      { title: 'NestOrd2 Parent' },
+      ...Array.from({ length: 5 }, (_, i) => ({ title: `NestOrd2 ${i + 1}`, parentTitle: 'NestOrd2 Parent' })),
+    ]);
+    const parent = m.get('NestOrd2 Parent')!;
+    const c1 = m.get('NestOrd2 1')!;
+    const c3 = m.get('NestOrd2 3')!;
 
     // Order: 5, 4, 3, 2, 1. Drag 3 after 1 (last).
     await dragNote(window, c3, c1, 'after');
@@ -617,10 +797,9 @@ test.describe('Sidebar Tree — Ordering Variability', () => {
 
 test.describe('Sidebar Tree — Edge Positions (Top/Bottom)', () => {
   test('full span: top of 7 to absolute bottom', async ({ window }) => {
-    const ids: string[] = [];
-    for (const name of ['Edge A', 'Edge B', 'Edge C', 'Edge D', 'Edge E', 'Edge F', 'Edge G']) {
-      ids.push(await createNote(window, name));
-    }
+    const ids = await seedNotes(window,
+      ['Edge A', 'Edge B', 'Edge C', 'Edge D', 'Edge E', 'Edge F', 'Edge G'].map((t) => ({ title: t })),
+    );
     // Order: G, F, E, D, C, B, A. G is top. Drag G after A (absolute bottom).
     await dragNote(window, ids[6], ids[0], 'after');
 
@@ -631,25 +810,23 @@ test.describe('Sidebar Tree — Edge Positions (Top/Bottom)', () => {
   });
 
   test('full span: bottom of 7 to absolute top', async ({ window }) => {
-    const ids: string[] = [];
-    for (const name of ['Edge2 A', 'Edge2 B', 'Edge2 C', 'Edge2 D', 'Edge2 E', 'Edge2 F', 'Edge2 G']) {
-      ids.push(await createNote(window, name));
-    }
+    const ids = await seedNotes(window,
+      ['Edge2 A', 'Edge2 B', 'Edge2 C', 'Edge2 D', 'Edge2 E', 'Edge2 F', 'Edge2 G'].map((t) => ({ title: t })),
+    );
     // Order: G, F, E, D, C, B, A. A is bottom. Drag A before G (absolute top).
     await dragNote(window, ids[0], ids[6], 'before');
 
     const docs = await listDocumentsFromDb(window);
     const roots = docs.filter((d) => d.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder);
     expect(roots[0].title).toBe('Edge2 A');
-    expect(roots[roots.length - 1].title).toBe('Edge2 G');
+    expect(roots[roots.length - 1].title).toBe('Edge2 B');
   });
 
   test('edge: first to second (down one)', async ({ window }) => {
-    const a = await createNote(window, 'E1 A');
-    const b = await createNote(window, 'E1 B');
-    const c = await createNote(window, 'E1 C');
-    const d = await createNote(window, 'E1 D');
-    const e = await createNote(window, 'E1 E');
+    const ids = await seedNotes(window, [
+      { title: 'E1 A' }, { title: 'E1 B' }, { title: 'E1 C' }, { title: 'E1 D' }, { title: 'E1 E' },
+    ]);
+    const [a, b, c, d, e] = ids;
     // Order: E, D, C, B, A. E is first. Drag E after D (second position).
     await dragNote(window, e, d, 'after');
 
@@ -660,11 +837,10 @@ test.describe('Sidebar Tree — Edge Positions (Top/Bottom)', () => {
   });
 
   test('edge: last to second-last (up one)', async ({ window }) => {
-    const a = await createNote(window, 'E2 A');
-    const b = await createNote(window, 'E2 B');
-    const c = await createNote(window, 'E2 C');
-    const d = await createNote(window, 'E2 D');
-    const e = await createNote(window, 'E2 E');
+    const ids = await seedNotes(window, [
+      { title: 'E2 A' }, { title: 'E2 B' }, { title: 'E2 C' }, { title: 'E2 D' }, { title: 'E2 E' },
+    ]);
+    const [a, b] = ids;
     // Order: E, D, C, B, A. A is last. Drag A before B (second-last).
     await dragNote(window, a, b, 'before');
 
@@ -675,11 +851,10 @@ test.describe('Sidebar Tree — Edge Positions (Top/Bottom)', () => {
   });
 
   test('edge: second to first (up one)', async ({ window }) => {
-    const a = await createNote(window, 'E3 A');
-    const b = await createNote(window, 'E3 B');
-    const c = await createNote(window, 'E3 C');
-    const d = await createNote(window, 'E3 D');
-    const e = await createNote(window, 'E3 E');
+    const ids = await seedNotes(window, [
+      { title: 'E3 A' }, { title: 'E3 B' }, { title: 'E3 C' }, { title: 'E3 D' }, { title: 'E3 E' },
+    ]);
+    const [, , , d, e] = ids;
     // Order: E, D, C, B, A. D is second. Drag D before E (first).
     await dragNote(window, d, e, 'before');
 
@@ -690,11 +865,10 @@ test.describe('Sidebar Tree — Edge Positions (Top/Bottom)', () => {
   });
 
   test('edge: second-last to last (down one)', async ({ window }) => {
-    const a = await createNote(window, 'E4 A');
-    const b = await createNote(window, 'E4 B');
-    const c = await createNote(window, 'E4 C');
-    const d = await createNote(window, 'E4 D');
-    const e = await createNote(window, 'E4 E');
+    const ids = await seedNotes(window, [
+      { title: 'E4 A' }, { title: 'E4 B' }, { title: 'E4 C' }, { title: 'E4 D' }, { title: 'E4 E' },
+    ]);
+    const [a, b] = ids;
     // Order: E, D, C, B, A. B is second-last. Drag B after A (last).
     await dragNote(window, b, a, 'after');
 
@@ -705,12 +879,13 @@ test.describe('Sidebar Tree — Edge Positions (Top/Bottom)', () => {
   });
 
   test('nested: top child to bottom within parent', async ({ window }) => {
-    const parent = await createNote(window, 'EdgeN Parent');
-    const c1 = await createNote(window, 'EdgeN 1', parent);
-    const c2 = await createNote(window, 'EdgeN 2', parent);
-    const c3 = await createNote(window, 'EdgeN 3', parent);
-    const c4 = await createNote(window, 'EdgeN 4', parent);
-    const c5 = await createNote(window, 'EdgeN 5', parent);
+    const m = await seedTree(window, [
+      { title: 'EdgeN Parent' },
+      ...Array.from({ length: 5 }, (_, i) => ({ title: `EdgeN ${i + 1}`, parentTitle: 'EdgeN Parent' })),
+    ]);
+    const parent = m.get('EdgeN Parent')!;
+    const c1 = m.get('EdgeN 1')!;
+    const c5 = m.get('EdgeN 5')!;
     // Order: 5, 4, 3, 2, 1. 5 is top. Drag 5 after 1 (bottom).
     await dragNote(window, c5, c1, 'after');
 
@@ -721,29 +896,29 @@ test.describe('Sidebar Tree — Edge Positions (Top/Bottom)', () => {
   });
 
   test('nested: bottom child to top within parent', async ({ window }) => {
-    const parent = await createNote(window, 'EdgeN2 Parent');
-    const c1 = await createNote(window, 'EdgeN2 1', parent);
-    const c2 = await createNote(window, 'EdgeN2 2', parent);
-    const c3 = await createNote(window, 'EdgeN2 3', parent);
-    const c4 = await createNote(window, 'EdgeN2 4', parent);
-    const c5 = await createNote(window, 'EdgeN2 5', parent);
+    const m = await seedTree(window, [
+      { title: 'EdgeN2 Parent' },
+      ...Array.from({ length: 5 }, (_, i) => ({ title: `EdgeN2 ${i + 1}`, parentTitle: 'EdgeN2 Parent' })),
+    ]);
+    const parent = m.get('EdgeN2 Parent')!;
+    const c1 = m.get('EdgeN2 1')!;
+    const c5 = m.get('EdgeN2 5')!;
     // Order: 5, 4, 3, 2, 1. 1 is bottom. Drag 1 before 5 (top).
     await dragNote(window, c1, c5, 'before');
 
     const docs = await listDocumentsFromDb(window);
     const children = docs.filter((d) => d.parentId === parent).sort((a, b) => a.sortOrder - b.sortOrder);
     expect(children[0].title).toBe('EdgeN2 1');
-    expect(children[children.length - 1].title).toBe('EdgeN2 5');
+    expect(children[children.length - 1].title).toBe('EdgeN2 2');
   });
 });
 
 test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
   test('25 root notes: scroll to bottom, drag last to first-visible', async ({ window }) => {
-    const ids: string[] = [];
-    for (let i = 0; i < 25; i++) {
-      ids.push(await createNote(window, `Over A${i}`));
-    }
-    // Order: A24..A0. Scroll to bottom. Last visible ≈ A4. Drag A0 (last) before A5.
+    const ids = await seedNotes(window,
+      Array.from({ length: 25 }, (_, i) => ({ title: `Over A${i}` })),
+    );
+    // Order: A24..A0. Scroll to bottom. Drag A0 (last) before A5.
     await scrollNotesTo(window, 'bottom');
     await dragNote(window, ids[0], ids[5], 'before');
 
@@ -755,10 +930,9 @@ test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
   });
 
   test('25 root notes: scroll to top, drag first down within visible', async ({ window }) => {
-    const ids: string[] = [];
-    for (let i = 0; i < 25; i++) {
-      ids.push(await createNote(window, `Over2 A${i}`));
-    }
+    const ids = await seedNotes(window,
+      Array.from({ length: 25 }, (_, i) => ({ title: `Over2 A${i}` })),
+    );
     // Order: A24..A0. Scroll to top. A24 first, A20 visible. Drag A24 after A20.
     await scrollNotesTo(window, 'top');
     await dragNote(window, ids[24], ids[20], 'after');
@@ -771,12 +945,11 @@ test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
   });
 
   test('25 root notes: full span — top to absolute bottom (with scroll)', async ({ window }) => {
-    const ids: string[] = [];
-    for (let i = 0; i < 25; i++) {
-      ids.push(await createNote(window, `Over3 A${i}`));
-    }
+    const ids = await seedNotes(window,
+      Array.from({ length: 25 }, (_, i) => ({ title: `Over3 A${i}` })),
+    );
     // A24 is top, A0 is bottom. Drag A24 to after A0 (absolute bottom).
-    await dragNoteInLongList(window, ids[24], ids[0], 'after');
+    await dragNote(window, ids[24], ids[0], 'after');
 
     const docs = await listDocumentsFromDb(window);
     const roots = docs.filter((d) => d.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -784,12 +957,11 @@ test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
   });
 
   test('25 root notes: full span — bottom to absolute top (with scroll)', async ({ window }) => {
-    const ids: string[] = [];
-    for (let i = 0; i < 25; i++) {
-      ids.push(await createNote(window, `Over4 A${i}`));
-    }
+    const ids = await seedNotes(window,
+      Array.from({ length: 25 }, (_, i) => ({ title: `Over4 A${i}` })),
+    );
     // A0 is bottom, A24 is top. Drag A0 to before A24 (absolute top).
-    await dragNoteInLongList(window, ids[0], ids[24], 'before');
+    await dragNote(window, ids[0], ids[24], 'before');
 
     const docs = await listDocumentsFromDb(window);
     const roots = docs.filter((d) => d.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -797,14 +969,16 @@ test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
   });
 
   test('20 nested children: scroll to bottom, drag last child to first-visible', async ({ window }) => {
-    const parent = await createNote(window, 'OverN Parent');
-    const ids: string[] = [];
-    for (let i = 0; i < 20; i++) {
-      ids.push(await createNote(window, `OverN C${i}`, parent));
-    }
+    const m = await seedTree(window, [
+      { title: 'OverN Parent' },
+      ...Array.from({ length: 20 }, (_, i) => ({ title: `OverN C${i}`, parentTitle: 'OverN Parent' })),
+    ]);
+    const parent = m.get('OverN Parent')!;
+    const c0 = m.get('OverN C0')!;
+    const c5 = m.get('OverN C5')!;
     // Order: C19..C0. Scroll to bottom. Drag C0 before C5.
     await scrollNotesTo(window, 'bottom');
-    await dragNote(window, ids[0], ids[5], 'before');
+    await dragNote(window, c0, c5, 'before');
 
     const docs = await listDocumentsFromDb(window);
     const children = docs.filter((d) => d.parentId === parent).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -814,13 +988,15 @@ test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
   });
 
   test('20 nested children: full span — bottom to top (with scroll)', async ({ window }) => {
-    const parent = await createNote(window, 'OverN2 Parent');
-    const ids: string[] = [];
-    for (let i = 0; i < 20; i++) {
-      ids.push(await createNote(window, `OverN2 C${i}`, parent));
-    }
+    const m = await seedTree(window, [
+      { title: 'OverN2 Parent' },
+      ...Array.from({ length: 20 }, (_, i) => ({ title: `OverN2 C${i}`, parentTitle: 'OverN2 Parent' })),
+    ]);
+    const parent = m.get('OverN2 Parent')!;
+    const c0 = m.get('OverN2 C0')!;
+    const c19 = m.get('OverN2 C19')!;
     // C0 is bottom, C19 is top. Drag C0 to before C19 (top).
-    await dragNoteInLongList(window, ids[0], ids[19], 'before');
+    await dragNote(window, c0, c19, 'before');
 
     const docs = await listDocumentsFromDb(window);
     const children = docs.filter((d) => d.parentId === parent).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -914,11 +1090,13 @@ test.describe('Sidebar Tree — Selection & Interaction', () => {
 
 test.describe('Sidebar Tree — Deep Nesting', () => {
   test('build a 5-level deep tree (max depth)', async ({ window }) => {
-    const l0 = await createNote(window, 'Level 0');
-    const l1 = await createNote(window, 'Level 1', l0);
-    const l2 = await createNote(window, 'Level 2', l1);
-    const l3 = await createNote(window, 'Level 3', l2);
-    const l4 = await createNote(window, 'Level 4', l3);
+    const m = await seedTree(window, [
+      { title: 'Level 0' },
+      { title: 'Level 1', parentTitle: 'Level 0' },
+      { title: 'Level 2', parentTitle: 'Level 1' },
+      { title: 'Level 3', parentTitle: 'Level 2' },
+      { title: 'Level 4', parentTitle: 'Level 3' },
+    ]);
 
     await expect(window.locator('[data-note-id]')).toHaveCount(5);
 
@@ -939,10 +1117,13 @@ test.describe('Sidebar Tree — Deep Nesting', () => {
   });
 
   test('multiple children under the same parent maintain order', async ({ window }) => {
-    const parent = await createNote(window, 'Multi Parent');
-    const c1 = await createNote(window, 'Child 1', parent);
-    const c2 = await createNote(window, 'Child 2', parent);
-    const c3 = await createNote(window, 'Child 3', parent);
+    const m = await seedTree(window, [
+      { title: 'Multi Parent' },
+      { title: 'Child 1', parentTitle: 'Multi Parent' },
+      { title: 'Child 2', parentTitle: 'Multi Parent' },
+      { title: 'Child 3', parentTitle: 'Multi Parent' },
+    ]);
+    const parent = m.get('Multi Parent')!;
 
     const docs = await listDocumentsFromDb(window);
     const children = docs
@@ -958,9 +1139,11 @@ test.describe('Sidebar Tree — Deep Nesting', () => {
   });
 
   test('collapsing a deeply nested branch hides all descendants', async ({ window }) => {
-    const root = await createNote(window, 'Deep Root');
-    const mid = await createNote(window, 'Deep Mid', root);
-    const leaf = await createNote(window, 'Deep Leaf', mid);
+    await seedTree(window, [
+      { title: 'Deep Root' },
+      { title: 'Deep Mid', parentTitle: 'Deep Root' },
+      { title: 'Deep Leaf', parentTitle: 'Deep Mid' },
+    ]);
 
     await expect(window.locator('[data-note-id]')).toHaveCount(3);
 
@@ -980,7 +1163,7 @@ test.describe('Sidebar Tree — Deep Nesting', () => {
 
 test.describe('Sidebar Tree — Circular Reference Prevention', () => {
   test('cannot move a note into itself', async ({ window }) => {
-    const note = await createNote(window, 'Self Mover');
+    const [note] = await seedNotes(window, [{ title: 'Self Mover' }]);
 
     let threw = false;
     try {
@@ -996,9 +1179,13 @@ test.describe('Sidebar Tree — Circular Reference Prevention', () => {
   });
 
   test('cannot move parent into its grandchild', async ({ window }) => {
-    const gp = await createNote(window, 'Grandparent');
-    const p = await createNote(window, 'Parent CRP', gp);
-    const gc = await createNote(window, 'Grandchild CRP', p);
+    const m = await seedTree(window, [
+      { title: 'Grandparent' },
+      { title: 'Parent CRP', parentTitle: 'Grandparent' },
+      { title: 'Grandchild CRP', parentTitle: 'Parent CRP' },
+    ]);
+    const gp = m.get('Grandparent')!;
+    const gc = m.get('Grandchild CRP')!;
 
     let threw = false;
     try {
@@ -1014,10 +1201,14 @@ test.describe('Sidebar Tree — Circular Reference Prevention', () => {
   });
 
   test('cannot move parent into its great-grandchild (deep circular)', async ({ window }) => {
-    const a = await createNote(window, 'Anc A');
-    const b = await createNote(window, 'Anc B', a);
-    const c = await createNote(window, 'Anc C', b);
-    const d = await createNote(window, 'Anc D', c);
+    const m = await seedTree(window, [
+      { title: 'Anc A' },
+      { title: 'Anc B', parentTitle: 'Anc A' },
+      { title: 'Anc C', parentTitle: 'Anc B' },
+      { title: 'Anc D', parentTitle: 'Anc C' },
+    ]);
+    const a = m.get('Anc A')!;
+    const d = m.get('Anc D')!;
 
     let threw = false;
     try {
@@ -1033,9 +1224,14 @@ test.describe('Sidebar Tree — Circular Reference Prevention', () => {
   });
 
   test('cannot move mid-chain node into its own descendant', async ({ window }) => {
-    const a = await createNote(window, 'Chain A');
-    const b = await createNote(window, 'Chain B', a);
-    const c = await createNote(window, 'Chain C', b);
+    const m = await seedTree(window, [
+      { title: 'Chain A' },
+      { title: 'Chain B', parentTitle: 'Chain A' },
+      { title: 'Chain C', parentTitle: 'Chain B' },
+    ]);
+    const a = m.get('Chain A')!;
+    const b = m.get('Chain B')!;
+    const c = m.get('Chain C')!;
 
     let threw = false;
     try {
@@ -1051,8 +1247,7 @@ test.describe('Sidebar Tree — Circular Reference Prevention', () => {
   });
 
   test('valid sibling-to-sibling move does NOT throw circular error', async ({ window }) => {
-    const a = await createNote(window, 'Sib X');
-    const b = await createNote(window, 'Sib Y');
+    const [a, b] = await seedNotes(window, [{ title: 'Sib X' }, { title: 'Sib Y' }]);
 
     await dragNote(window, a, b, 'inside');
 
@@ -1061,9 +1256,14 @@ test.describe('Sidebar Tree — Circular Reference Prevention', () => {
   });
 
   test('moving a subtree to a non-descendant is allowed', async ({ window }) => {
-    const root1 = await createNote(window, 'Tree1 Root');
-    const root2 = await createNote(window, 'Tree2 Root');
-    const child1 = await createNote(window, 'Tree1 Child', root1);
+    const m = await seedTree(window, [
+      { title: 'Tree1 Root' },
+      { title: 'Tree2 Root' },
+      { title: 'Tree1 Child', parentTitle: 'Tree1 Root' },
+    ]);
+    const root1 = m.get('Tree1 Root')!;
+    const root2 = m.get('Tree2 Root')!;
+    const child1 = m.get('Tree1 Child')!;
 
     await dragNote(window, root1, root2, 'inside');
 
@@ -1080,11 +1280,17 @@ test.describe('Sidebar Tree — Circular Reference Prevention', () => {
 
 test.describe('Sidebar Tree — Subtree Moves', () => {
   test('moving a parent preserves its children (subtree stays intact)', async ({ window }) => {
-    const oldParent = await createNote(window, 'Old Home');
-    const mover = await createNote(window, 'Subtree Root', oldParent);
-    const child = await createNote(window, 'Subtree Child', mover);
-    const grandchild = await createNote(window, 'Subtree GC', child);
-    const newParent = await createNote(window, 'New Home');
+    const m = await seedTree(window, [
+      { title: 'Old Home' },
+      { title: 'Subtree Root', parentTitle: 'Old Home' },
+      { title: 'Subtree Child', parentTitle: 'Subtree Root' },
+      { title: 'Subtree GC', parentTitle: 'Subtree Child' },
+      { title: 'New Home' },
+    ]);
+    const mover = m.get('Subtree Root')!;
+    const child = m.get('Subtree Child')!;
+    const grandchild = m.get('Subtree GC')!;
+    const newParent = m.get('New Home')!;
 
     await dragNote(window, mover, newParent, 'inside');
 
@@ -1100,9 +1306,14 @@ test.describe('Sidebar Tree — Subtree Moves', () => {
   });
 
   test('move a deep child to root level', async ({ window }) => {
-    const r = await createNote(window, 'DR');
-    const c = await createNote(window, 'DC', r);
-    const gc = await createNote(window, 'DGC', c);
+    const m = await seedTree(window, [
+      { title: 'DR' },
+      { title: 'DC', parentTitle: 'DR' },
+      { title: 'DGC', parentTitle: 'DC' },
+    ]);
+    const r = m.get('DR')!;
+    const c = m.get('DC')!;
+    const gc = m.get('DGC')!;
 
     await dragNote(window, gc, r, 'before');
 
@@ -1115,9 +1326,14 @@ test.describe('Sidebar Tree — Subtree Moves', () => {
   });
 
   test('move note back and forth between parents preserves data', async ({ window }) => {
-    const p1 = await createNote(window, 'Ping');
-    const p2 = await createNote(window, 'Pong');
-    const ball = await createNote(window, 'Ball', p1);
+    const m = await seedTree(window, [
+      { title: 'Ping' },
+      { title: 'Pong' },
+      { title: 'Ball', parentTitle: 'Ping' },
+    ]);
+    const p1 = m.get('Ping')!;
+    const p2 = m.get('Pong')!;
+    const ball = m.get('Ball')!;
 
     await dragNote(window, ball, p2, 'inside');
     let doc = await getDocumentFromDb(window, ball);
@@ -1137,10 +1353,16 @@ test.describe('Sidebar Tree — Subtree Moves', () => {
   });
 
   test('swap two subtrees between parents', async ({ window }) => {
-    const p1 = await createNote(window, 'Parent 1');
-    const p2 = await createNote(window, 'Parent 2');
-    const c1 = await createNote(window, 'Child of 1', p1);
-    const c2 = await createNote(window, 'Child of 2', p2);
+    const m = await seedTree(window, [
+      { title: 'Parent 1' },
+      { title: 'Parent 2' },
+      { title: 'Child of 1', parentTitle: 'Parent 1' },
+      { title: 'Child of 2', parentTitle: 'Parent 2' },
+    ]);
+    const p1 = m.get('Parent 1')!;
+    const p2 = m.get('Parent 2')!;
+    const c1 = m.get('Child of 1')!;
+    const c2 = m.get('Child of 2')!;
 
     await dragNote(window, c1, p2, 'inside');
     await dragNote(window, c2, p1, 'inside');
@@ -1156,10 +1378,7 @@ test.describe('Sidebar Tree — Subtree Moves', () => {
 
 test.describe('Sidebar Tree — Sort Order Integrity', () => {
   test('5 siblings: move first to last, verify no gaps', async ({ window }) => {
-    const ids: string[] = [];
-    for (const name of ['S1', 'S2', 'S3', 'S4', 'S5']) {
-      ids.push(await createNote(window, name));
-    }
+    const ids = await seedNotes(window, ['S1', 'S2', 'S3', 'S4', 'S5'].map((t) => ({ title: t })));
     // Order: S5, S4, S3, S2, S1. Drag S5 after S1 (to last).
     await dragNote(window, ids[4], ids[0], 'after');
 
@@ -1174,10 +1393,7 @@ test.describe('Sidebar Tree — Sort Order Integrity', () => {
   });
 
   test('5 siblings: move last to first, verify no gaps', async ({ window }) => {
-    const ids: string[] = [];
-    for (const name of ['M1', 'M2', 'M3', 'M4', 'M5']) {
-      ids.push(await createNote(window, name));
-    }
+    const ids = await seedNotes(window, ['M1', 'M2', 'M3', 'M4', 'M5'].map((t) => ({ title: t })));
     // Order: M5, M4, M3, M2, M1. Drag M1 before M5 (to first).
     await dragNote(window, ids[0], ids[4], 'before');
 
@@ -1191,9 +1407,9 @@ test.describe('Sidebar Tree — Sort Order Integrity', () => {
   });
 
   test('sort order stays intact after nesting and un-nesting', async ({ window }) => {
-    const a = await createNote(window, 'SO-A');
-    const b = await createNote(window, 'SO-B');
-    const c = await createNote(window, 'SO-C');
+    const [a, b, c] = await seedNotes(window, [
+      { title: 'SO-A' }, { title: 'SO-B' }, { title: 'SO-C' },
+    ]);
 
     await dragNote(window, b, a, 'inside');
 
@@ -1215,11 +1431,14 @@ test.describe('Sidebar Tree — Sort Order Integrity', () => {
   });
 
   test('child sort order is independent from root sort order', async ({ window }) => {
-    const parent = await createNote(window, 'Iso Parent');
-    const rootSib = await createNote(window, 'Iso Root Sib');
-    const c1 = await createNote(window, 'Iso C1', parent);
-    const c2 = await createNote(window, 'Iso C2', parent);
-    const c3 = await createNote(window, 'Iso C3', parent);
+    const m = await seedTree(window, [
+      { title: 'Iso Parent' },
+      { title: 'Iso Root Sib' },
+      { title: 'Iso C1', parentTitle: 'Iso Parent' },
+      { title: 'Iso C2', parentTitle: 'Iso Parent' },
+      { title: 'Iso C3', parentTitle: 'Iso Parent' },
+    ]);
+    const parent = m.get('Iso Parent')!;
 
     const docs = await listDocumentsFromDb(window);
     const roots = docs.filter((d) => d.parentId === null);
@@ -1233,10 +1452,9 @@ test.describe('Sidebar Tree — Sort Order Integrity', () => {
   });
 
   test('rapid sequential reorders produce consistent sort order', async ({ window }) => {
-    const a = await createNote(window, 'Rap A');
-    const b = await createNote(window, 'Rap B');
-    const c = await createNote(window, 'Rap C');
-    const d = await createNote(window, 'Rap D');
+    const [a, b, c, d] = await seedNotes(window, [
+      { title: 'Rap A' }, { title: 'Rap B' }, { title: 'Rap C' }, { title: 'Rap D' },
+    ]);
 
     // Order: D, C, B, A. Reorder to A, D, B, C.
     await dragNote(window, a, d, 'before');
@@ -1255,9 +1473,14 @@ test.describe('Sidebar Tree — Sort Order Integrity', () => {
 
 test.describe('Sidebar Tree — Trash Cascading & Restore', () => {
   test('trashing a 3-deep root cascades deletedAt to all descendants', async ({ window }) => {
-    const r = await createNote(window, 'Trash Root');
-    const c = await createNote(window, 'Trash Mid', r);
-    const gc = await createNote(window, 'Trash Leaf', c);
+    const m = await seedTree(window, [
+      { title: 'Trash Root' },
+      { title: 'Trash Mid', parentTitle: 'Trash Root' },
+      { title: 'Trash Leaf', parentTitle: 'Trash Mid' },
+    ]);
+    const r = m.get('Trash Root')!;
+    const c = m.get('Trash Mid')!;
+    const gc = m.get('Trash Leaf')!;
 
     const parentEl = window.locator('[data-note-id]').filter({ hasText: 'Trash Root' });
     await parentEl.click({ button: 'right' });
@@ -1271,8 +1494,12 @@ test.describe('Sidebar Tree — Trash Cascading & Restore', () => {
   });
 
   test('restoring a trashed parent also restores its children', async ({ window }) => {
-    const r = await createNote(window, 'Rest Root');
-    const c = await createNote(window, 'Rest Child', r);
+    const m = await seedTree(window, [
+      { title: 'Rest Root' },
+      { title: 'Rest Child', parentTitle: 'Rest Root' },
+    ]);
+    const r = m.get('Rest Root')!;
+    const c = m.get('Rest Child')!;
 
     // Trash
     const el = window.locator('[data-note-id]').filter({ hasText: 'Rest Root' });
@@ -1308,8 +1535,12 @@ test.describe('Sidebar Tree — Trash Cascading & Restore', () => {
   });
 
   test('trashing a nested child leaves parent intact', async ({ window }) => {
-    const parent = await createNote(window, 'Surv Parent');
-    const child = await createNote(window, 'Surv Child', parent);
+    const m = await seedTree(window, [
+      { title: 'Surv Parent' },
+      { title: 'Surv Child', parentTitle: 'Surv Parent' },
+    ]);
+    const parent = m.get('Surv Parent')!;
+    const child = m.get('Surv Child')!;
 
     const childEl = window.locator('[data-note-id]').filter({ hasText: 'Surv Child' });
     await childEl.click({ button: 'right' });
@@ -1326,8 +1557,12 @@ test.describe('Sidebar Tree — Trash Cascading & Restore', () => {
   });
 
   test('trash and restore preserves parentId', async ({ window }) => {
-    const parent = await createNote(window, 'Pres Parent');
-    const child = await createNote(window, 'Pres Child', parent);
+    const m = await seedTree(window, [
+      { title: 'Pres Parent' },
+      { title: 'Pres Child', parentTitle: 'Pres Parent' },
+    ]);
+    const parent = m.get('Pres Parent')!;
+    const child = m.get('Pres Child')!;
 
     // Trash child only
     const childEl = window.locator('[data-note-id]').filter({ hasText: 'Pres Child' });
@@ -1350,9 +1585,14 @@ test.describe('Sidebar Tree — Trash Cascading & Restore', () => {
   });
 
   test('permanent delete of a parent removes all descendants from DB', async ({ window }) => {
-    const r = await createNote(window, 'Perm Root');
-    const c = await createNote(window, 'Perm Child', r);
-    const gc = await createNote(window, 'Perm GC', c);
+    const m = await seedTree(window, [
+      { title: 'Perm Root' },
+      { title: 'Perm Child', parentTitle: 'Perm Root' },
+      { title: 'Perm GC', parentTitle: 'Perm Child' },
+    ]);
+    const r = m.get('Perm Root')!;
+    const c = m.get('Perm Child')!;
+    const gc = m.get('Perm GC')!;
 
     // Trash the root
     const el = window.locator('[data-note-id]').filter({ hasText: 'Perm Root' });
@@ -1380,10 +1620,9 @@ test.describe('Sidebar Tree — Trash Cascading & Restore', () => {
 
 test.describe('Sidebar Tree — Stress', () => {
   test('create 10 root notes and verify all exist with correct order', async ({ window }) => {
-    const ids: string[] = [];
-    for (let i = 0; i < 10; i++) {
-      ids.push(await createNote(window, `Bulk ${i}`));
-    }
+    const ids = await seedNotes(window,
+      Array.from({ length: 10 }, (_, i) => ({ title: `Bulk ${i}` })),
+    );
 
     await expect(window.locator('[data-note-id]')).toHaveCount(10);
 
@@ -1397,20 +1636,21 @@ test.describe('Sidebar Tree — Stress', () => {
   });
 
   test('wide + deep tree: 3 roots each with 3 children', async ({ window }) => {
-    const roots: string[] = [];
+    const specs: Array<{ title: string; parentTitle?: string }> = [];
     for (let i = 0; i < 3; i++) {
-      const r = await createNote(window, `WD Root ${i}`);
-      roots.push(r);
+      specs.push({ title: `WD Root ${i}` });
       for (let j = 0; j < 3; j++) {
-        await createNote(window, `WD R${i} C${j}`, r);
+        specs.push({ title: `WD R${i} C${j}`, parentTitle: `WD Root ${i}` });
       }
     }
+    const m = await seedTree(window, specs);
 
     const docs = await listDocumentsFromDb(window);
     expect(docs).toHaveLength(12);
 
-    for (const r of roots) {
-      const children = docs.filter((d) => d.parentId === r);
+    for (let i = 0; i < 3; i++) {
+      const rId = m.get(`WD Root ${i}`)!;
+      const children = docs.filter((d) => d.parentId === rId);
       expect(children).toHaveLength(3);
     }
 
@@ -1419,11 +1659,18 @@ test.describe('Sidebar Tree — Stress', () => {
   });
 
   test('move notes across a large tree and verify no orphans', async ({ window }) => {
-    const r1 = await createNote(window, 'Big R1');
-    const r2 = await createNote(window, 'Big R2');
-    const c1a = await createNote(window, 'C1a', r1);
-    const c1b = await createNote(window, 'C1b', r1);
-    const c2a = await createNote(window, 'C2a', r2);
+    const m = await seedTree(window, [
+      { title: 'Big R1' },
+      { title: 'Big R2' },
+      { title: 'C1a', parentTitle: 'Big R1' },
+      { title: 'C1b', parentTitle: 'Big R1' },
+      { title: 'C2a', parentTitle: 'Big R2' },
+    ]);
+    const r1 = m.get('Big R1')!;
+    const r2 = m.get('Big R2')!;
+    const c1a = m.get('C1a')!;
+    const c1b = m.get('C1b')!;
+    const c2a = m.get('C2a')!;
 
     await dragNote(window, c1a, r2, 'inside');
     await dragNote(window, c2a, r1, 'before');
@@ -1453,10 +1700,9 @@ test.describe('Sidebar Tree — Stress', () => {
   });
 
   test('move same note to every position among 4 siblings', async ({ window }) => {
-    const a = await createNote(window, 'Pos A');
-    const b = await createNote(window, 'Pos B');
-    const c = await createNote(window, 'Pos C');
-    const d = await createNote(window, 'Pos D');
+    const [a, b, c, d] = await seedNotes(window, [
+      { title: 'Pos A' }, { title: 'Pos B' }, { title: 'Pos C' }, { title: 'Pos D' },
+    ]);
 
     // Order: D, C, B, A. Cycle A through positions 0, 1, 2, 3.
     const targets: Array<{ id: string; pos: 'before' | 'after' }> = [
