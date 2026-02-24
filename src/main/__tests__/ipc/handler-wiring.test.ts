@@ -75,7 +75,7 @@ describe('IPC Handler Wiring', () => {
   // If a channel is missing, the renderer's invoke() call would hang forever
   // with no response. This is the most basic check.
   it('registers exactly 17 channels', () => {
-    expect(handlers.size).toBe(17);
+    expect(handlers.size).toBe(20);
   });
 
   // Verify every expected channel name exists. A typo in a channel name
@@ -99,6 +99,9 @@ describe('IPC Handler Wiring', () => {
       'images.delete',
       'url.resolve',
       'url.fetchMetadata',
+      'settings.get',
+      'settings.set',
+      'settings.getAll',
     ];
 
     for (const channel of expectedChannels) {

@@ -20,7 +20,7 @@ export function LycheeLogoHorizontal({ className = 'h-6' }: { className?: string
         <circle cx="-10" cy="18" r="2.5" fill="#A83A44" opacity="0.25" />
         <circle cx="10" cy="18" r="2.5" fill="#A83A44" opacity="0.25" />
       </g>
-      <g fill="#2D2926">
+      <g fill="currentColor">
         <g transform="translate(108.00, 68.00) scale(0.048000, -0.048000)">
           <path d="M100 52V729Q100 751 115.0 766.0Q130 781 151 781Q173 781 188.0 766.0Q203 751 203 729V104H565Q587 104 602.0 89.0Q617 74 617 52Q617 30 602.0 15.0Q587 0 565 0H151Q129 0 114.5 15.0Q100 30 100 52Z" />
         </g>

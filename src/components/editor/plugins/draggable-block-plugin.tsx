@@ -74,18 +74,18 @@ export function DraggableBlockPlugin({
       menuComponent={
         <div
           ref={menuRef}
-          className="draggable-block-menu absolute top-0 left-0 flex items-center justify-center cursor-grab rounded-md px-0.5 py-0.5 opacity-0 will-change-transform hover:bg-blue-50 active:cursor-grabbing active:bg-blue-100"
+          className="draggable-block-menu absolute top-0 left-0 flex items-center justify-center cursor-grab rounded-md px-0.5 py-0.5 opacity-0 will-change-transform hover:bg-accent active:cursor-grabbing active:bg-muted"
           style={hideMenu ? { visibility: "hidden", pointerEvents: "none" } : undefined}
           onMouseDown={handleMouseDown}
         >
-          <GripVerticalIcon className="size-4 text-gray-400 hover:text-blue-500" />
+          <GripVerticalIcon className="size-4 text-muted-foreground hover:text-foreground" />
         </div>
       }
       targetLineComponent={
         <div
           ref={targetLineRef}
-          className="pointer-events-none absolute top-0 left-0 h-1 rounded-full bg-blue-400 opacity-0 will-change-transform"
-          style={{ boxShadow: "0 0 8px rgba(59, 130, 246, 0.5)" }}
+          className="pointer-events-none absolute top-0 left-0 h-1 rounded-full bg-primary opacity-0 will-change-transform"
+          style={{ boxShadow: "0 0 8px hsl(355 49% 53% / 0.5)" }}
         />
       }
       isOnMenu={isOnMenu}

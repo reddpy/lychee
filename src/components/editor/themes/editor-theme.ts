@@ -15,7 +15,7 @@ export const editorTheme: EditorThemeClasses = {
   },
   paragraph: "leading-7",
   quote: "mt-1 border-l-2 pl-6 italic",
-  link: "text-blue-600 underline cursor-text",
+  link: "text-blue-600 dark:text-blue-400 underline cursor-text",
   list: {
     ol: "editor-list-ol",
     ul: "editor-list-ul",
@@ -31,10 +31,10 @@ export const editorTheme: EditorThemeClasses = {
     listitemUnchecked: "editor-list-item-unchecked",
     nested: { listitem: "editor-nested-list-item" },
   },
-  hashtag: "text-blue-600 bg-blue-100 rounded-md px-1",
+  hashtag: "text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-900/40 rounded-md px-1",
   text: {
     bold: "font-bold",
-    code: "bg-gray-100 p-1 rounded-md",
+    code: "bg-gray-100 dark:bg-gray-800 p-1 rounded-md",
     italic: "italic",
     strikethrough: "line-through",
     subscript: "sub",
@@ -45,7 +45,7 @@ export const editorTheme: EditorThemeClasses = {
   image: "relative inline-block user-select-none cursor-default editor-image",
   inlineImage:
     "relative inline-block user-select-none cursor-default inline-editor-image",
-  keyword: "text-purple-900 font-bold",
+  keyword: "text-purple-900 dark:text-purple-400 font-bold",
   code: "editor-code",
   codeHighlight: {
     atrule: "editor-tokenAttr",

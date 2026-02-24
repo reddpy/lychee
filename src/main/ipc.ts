@@ -15,6 +15,7 @@ import {
 import { saveImage, getImagePath, deleteImage, downloadImage } from './repos/images';
 import { resolveUrl } from './repos/url-resolver';
 import { fetchUrlMetadata } from './repos/url-metadata';
+import { getSetting, setSetting, getAllSettings } from './repos/settings';
 
 type Handler<C extends IpcChannel> = (
   payload: IpcContract[C]['req'],
@@ -81,5 +82,18 @@ export function registerIpcHandlers() {
   handle('url.resolve', (payload) => resolveUrl(payload.url));
 
   handle('url.fetchMetadata', (payload) => fetchUrlMetadata(payload.url));
+
+  handle('settings.get', (payload) => ({
+    value: getSetting(payload.key),
+  }));
+
+  handle('settings.set', (payload) => {
+    setSetting(payload.key, payload.value);
+    return { ok: true };
+  });
+
+  handle('settings.getAll', () => ({
+    settings: getAllSettings(),
+  }));
 }
 

@@ -112,7 +112,7 @@ test.describe('Settings Modal', () => {
 
     // Switch to Appearance
     await dialog.getByText('Appearance', { exact: true }).click();
-    await expect(dialog.getByText('Appearance settings will appear here.')).toBeVisible();
+    await expect(dialog.getByText('Choose how Lychee looks.')).toBeVisible();
 
     // Switch to Editor
     await dialog.getByText('Editor', { exact: true }).click();

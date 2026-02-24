@@ -6,6 +6,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../ui/popover';
+import { useThemeStore } from '../../renderer/theme-store';
 
 type EmojiSelectPayload = {
   native: string;
@@ -31,6 +32,8 @@ export function NoteEmojiPicker({
   onOpenChange,
   trigger,
 }: NoteEmojiPickerProps) {
+  const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
+
   const handleEmojiSelect = React.useCallback(
     (payload: EmojiSelectPayload) => {
       if (payload?.native) {
@@ -56,7 +59,7 @@ export function NoteEmojiPicker({
         <Picker
           data={data}
           onEmojiSelect={handleEmojiSelect}
-          theme="light"
+          theme={resolvedTheme}
           previewPosition="none"
           skinTonePosition="none"
           perLine={8}

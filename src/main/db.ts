@@ -171,6 +171,31 @@ function runMigrations(database: BetterSqlite3Database) {
 
     tx();
   }
+
+  // v8: generic key-value settings table
+  const hasSettings = database
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='settings'`)
+    .get() as { name: string } | undefined;
+
+  if (!hasSettings) {
+    const tx = database.transaction(() => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+      `);
+
+      database
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run('8');
+    });
+
+    tx();
+  }
 }
 
 export function initDatabase(): { dbPath: string } {
