@@ -873,3 +873,473 @@ test.describe('Editor — Edge Cases', () => {
     expect(hasImage).toBe(true);
   });
 });
+
+test.describe('Editor — Focus Behavior', () => {
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  const PNG_1x1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  /** Paste a 1×1 PNG into the editor from the clipboard. */
+  async function pasteImage(window: any) {
+    await window.evaluate(async (base64: string) => {
+      const resp = await fetch(`data:image/png;base64,${base64}`);
+      const blob = await resp.blob();
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    }, PNG_1x1);
+    await window.keyboard.press(`${mod}+v`);
+    await window.waitForTimeout(2000);
+  }
+
+  /** Returns true if activeElement is inside the visible editor's ContentEditable__root. */
+  async function editorBodyHasFocus(window: any): Promise<boolean> {
+    return window.evaluate(() => {
+      const visibleMain = Array.from(document.querySelectorAll('main'))
+        .find((m) => m.style.display !== 'none');
+      if (!visibleMain) return false;
+      const root = visibleMain.querySelector('.ContentEditable__root');
+      return root?.contains(document.activeElement) ?? false;
+    });
+  }
+
+  /** Returns the visible (non-hidden) <main> scroll container. */
+  function visibleMain(window: any) {
+    return window.locator('main:not([style*="display: none"])').first();
+  }
+
+  /** Returns the .ContentEditable__root inside the visible <main>. */
+  function visibleEditor(window: any) {
+    return visibleMain(window).locator('.ContentEditable__root');
+  }
+
+  /** Returns the h1.editor-title inside the visible <main>. */
+  function visibleTitle(window: any) {
+    return visibleMain(window).locator('h1.editor-title');
+  }
+
+  /**
+   * Close the active tab. This unmounts the editor so that reopening
+   * the note from the sidebar triggers a fresh deserialize from DB,
+   * which exercises the image path-resolution editor.update() calls.
+   */
+  async function closeActiveTab(window: any) {
+    const activeTab = window.locator('[data-tab-id]').first();
+    await activeTab.hover();
+    await activeTab.locator('[aria-label="Close tab"]').click();
+    await window.waitForTimeout(400);
+  }
+
+  // ─── Auto-focus prevention ────────────────────────────────────────
+  //
+  // The image node serializes only `imageId` (not `src`). Every fresh
+  // mount resolves `imageId → filePath` via IPC, then calls
+  // editor.update() to write `src` back. Without our fix this
+  // editor.update() would silently re-focus the editor.
+  //
+  // To exercise this code path the tests CLOSE the tab (unmounting
+  // the editor) and REOPEN from the sidebar (fresh deserialize).
+
+  test('reopening a note with an image from sidebar does not auto-focus editor body', async ({ window }) => {
+    // Create a note with an image
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Reopen Img');
+    await window.keyboard.press('Enter');
+    await pasteImage(window);
+    await expect(visibleEditor(window).locator('.image-container').first()).toBeVisible();
+
+    // Wait for debounced save to persist content + image to DB
+    await window.waitForTimeout(1500);
+
+    // Close the tab — unmounts the editor entirely
+    await closeActiveTab(window);
+
+    // Reopen from sidebar — fresh deserialize, triggers image path resolution
+    await window.locator('[data-note-id]').filter({ hasText: 'Reopen Img' }).click();
+    await window.waitForTimeout(2000);
+
+    // Image container present — path resolution editor.update() has fired
+    // (actual <img> rendering broken after reopen, tracked in #83)
+    await expect(visibleEditor(window).locator('.image-container')).toBeVisible();
+
+    // But the editor body should NOT have focus
+    expect(await editorBodyHasFocus(window)).toBe(false);
+  });
+
+  test('reopening a note with multiple images does not auto-focus', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Multi Img');
+    await window.keyboard.press('Enter');
+
+    // Paste three images — each will trigger a separate path resolution on reopen
+    for (let i = 0; i < 3; i++) {
+      await pasteImage(window);
+      await window.keyboard.press('Enter');
+    }
+    await expect(visibleEditor(window).locator('.image-container')).toHaveCount(3);
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+
+    await window.locator('[data-note-id]').filter({ hasText: 'Multi Img' }).click();
+    await window.waitForTimeout(3000); // Extra time for 3 path resolutions
+
+    // All image containers present — path resolution fired for each (#83)
+    await expect(visibleEditor(window).locator('.image-container')).toHaveCount(3);
+
+    expect(await editorBodyHasFocus(window)).toBe(false);
+  });
+
+  test('reopening a note with only an image and no text does not auto-focus', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Lone Image');
+    await window.keyboard.press('Enter');
+    await pasteImage(window);
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+
+    await window.locator('[data-note-id]').filter({ hasText: 'Lone Image' }).click();
+    await window.waitForTimeout(2000);
+
+    // Image container present — path resolution fired (#83)
+    await expect(visibleEditor(window).locator('.image-container')).toBeVisible();
+    expect(await editorBodyHasFocus(window)).toBe(false);
+  });
+
+  // ─── Checkbox + scroll stability ──────────────────────────────────
+
+  test('toggling a checkbox does not jump scroll after reopening a note with images', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Scroll Stability');
+    await window.keyboard.press('Enter');
+
+    // Image at top
+    await pasteImage(window);
+    await window.keyboard.press('Enter');
+
+    // Filler to make the document scrollable
+    for (let i = 0; i < 15; i++) {
+      await window.keyboard.type(`Line ${i + 1} of filler content for scrolling test.`);
+      await window.keyboard.press('Enter');
+    }
+
+    // Checkbox near the bottom
+    await window.keyboard.type('[ ] ');
+    await window.keyboard.type('Bottom checkbox');
+    await window.waitForTimeout(1500);
+
+    // Close tab, reopen — fresh mount with path resolution
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'Scroll Stability' }).click();
+    await window.waitForTimeout(2000);
+
+    // Scroll to bottom where the checkbox is
+    const main = visibleMain(window);
+    await main.evaluate((el: HTMLElement) => { el.scrollTop = el.scrollHeight; });
+    await window.waitForTimeout(300);
+
+    const scrollBefore = await main.evaluate((el: HTMLElement) => el.scrollTop);
+
+    // Toggle the checkbox — no prior click in editor text
+    const checkbox = visibleEditor(window).locator('li.editor-list-item-unchecked').last();
+    await expect(checkbox).toBeVisible();
+    await checkbox.click({ position: { x: 10, y: 10 } });
+    await window.waitForTimeout(500);
+
+    await expect(visibleEditor(window).locator('li.editor-list-item-checked').last()).toBeVisible();
+    const scrollAfter = await main.evaluate((el: HTMLElement) => el.scrollTop);
+    expect(Math.abs(scrollAfter - scrollBefore)).toBeLessThan(50);
+  });
+
+  test('toggling multiple checkboxes in sequence after reopening an image note', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Multi Check');
+    await window.keyboard.press('Enter');
+
+    await pasteImage(window);
+    await window.keyboard.press('Enter');
+
+    // Create three checklist items
+    await window.keyboard.type('[ ] ');
+    await window.keyboard.type('First task');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Second task');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Third task');
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'Multi Check' }).click();
+    await window.waitForTimeout(2000);
+
+    const editor = visibleEditor(window);
+    await expect(editor.locator('li.editor-list-item-unchecked')).toHaveCount(3);
+
+    // Toggle all three in sequence — never clicking editor text
+    await editor.locator('li.editor-list-item-unchecked').first().click({ position: { x: 10, y: 10 } });
+    await window.waitForTimeout(300);
+    await editor.locator('li.editor-list-item-unchecked').first().click({ position: { x: 10, y: 10 } });
+    await window.waitForTimeout(300);
+    await editor.locator('li.editor-list-item-unchecked').first().click({ position: { x: 10, y: 10 } });
+    await window.waitForTimeout(300);
+
+    await expect(editor.locator('li.editor-list-item-checked')).toHaveCount(3);
+  });
+
+  test('checkbox at top of note with image at bottom does not scroll down', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Check Top Img Bottom');
+    await window.keyboard.press('Enter');
+
+    // Checkbox first
+    await window.keyboard.type('[ ] ');
+    await window.keyboard.type('Top checkbox');
+    await window.keyboard.press('Enter');
+    await window.keyboard.press('Enter'); // exit checklist
+
+    // Filler
+    for (let i = 0; i < 10; i++) {
+      await window.keyboard.type(`Paragraph ${i + 1} filler text.`);
+      await window.keyboard.press('Enter');
+    }
+
+    // Image at bottom
+    await pasteImage(window);
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'Check Top Img Bottom' }).click();
+    await window.waitForTimeout(2000);
+
+    // Ensure scroll is at top
+    const main = visibleMain(window);
+    await main.evaluate((el: HTMLElement) => { el.scrollTop = 0; });
+    await window.waitForTimeout(200);
+
+    const scrollBefore = await main.evaluate((el: HTMLElement) => el.scrollTop);
+
+    // Toggle the top checkbox
+    await visibleEditor(window).locator('li.editor-list-item-unchecked').first()
+      .click({ position: { x: 10, y: 10 } });
+    await window.waitForTimeout(500);
+
+    await expect(visibleEditor(window).locator('li.editor-list-item-checked').first()).toBeVisible();
+    const scrollAfter = await main.evaluate((el: HTMLElement) => el.scrollTop);
+    expect(Math.abs(scrollAfter - scrollBefore)).toBeLessThan(50);
+  });
+
+  // ─── Intentional focus still works ────────────────────────────────
+
+  test('clicking editor body on a reopened image note gives focus', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Click Focus');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Click here to focus');
+    await window.keyboard.press('Enter');
+    await pasteImage(window);
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'Click Focus' }).click();
+    await window.waitForTimeout(2000);
+
+    // NOT focused yet
+    expect(await editorBodyHasFocus(window)).toBe(false);
+
+    // Explicitly click in text
+    await visibleEditor(window).locator('p').filter({ hasText: 'Click here to focus' }).click();
+    await window.waitForTimeout(200);
+
+    // NOW focused
+    expect(await editorBodyHasFocus(window)).toBe(true);
+  });
+
+  test('typing works after clicking into a reopened image note', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Type After');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Existing text');
+    await window.keyboard.press('Enter');
+    await pasteImage(window);
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'Type After' }).click();
+    await window.waitForTimeout(2000);
+
+    const editor = visibleEditor(window);
+    await editor.locator('p').filter({ hasText: 'Existing text' }).click();
+    await window.keyboard.press('End');
+    await window.keyboard.type(' and new text');
+    await window.waitForTimeout(200);
+
+    await expect(editor).toContainText('Existing text and new text');
+  });
+
+  test('arrow keys work after toggling a checkbox on a reopened image note', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Arrow Nav');
+    await window.keyboard.press('Enter');
+
+    await pasteImage(window);
+    await window.keyboard.press('Enter');
+
+    await window.keyboard.type('[ ] ');
+    await window.keyboard.type('Check item');
+    await window.keyboard.press('Enter');
+    await window.keyboard.press('Enter'); // exit checklist
+    await window.keyboard.type('Paragraph after checklist');
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'Arrow Nav' }).click();
+    await window.waitForTimeout(2000);
+
+    const editor = visibleEditor(window);
+
+    // Toggle checkbox
+    await editor.locator('li.editor-list-item-unchecked').first().click({ position: { x: 10, y: 10 } });
+    await window.waitForTimeout(300);
+    await expect(editor.locator('li.editor-list-item-checked').first()).toBeVisible();
+
+    // Click paragraph, arrow up, type to verify cursor moves correctly
+    await editor.locator('p').filter({ hasText: 'Paragraph after checklist' }).click();
+    await window.waitForTimeout(200);
+    await window.keyboard.press('ArrowUp');
+    await window.waitForTimeout(200);
+    await window.keyboard.type('!');
+    await window.waitForTimeout(200);
+    await expect(editor).toContainText('!');
+  });
+
+  test('clicking title on a reopened image note focuses the title', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('Title Focus');
+    await window.keyboard.press('Enter');
+    await pasteImage(window);
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'Title Focus' }).click();
+    await window.waitForTimeout(2000);
+
+    // Click the title — user expects to be able to type in it immediately
+    await visibleTitle(window).click();
+    await window.waitForTimeout(200);
+
+    // Verify the editor received focus (title is inside the ContentEditable)
+    expect(await editorBodyHasFocus(window)).toBe(true);
+
+    // Typing should land in the title, not jump elsewhere
+    await window.keyboard.press('End');
+    await window.keyboard.type(' Edited');
+    await expect(visibleTitle(window)).toContainText('Title Focus Edited');
+  });
+
+  // ─── Tab / note switching ─────────────────────────────────────────
+
+  test('switching tabs between text and image notes preserves focus behavior', async ({ window }) => {
+    // Note A: text only
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('TextOnly');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Just text here');
+    await window.waitForTimeout(500);
+
+    // Note B: has image
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('WithImage');
+    await window.keyboard.press('Enter');
+    await pasteImage(window);
+    await window.waitForTimeout(500);
+
+    // Switch to text note via tab — should not auto-focus
+    await window.locator('[data-tab-id]').filter({ hasText: 'TextOnly' }).click();
+    await window.waitForTimeout(500);
+    expect(await editorBodyHasFocus(window)).toBe(false);
+
+    // Switch to image note via tab — should not auto-focus
+    await window.locator('[data-tab-id]').filter({ hasText: 'WithImage' }).click();
+    await window.waitForTimeout(1500);
+    expect(await editorBodyHasFocus(window)).toBe(false);
+
+    // Switch back to text note, click in it, verify typing works
+    await window.locator('[data-tab-id]').filter({ hasText: 'TextOnly' }).click();
+    await window.waitForTimeout(500);
+    await visibleEditor(window).locator('p').filter({ hasText: 'Just text here' }).click();
+    await window.waitForTimeout(200);
+    expect(await editorBodyHasFocus(window)).toBe(true);
+    await window.keyboard.type(' appended');
+    await expect(visibleEditor(window)).toContainText('Just text here appended');
+  });
+
+  // ─── Image interactions after reopen ──────────────────────────────
+
+  test('clicking an image selects it on a reopened note', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('ImgSelect');
+    await window.keyboard.press('Enter');
+    await pasteImage(window);
+    await expect(visibleEditor(window).locator('.image-container').first()).toBeVisible();
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'ImgSelect' }).click();
+    await window.waitForTimeout(2000);
+
+    // Image container present after path resolution (#83: img render broken on reopen)
+    const img = visibleEditor(window).locator('.image-container').first();
+    await expect(img).toBeVisible();
+
+    // Click image — should get selected
+    await img.click();
+    await window.waitForTimeout(300);
+    await expect(img).toHaveClass(/selected/);
+  });
+
+  test('Enter after selecting an image creates a paragraph on a reopened note', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle(window).click();
+    await window.keyboard.type('ImgEnter');
+    await window.keyboard.press('Enter');
+    await pasteImage(window);
+    await window.waitForTimeout(1500);
+
+    await closeActiveTab(window);
+    await window.locator('[data-note-id]').filter({ hasText: 'ImgEnter' }).click();
+    await window.waitForTimeout(2000);
+
+    await visibleEditor(window).locator('.image-container').first().click();
+    await window.waitForTimeout(300);
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(300);
+
+    await window.keyboard.type('New paragraph after image');
+    await expect(visibleEditor(window)).toContainText('New paragraph after image');
+  });
+});

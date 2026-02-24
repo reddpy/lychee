@@ -1,8 +1,8 @@
 import { useEffect } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
+  $addUpdateTag,
   $createNodeSelection,
-  $createParagraphNode,
   $getNodeByKey,
   $getSelection,
   $isNodeSelection,
@@ -202,22 +202,16 @@ export function ImagePlugin(): null {
       COMMAND_PRIORITY_LOW,
     )
 
-    // Always ensure a paragraph exists after every image so the cursor
-    // has somewhere to land.  Also download external URL images locally.
+    // Download external URL images locally + clean up stale loading nodes.
     const removeMutationListener = editor.registerMutationListener(
       ImageNode,
       (mutations) => {
         editor.update(() => {
+          $addUpdateTag('skip-selection-focus')
           for (const [key, type] of mutations) {
             if (type === "destroyed") continue
             const node = $getNodeByKey(key)
             if (!$isImageNode(node)) continue
-
-            // Ensure trailing paragraph
-            const next = node.getNextSibling()
-            if (!next || $isImageNode(next)) {
-              node.insertAfter($createParagraphNode())
-            }
 
             // Download external URL images locally (e.g. from markdown shortcut or paste)
             if (type === "created") {
