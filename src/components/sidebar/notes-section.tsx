@@ -11,6 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '../ui/sidebar';
+import { autoScrollForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-scroll/element';
 import { useDocumentStore } from '../../renderer/document-store';
 import { NoteTreeItem } from './note-tree-item';
 import { TreeDndProvider } from './tree-dnd-provider';
@@ -126,8 +127,32 @@ export function NotesSection({
   createDocument,
 }: NotesSectionProps) {
   const [notesSectionOpen, setNotesSectionOpen] = React.useState(true);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
   const lastCreatedId = useDocumentStore((s) => s.lastCreatedId);
   const moveDocument = useDocumentStore((s) => s.moveDocument);
+
+  React.useEffect(() => {
+    if (!notesSectionOpen) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const EDGE_THRESHOLD = 16;
+    return autoScrollForElements({
+      element: el,
+      getAllowedAxis: () => 'vertical',
+      canScroll: ({ input, element }) => {
+        const rect = element.getBoundingClientRect();
+        const distFromTop = input.clientY - rect.top;
+        const distFromBottom = rect.bottom - input.clientY;
+        const atTopEdge = distFromTop < EDGE_THRESHOLD;
+        const atBottomEdge = distFromBottom < EDGE_THRESHOLD;
+        if (!atTopEdge && !atBottomEdge) return false;
+        const { scrollTop, scrollHeight, clientHeight } = element;
+        const canScrollDown = scrollTop + clientHeight < scrollHeight - 1;
+        const canScrollUp = scrollTop > 1;
+        return (atTopEdge && canScrollUp) || (atBottomEdge && canScrollDown);
+      },
+    });
+  }, [notesSectionOpen]);
 
   const childrenByParent = React.useMemo(
     () => buildChildrenByParent(documents),
@@ -264,7 +289,7 @@ export function NotesSection({
               onExpandParent={handleExpandParent}
             >
               <div className="min-h-0 flex-1 flex flex-col">
-                <div className="notes-scroll min-h-0 flex-1 pr-2 py-1">
+                <div ref={scrollRef} className="notes-scroll min-h-0 flex-1 pr-2 py-1">
                   <SidebarMenu>
                     {loading ? (
                       <SidebarMenuItem>

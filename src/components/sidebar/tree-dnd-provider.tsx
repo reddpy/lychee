@@ -24,11 +24,23 @@ export function TreeDndProvider({
   const [dropPosition, setDropPosition] = React.useState<DropPosition | null>(null);
   const [nestAsFirst, setNestAsFirst] = React.useState<boolean>(false);
 
+  // Fallback when location.current.dropTargets is empty (known atlaskit bug in edge cases)
+  const lastDropTargetRef = React.useRef<{
+    targetId: string;
+    position: DropPosition;
+    nestAsFirst: boolean;
+  } | null>(null);
+
   const setDropTarget = React.useCallback(
     (id: string | null, position: DropPosition | null, asFirst: boolean = false) => {
       setDropTargetId(id);
       setDropPosition(position);
       setNestAsFirst(asFirst);
+      if (id && position !== null) {
+        lastDropTargetRef.current = { targetId: id, position, nestAsFirst: asFirst };
+      } else {
+        lastDropTargetRef.current = null;
+      }
     },
     []
   );
@@ -62,17 +74,27 @@ export function TreeDndProvider({
       onDrop({ source, location }) {
         const draggedId = source.data.id as string;
         const target = location.current.dropTargets[0];
+        const fallback = lastDropTargetRef.current;
 
         // Reset state first
         setDraggingId(null);
         setDropTarget(null, null, false);
 
-        if (!target) {
+        // Use fallback when dropTargets is empty (known atlaskit bug in edge cases)
+        const effectiveTarget = target ?? (fallback && {
+          data: {
+            id: fallback.targetId,
+            dropPosition: fallback.position,
+            nestAsFirst: fallback.nestAsFirst,
+          },
+        });
+
+        if (!effectiveTarget) {
           return;
         }
 
-        const targetId = target.data.id as string;
-        const position = target.data.dropPosition as DropPosition;
+        const targetId = effectiveTarget.data.id as string;
+        const position = effectiveTarget.data.dropPosition as DropPosition;
 
         if (!targetId || !position) return;
         if (draggedId === targetId) return;
@@ -92,7 +114,7 @@ export function TreeDndProvider({
         if (position === 'inside') {
           newParentId = targetId;
           const existingChildren = childrenMap.get(newParentId) ?? [];
-          const insertAsFirst = target.data.nestAsFirst as boolean;
+          const insertAsFirst = effectiveTarget.data.nestAsFirst as boolean;
           if (insertAsFirst) {
             newSortOrder = 0;
           } else {

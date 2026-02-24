@@ -39,10 +39,6 @@ const createWindow = (): BrowserWindow => {
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  if (!process.env['LYCHEE_E2E']) {
-    mainWindow.webContents.openDevTools();
-  }
-
   return mainWindow;
 };
 
