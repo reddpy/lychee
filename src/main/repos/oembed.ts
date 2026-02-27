@@ -76,10 +76,16 @@ export async function fetchOEmbedMetadata(url: string): Promise<UrlMetadataResul
 
     const data = await response.json();
 
+    const title = data.title || '';
+    const imageUrl = data.thumbnail_url || '';
+
+    // If oEmbed returned nothing useful, fall through to HTML scraping
+    if (!title && !imageUrl) return null;
+
     return {
-      title: data.title || '',
+      title,
       description: data.author_name ? `by ${data.author_name}` : '',
-      imageUrl: data.thumbnail_url || '',
+      imageUrl,
       faviconUrl: faviconFallback(url),
       url,
     };

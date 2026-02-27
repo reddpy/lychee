@@ -104,18 +104,15 @@ describe('URL Resolver — Content-Type Probe', () => {
     expect(result.type).toBe('image');
   });
 
-  // Non-image content types should be reported as unsupported.
-  it('returns unsupported for non-image content type', async () => {
+  // HTML content type should produce a bookmark (not unsupported).
+  it('returns bookmark for text/html content type', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       headers: { get: () => 'text/html; charset=utf-8' },
     });
 
     const result = await resolveUrl('https://example.com/page');
-    expect(result.type).toBe('unsupported');
-    if (result.type === 'unsupported') {
-      expect(result.reason).toContain('Unhandled content type');
-    }
+    expect(result.type).toBe('bookmark');
   });
 
   // Content-type headers often include parameters like charset.
@@ -374,8 +371,8 @@ describe('URL Resolver — Content-Type Probe', () => {
   // GET Fallback Scenarios
   // ────────────────────────────────────────────────────────
 
-  // HEAD fails (405), GET succeeds but returns non-image content.
-  it('HEAD fails, GET fallback returns non-image content-type', async () => {
+  // HEAD fails (405), GET succeeds returning HTML — should produce a bookmark.
+  it('HEAD fails, GET fallback returns text/html as bookmark', async () => {
     let callCount = 0;
     mockFetch.mockImplementation(() => {
       callCount++;
@@ -395,10 +392,7 @@ describe('URL Resolver — Content-Type Probe', () => {
     });
 
     const result = await resolveUrl('https://example.com/page-no-extension');
-    expect(result.type).toBe('unsupported');
-    if (result.type === 'unsupported') {
-      expect(result.reason).toContain('text/html');
-    }
+    expect(result.type).toBe('bookmark');
   });
 
   // HEAD fails with network error (throws), the code re-fetches with GET.

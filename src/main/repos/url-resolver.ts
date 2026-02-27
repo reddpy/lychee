@@ -16,7 +16,7 @@ const FETCH_HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/*,*/*;q=0.8',
 };
 
-const YOUTUBE_RE = /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
+const YOUTUBE_RE = /(?:^https?:\/\/(?:www\.|music\.)?youtube\.com\/watch\?.*v=|^https?:\/\/youtu\.be\/|^https?:\/\/(?:www\.)?youtube\.com\/embed\/|^https?:\/\/(?:www\.)?youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
 
 const youtubeHandler: UrlHandler = {
   name: 'youtube',
