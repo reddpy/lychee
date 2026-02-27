@@ -284,15 +284,15 @@ describe('URL Resolver — Extension Detection', () => {
     }
   });
 
-  // .html should NOT match, falls through to probe.
-  it('.html URL returns unsupported via probe', async () => {
+  // .html should NOT match extension handler, falls through to probe → bookmark.
+  it('.html URL returns bookmark via probe', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       headers: { get: () => 'text/html' },
     });
 
     const result = await resolveUrl('https://example.com/page.html');
-    expect(result.type).toBe('unsupported');
+    expect(result.type).toBe('bookmark');
   });
 
   // .mp4 video should NOT match.
@@ -368,7 +368,7 @@ describe('URL Resolver — Extension Detection', () => {
 
   // Dot in query param but NOT in path — should NOT match extension handler.
   // The regex runs against pathname only (new URL(url).pathname), so
-  // query params are stripped before matching.
+  // query params are stripped before matching. Falls through to probe → bookmark.
   it('does not match extension in query params (only pathname)', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -376,10 +376,10 @@ describe('URL Resolver — Extension Detection', () => {
     });
 
     const result = await resolveUrl('https://example.com/page?file=photo.png');
-    expect(result.type).toBe('unsupported');
+    expect(result.type).toBe('bookmark');
   });
 
-  // URL with trailing slash — no extension in pathname.
+  // URL with trailing slash — no extension in pathname. Falls through to probe → bookmark.
   it('URL with trailing slash has no extension, falls through to probe', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -387,10 +387,10 @@ describe('URL Resolver — Extension Detection', () => {
     });
 
     const result = await resolveUrl('https://example.com/images/');
-    expect(result.type).toBe('unsupported');
+    expect(result.type).toBe('bookmark');
   });
 
-  // URL with no path at all — just a domain.
+  // URL with no path at all — just a domain. Falls through to probe → bookmark.
   it('bare domain URL falls through to probe', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -398,7 +398,7 @@ describe('URL Resolver — Extension Detection', () => {
     });
 
     const result = await resolveUrl('https://example.com');
-    expect(result.type).toBe('unsupported');
+    expect(result.type).toBe('bookmark');
   });
 
   // The IMAGE_EXTENSIONS regex has a `(\?.*)?$` group, but since the code
@@ -407,14 +407,14 @@ describe('URL Resolver — Extension Detection', () => {
   // checking that query params don't leak into the pathname match.
   it('regex runs against pathname not full URL', async () => {
     // URL where query looks like an extension: /api?format=.png
-    // pathname is /api — no extension match
+    // pathname is /api — no extension match. Falls through to probe → bookmark.
     mockFetch.mockResolvedValue({
       ok: true,
       headers: { get: () => 'text/html' },
     });
 
     const result = await resolveUrl('https://example.com/api?format=.png');
-    expect(result.type).toBe('unsupported');
+    expect(result.type).toBe('bookmark');
   });
 
   // Mixed-case extension in the middle of a realistic CDN URL.
@@ -430,7 +430,7 @@ describe('URL Resolver — Extension Detection', () => {
   });
 
   // Extension regex should NOT match "png" without a dot prefix.
-  // A path like /something-png should not trigger extension handler.
+  // A path like /something-png should not trigger extension handler. Falls through to probe → bookmark.
   it('does not match extension without dot prefix', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -438,6 +438,6 @@ describe('URL Resolver — Extension Detection', () => {
     });
 
     const result = await resolveUrl('https://example.com/something-png');
-    expect(result.type).toBe('unsupported');
+    expect(result.type).toBe('bookmark');
   });
 });

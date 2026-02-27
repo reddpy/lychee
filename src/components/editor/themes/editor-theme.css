@@ -478,6 +478,51 @@ blockquote.is-placeholder,
   to { transform: rotate(360deg); }
 }
 
+/* ── YouTube embed ─────────────────────────────────────── */
+
+.editor-youtube {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  cursor: default;
+  user-select: none;
+  margin: 0.25rem 0;
+  padding: 0.25rem 0.5rem;
+}
+
+.youtube-container {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+}
+
+.youtube-container iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  border: none;
+}
+
+.youtube-container.selected {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.youtube-container:hover .image-toolbar {
+  display: flex;
+}
+
+.youtube-container:hover .image-resizer,
+.youtube-container.resizing .image-resizer {
+  opacity: 1;
+}
+
 /* ── Bookmark block ─────────────────────────────────────── */
 
 .editor-bookmark {

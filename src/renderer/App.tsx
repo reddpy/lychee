@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppSidebar } from '../components/app-sidebar';
 import { CollapsedSidebarWidget } from '../components/collapsed-sidebar-widget';
 import { LexicalEditor } from '../components/lexical-editor';
+import { MediaPlaybackPill } from '../components/media-playback-pill';
 import { SettingsDialog } from '../components/settings/settings-dialog';
 import { LycheeLogoHorizontal } from '../components/sidebar/lychee-logo';
 import { TabStrip } from '../components/tab-strip';
@@ -147,8 +148,9 @@ export function App() {
         <div className="relative flex min-h-0 flex-1">
           <AppSidebar />
           <SidebarInset>
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="relative flex min-h-0 flex-1 flex-col">
               <EditorArea />
+              <MediaPlaybackPill />
             </div>
           </SidebarInset>
           <CollapsedSidebarWidget />

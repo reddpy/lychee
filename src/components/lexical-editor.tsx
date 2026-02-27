@@ -8,6 +8,7 @@ import type { EditorState, SerializedEditorState } from "lexical";
 
 import { Editor } from "@/components/editor/editor";
 import { NoteEmojiPicker } from "@/components/sidebar/note-emoji-picker";
+import { NoteContext } from "@/renderer/note-context";
 
 function getSerializedState(
   content: string | undefined,
@@ -37,6 +38,11 @@ export function LexicalEditor({
   const [addIconPickerOpen, setAddIconPickerOpen] = React.useState(false);
   const updateDocumentInStore = useDocumentStore(
     (s) => s.updateDocumentInStore,
+  );
+
+  const noteContextValue = React.useMemo(
+    () => ({ documentId, title: document.title || "" }),
+    [documentId, document.title],
   );
 
   const editorSerializedState = React.useMemo(
@@ -224,12 +230,14 @@ export function LexicalEditor({
         )}
 
         {/* Editor with title as first block */}
-        <Editor
-          editorSerializedState={editorSerializedState}
-          onEditorStateChange={handleEditorStateChange}
-          initialTitle={initialTitle}
-          onTitleChange={handleTitleChange}
-        />
+        <NoteContext.Provider value={noteContextValue}>
+          <Editor
+            editorSerializedState={editorSerializedState}
+            onEditorStateChange={handleEditorStateChange}
+            initialTitle={initialTitle}
+            onTitleChange={handleTitleChange}
+          />
+        </NoteContext.Provider>
       </div>
     </main>
   );

@@ -1,22 +1,11 @@
-import { useCallback, useEffect, useRef } from "react"
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
-import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection"
+import { useCallback, useRef } from "react"
 import {
-  $createParagraphNode,
-  $getNodeByKey,
-  $getSelection,
-  $isNodeSelection,
-  CLICK_COMMAND,
-  COMMAND_PRIORITY_LOW,
-  KEY_BACKSPACE_COMMAND,
-  KEY_DELETE_COMMAND,
-  KEY_ENTER_COMMAND,
   type NodeKey,
 } from "lexical"
-import { mergeRegister } from "@lexical/utils"
 import { $isBookmarkNode } from "./bookmark-node"
 import { cn } from "@/lib/utils"
 import { Globe } from "lucide-react"
+import { useDecoratorBlock } from "@/components/editor/hooks/use-decorator-block"
 
 function getHostname(url: string): string {
   try { return new URL(url).hostname } catch { return url }
@@ -39,60 +28,13 @@ export function BookmarkComponent({
   imageUrl,
   faviconUrl,
 }: BookmarkComponentProps) {
-  const [editor] = useLexicalComposerContext()
-  const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Keyboard commands when selected
-  useEffect(() => {
-    const onDelete = (event: KeyboardEvent) => {
-      if (isSelected && $isNodeSelection($getSelection())) {
-        event.preventDefault()
-        const node = $getNodeByKey(nodeKey)
-        if ($isBookmarkNode(node)) node.remove()
-        return true
-      }
-      return false
-    }
-
-    const onEnter = (event: KeyboardEvent | null) => {
-      if (isSelected && $isNodeSelection($getSelection())) {
-        if (event) event.preventDefault()
-        editor.update(() => {
-          const node = $getNodeByKey(nodeKey)
-          if (!node) return
-          const next = node.getNextSibling()
-          if (next) {
-            next.selectStart()
-          } else {
-            const paragraph = $createParagraphNode()
-            node.insertAfter(paragraph)
-            paragraph.selectStart()
-          }
-        })
-        return true
-      }
-      return false
-    }
-
-    return mergeRegister(
-      editor.registerCommand<MouseEvent>(
-        CLICK_COMMAND,
-        (event) => {
-          if (containerRef.current?.contains(event.target as Node)) {
-            if (!event.shiftKey) clearSelection()
-            setSelected(true)
-            return true
-          }
-          return false
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-      editor.registerCommand(KEY_BACKSPACE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_DELETE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_ENTER_COMMAND, onEnter, COMMAND_PRIORITY_LOW),
-    )
-  }, [editor, isSelected, nodeKey, setSelected, clearSelection])
+  const { isSelected } = useDecoratorBlock({
+    nodeKey,
+    containerRef,
+    isNodeType: $isBookmarkNode,
+  })
 
   const handleClick = useCallback(() => {
     window.lychee.invoke("shell.openExternal", { url })
