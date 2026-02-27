@@ -189,16 +189,39 @@ describe('Document Repository — Large Sibling List Stress Tests', () => {
       expect(getDocumentById(last.id)!.sortOrder).toBe(0);
     });
 
-    // BUG: restoreDocument uses the doc's stale stored sortOrder to re-insert.
-    // When trashing from highest sortOrder downward, each doc retains its original
-    // sortOrder (gap-close only affects higher positions, which are already trashed).
-    // Restoring then inserts at those stale positions, shifting already-restored
-    // docs upward and creating gaps.
-    // Example: restore sortOrder=99 → {99}. Restore sortOrder=98 → shifts 99→100,
-    // inserts 98 → {98, 100}. Gap at 99.
-    // Fix: clamp restore position to min(existing.sortOrder, currentSiblingCount).
-    // TODO: clamp restore position in restoreDocument
-    it.todo('trash and restore cycle on 100 individual items should produce contiguous sortOrders');
+    // restoreDocument clamps the restore position to min(existing.sortOrder, currentSiblingCount)
+    // so that stale stored sortOrders don't create gaps when items are restored individually.
+    it('trash and restore cycle on 100 individual items should produce contiguous sortOrders', () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 100; i++) {
+        ids.push(createDocument({ title: `Doc ${i}` }).id);
+      }
+
+      // Trash all 100 items individually, from highest sortOrder downward.
+      // This is the worst case: each doc retains its original sortOrder.
+      const sorted = getAllDocs(getDb())
+        .sort((a, b) => b.sortOrder - a.sortOrder);
+      for (const doc of sorted) {
+        trashDocument(doc.id);
+      }
+
+      // All should be trashed now
+      expect(getAllDocs(getDb())).toHaveLength(0);
+
+      // Restore all 100 individually, in order of stored sortOrder (lowest first).
+      // Without the clamp fix, stale sortOrders would create gaps.
+      const trashed = (getDb().prepare(
+        `SELECT id, sortOrder FROM documents WHERE deletedAt IS NOT NULL ORDER BY sortOrder ASC`,
+      ).all() as { id: string; sortOrder: number }[]);
+      expect(trashed).toHaveLength(100);
+
+      for (const doc of trashed) {
+        restoreDocument(doc.id);
+      }
+
+      const orders = getSortOrders(getDb(), null);
+      expect(orders).toEqual(Array.from({ length: 100 }, (_, i) => i));
+    });
 
     // Create 100 items under different parents (10 parents × 10 children each).
     // Then move children across parents randomly. All parents should maintain

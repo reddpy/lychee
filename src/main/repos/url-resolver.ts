@@ -8,7 +8,7 @@ interface UrlHandler {
   resolve: (url: string) => Promise<ResolvedUrlResult>;
 }
 
-const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i;
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp)$/i;
 const IMAGE_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 const FETCH_HEADERS = {
@@ -50,33 +50,26 @@ const contentTypeProbeHandler: UrlHandler = {
     const { net } = await import('electron');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
+    const fetchOpts = { headers: FETCH_HEADERS, signal: controller.signal as never, redirect: 'follow' as const };
     try {
       // Try HEAD first, fall back to GET if HEAD fails (some servers reject HEAD)
-      let response = await net.fetch(url, {
-        method: 'HEAD',
-        headers: FETCH_HEADERS,
-        signal: controller.signal as never,
-        redirect: 'follow',
-      });
+      let response = await net.fetch(url, { method: 'HEAD', ...fetchOpts })
+        .catch(() => null);
 
-      if (!response.ok) {
-        response = await net.fetch(url, {
-          method: 'GET',
-          headers: FETCH_HEADERS,
-          signal: controller.signal as never,
-          redirect: 'follow',
-        });
+      if (!response || !response.ok) {
+        response = await net.fetch(url, { method: 'GET', ...fetchOpts });
       }
 
-      const contentType = response.headers.get('content-type') || '';
+      const rawContentType = response.headers.get('content-type') || '';
+      const contentType = rawContentType.split(';')[0].trim().toLowerCase();
 
-      if (IMAGE_CONTENT_TYPES.some((t) => contentType.includes(t))) {
+      if (IMAGE_CONTENT_TYPES.includes(contentType)) {
         // It's an image — download it
         const { id, filePath } = await downloadImage(url);
         return { type: 'image', id, filePath, sourceUrl: url };
       }
 
-      if (contentType.includes('text/html')) {
+      if (contentType === 'text/html') {
         const meta = await fetchUrlMetadata(url);
         return { type: 'bookmark', url: meta.url, title: meta.title, description: meta.description, imageUrl: meta.imageUrl, faviconUrl: meta.faviconUrl };
       }

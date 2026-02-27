@@ -242,10 +242,10 @@ describe('Document Repository — Trash & Restore Cascading', () => {
       restoreDocument(a.id);
 
       const restored = getDocumentById(a.id)!;
-      // Should be at position 0 (it's the only doc), but it's at stale position 2
-      expect(restored.sortOrder).toBe(2); // BUG: should be 0
+      // Restore position is now clamped to 0 (no siblings)
+      expect(restored.sortOrder).toBe(0);
       const orders = getSortOrders(getDb(), null);
-      expect(orders).toEqual([2]); // BUG: only doc is at position 2, not 0
+      expect(orders).toEqual([0]);
     });
 
     it('BUG: restore after new docs created inserts at stale position', () => {

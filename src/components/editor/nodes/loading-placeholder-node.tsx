@@ -1,4 +1,4 @@
-import type { ReactElement } from "react"
+import { useRef, type ReactElement } from "react"
 import {
   $applyNodeReplacement,
   DecoratorNode,
@@ -9,6 +9,7 @@ import {
   type SerializedLexicalNode,
   type Spread,
 } from "lexical"
+import { useDecoratorBlock } from "@/components/editor/hooks/use-decorator-block"
 
 export type SerializedLoadingPlaceholderNode = Spread<
   {
@@ -18,6 +19,23 @@ export type SerializedLoadingPlaceholderNode = Spread<
   },
   SerializedLexicalNode
 >
+
+function LoadingPlaceholderComponent({ nodeKey, label }: { nodeKey: NodeKey; label: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useDecoratorBlock({
+    nodeKey,
+    containerRef,
+    isNodeType: $isLoadingPlaceholderNode,
+  })
+
+  return (
+    <div ref={containerRef} className="loading-placeholder-content">
+      <div className="loading-placeholder-spinner" />
+      <span>{label}</span>
+    </div>
+  )
+}
 
 export class LoadingPlaceholderNode extends DecoratorNode<ReactElement | null> {
   __label: string
@@ -67,10 +85,7 @@ export class LoadingPlaceholderNode extends DecoratorNode<ReactElement | null> {
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): ReactElement | null {
     return (
-      <div className="loading-placeholder-content">
-        <div className="loading-placeholder-spinner" />
-        <span>{this.__label}</span>
-      </div>
+      <LoadingPlaceholderComponent nodeKey={this.__key} label={this.__label} />
     )
   }
 }

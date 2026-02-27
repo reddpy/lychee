@@ -190,7 +190,7 @@ describe('IPC Payload Edge Cases', () => {
   // in the patch is ignored by updateDocument, but we should verify this.
   it('documents.update receives full payload including id field', async () => {
     const handler = handlers.get('documents.update')!;
-    const payload = { id: '1', title: 'Updated', content: '{"root":{}}' };
+    const payload = { id: '1', title: 'Updated', content: '{"root":{"children":[]}}' };
     await handler(null, payload);
     // The handler calls updateDocument('1', { id: '1', title: 'Updated', content: '...' })
     // The second arg is the full payload — the repo ignores the `id` in the patch.
@@ -319,10 +319,10 @@ describe('IPC Payload Edge Cases', () => {
   // Even larger — 500KB note (heavy user with tons of content)
   it('documents.update with ~500KB content payload', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = 'x'.repeat(500 * 1024);
+    const content = '{"root":{"children":[{"type":"text","text":"' + 'x'.repeat(500 * 1024) + '"}]}}';
     await handler(null, { id: '1', content });
     const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
-    expect(received.length).toBe(500 * 1024);
+    expect(received.length).toBe(content.length);
   });
 
   // Content with special characters — unicode, emoji, null bytes.
@@ -331,7 +331,7 @@ describe('IPC Payload Edge Cases', () => {
     const handler = handlers.get('documents.update')!;
     const payload = {
       id: '1',
-      content: '{"text":"Hello 世界 🌍 café naïve"}',
+      content: '{"root":{"children":[{"type":"paragraph","children":[{"type":"text","text":"Hello 世界 🌍 café naïve"}]}]}}',
       title: '日本語タイトル 🎌',
     };
     await handler(null, payload);
@@ -341,29 +341,31 @@ describe('IPC Payload Edge Cases', () => {
   // Content with characters that could break JSON or SQL if improperly escaped.
   it('documents.update with content containing quotes and backslashes', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = '{"text":"He said \\"hello\\" and used a \\\\backslash"}';
+    const content = '{"root":{"children":[{"type":"text","text":"He said \\"hello\\" and used a \\\\backslash"}]}}';
     await handler(null, { id: '1', content });
     const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
     expect(received).toBe(content);
   });
 
-  // Content with newlines, tabs, and null bytes.
+  // Content with newlines, tabs, and null bytes inside valid JSON structure.
   it('documents.update with control characters in content', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = 'line1\nline2\ttab\r\nwindows\0null';
+    const textWithControls = 'line1\nline2\ttab\r\nwindows\0null';
+    const content = JSON.stringify({ root: { children: [{ type: 'text', text: textWithControls }] } });
     await handler(null, { id: '1', content });
     const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
     expect(received).toBe(content);
-    expect(received).toContain('\0');
+    expect(received).toContain('\\u0000');
   });
 
   // Content containing an SQL injection attempt. The handler must pass it
   // through as a plain string — parameterized queries in the repo protect us.
   it('documents.update with SQL-injection-like content', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = "Robert'); DROP TABLE documents;--";
-    await handler(null, { id: '1', title: content, content });
-    expect(docs.updateDocument).toHaveBeenCalledWith('1', { id: '1', title: content, content });
+    const sqlInjection = "Robert'); DROP TABLE documents;--";
+    const content = JSON.stringify({ root: { children: [{ type: 'text', text: sqlInjection }] } });
+    await handler(null, { id: '1', title: sqlInjection, content });
+    expect(docs.updateDocument).toHaveBeenCalledWith('1', { id: '1', title: sqlInjection, content });
   });
 
   // Emoji field update — user sets or clears the note icon.
@@ -714,33 +716,29 @@ describe('IPC Payload Edge Cases', () => {
     expect(images.downloadImage).toHaveBeenCalledWith(url);
   });
 
-  // Unvalidated URL from pasted markdown — user pastes `![](file:///etc/passwd)`
-  // The handler passes it through — the repo should handle rejection.
-  it('images.download with file:// URL (unvalidated paste)', async () => {
+  // Dangerous URL schemes are now rejected at the IPC layer.
+  it('images.download rejects file:// URL', async () => {
     const handler = handlers.get('images.download')!;
-    await handler(null, { url: 'file:///etc/passwd' });
-    expect(images.downloadImage).toHaveBeenCalledWith('file:///etc/passwd');
+    await expect(handler(null, { url: 'file:///etc/passwd' })).rejects.toThrow('Blocked URL scheme');
+    expect(images.downloadImage).not.toHaveBeenCalled();
   });
 
-  // Another dangerous scheme from pasted content.
-  it('images.download with javascript: URL (unvalidated paste)', async () => {
+  it('images.download rejects javascript: URL', async () => {
     const handler = handlers.get('images.download')!;
-    await handler(null, { url: 'javascript:alert(1)' });
-    expect(images.downloadImage).toHaveBeenCalledWith('javascript:alert(1)');
+    await expect(handler(null, { url: 'javascript:alert(1)' })).rejects.toThrow('Blocked URL scheme');
+    expect(images.downloadImage).not.toHaveBeenCalled();
   });
 
-  // Relative URL from pasted HTML — the handler passes it as-is.
-  it('images.download with relative URL', async () => {
+  it('images.download rejects relative URL (no scheme)', async () => {
     const handler = handlers.get('images.download')!;
-    await handler(null, { url: '/images/photo.png' });
-    expect(images.downloadImage).toHaveBeenCalledWith('/images/photo.png');
+    await expect(handler(null, { url: '/images/photo.png' })).rejects.toThrow('Blocked URL scheme');
+    expect(images.downloadImage).not.toHaveBeenCalled();
   });
 
-  // Data URL — user pastes an inline data URL image from another site.
-  it('images.download with data: URL', async () => {
+  it('images.download rejects data: URL', async () => {
     const handler = handlers.get('images.download')!;
-    await handler(null, { url: 'data:image/png;base64,iVBOR' });
-    expect(images.downloadImage).toHaveBeenCalledWith('data:image/png;base64,iVBOR');
+    await expect(handler(null, { url: 'data:image/png;base64,iVBOR' })).rejects.toThrow('Blocked URL scheme');
+    expect(images.downloadImage).not.toHaveBeenCalled();
   });
 
   // The frontend destructures { id, filePath } from the response.
@@ -852,30 +850,26 @@ describe('IPC Payload Edge Cases', () => {
     expect(shell.openExternal).toHaveBeenCalledWith(url);
   });
 
-  // Dangerous URL schemes that could come from user-pasted link hrefs.
-  // The handler passes them through — Electron's shell.openExternal handles security.
-  it('shell.openExternal with file:// URL (from pasted link)', async () => {
+  // Dangerous URL schemes are now rejected at the IPC layer.
+  it('shell.openExternal rejects file:// URL', async () => {
     const handler = handlers.get('shell.openExternal')!;
-    await handler(null, { url: 'file:///etc/passwd' });
-    expect(shell.openExternal).toHaveBeenCalledWith('file:///etc/passwd');
+    await expect(handler(null, { url: 'file:///etc/passwd' })).rejects.toThrow('Blocked URL scheme');
+    expect(shell.openExternal).not.toHaveBeenCalled();
   });
 
-  it('shell.openExternal with javascript: URL (from pasted link)', async () => {
+  it('shell.openExternal rejects javascript: URL', async () => {
     const handler = handlers.get('shell.openExternal')!;
-    await handler(null, { url: 'javascript:alert(document.cookie)' });
-    expect(shell.openExternal).toHaveBeenCalledWith('javascript:alert(document.cookie)');
+    await expect(handler(null, { url: 'javascript:alert(document.cookie)' })).rejects.toThrow('Blocked URL scheme');
+    expect(shell.openExternal).not.toHaveBeenCalled();
   });
 
-  // shell.openExternal rejects — the 2 call sites without .catch() will get
-  // unhandled rejections. Verify the error propagates (not swallowed by handler).
-  it('shell.openExternal propagates rejection from electron shell', async () => {
-    (shell.openExternal as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      new Error('Failed to open: invalid URL scheme'),
-    );
+  // Unrecognized schemes are blocked before reaching shell.openExternal.
+  it('shell.openExternal rejects unrecognized URL scheme', async () => {
     const handler = handlers.get('shell.openExternal')!;
     await expect(handler(null, { url: 'bad://scheme' })).rejects.toThrow(
-      'Failed to open: invalid URL scheme',
+      'Blocked URL scheme: bad',
     );
+    expect(shell.openExternal).not.toHaveBeenCalled();
   });
 
   // ────────────────────────────────────────────────────────
@@ -1436,11 +1430,25 @@ describe('Complex JSON Payload Edge Cases', () => {
   // contains non-node objects. The handler currently passes it through
   // — the editor validates on load. But the IPC layer SHOULD validate
   // that content has the basic structure.
-  it.todo('should reject content without root key (invalid editor state)');
+  it('should reject content without root key (invalid editor state)', async () => {
+    const handler = handlers.get('documents.update')!;
+    const content = JSON.stringify({ nodes: [], version: 1 });
+    await expect(handler(null, { id: 'no-root', content })).rejects.toThrow('content must have a root key');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
-  it.todo('should reject content where root.children is not an array');
+  it('should reject content where root.children is not an array', async () => {
+    const handler = handlers.get('documents.update')!;
+    const content = JSON.stringify({ root: { children: 'not-an-array', type: 'root' } });
+    await expect(handler(null, { id: 'bad-children', content })).rejects.toThrow('content root.children must be an array');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
-  it.todo('should reject content that is not valid JSON at all');
+  it('should reject content that is not valid JSON at all', async () => {
+    const handler = handlers.get('documents.update')!;
+    await expect(handler(null, { id: 'bad-json', content: '{not valid json}' })).rejects.toThrow('content is not valid JSON');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
   // A code-block with executable shell commands — a local note-taking app
   // stores these as data, but if content is ever evaluated or interpolated,
@@ -1646,37 +1654,60 @@ describe('Complex JSON Payload Edge Cases', () => {
   // ── Aspirational Validation Tests ──────────────────────────
   // These test what the IPC layer SHOULD do but doesn't yet.
 
-  // The handler should validate that `id` is present in update payloads.
-  // Currently if id is missing, updateDocument gets called with (undefined, payload)
-  // which would either crash or create garbage in the DB.
-  it.todo('should reject documents.update without id field');
+  // The handler validates that `id` is present in update payloads.
+  it('should reject documents.update without id field', async () => {
+    const handler = handlers.get('documents.update')!;
+    await expect(handler(null, { content: '{}' })).rejects.toThrow('Missing required field: id');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
-  // The handler should validate that content, when provided, is valid JSON.
-  // Currently invalid JSON strings get stored as-is, and the editor crashes
-  // on load when trying to parse them.
-  it.todo('should reject documents.update with content that is not valid JSON');
+  // Content validation rejects non-JSON strings in the update handler.
+  it('should reject documents.update with content that is not valid JSON', async () => {
+    const handler = handlers.get('documents.update')!;
+    await expect(handler(null, { id: 'bad-json', content: 'this is not JSON' })).rejects.toThrow('content is not valid JSON');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
-  // The handler should validate image MIME types before passing to saveImage.
-  // Currently any string is accepted as mimeType, and unsupported types only
-  // fail deep inside saveImage with a confusing error.
-  it.todo('should reject images.save with mimeType not in the allowlist');
+  // The handler validates image MIME types before passing to saveImage.
+  it('should reject images.save with mimeType not in the allowlist', async () => {
+    const handler = handlers.get('images.save')!;
+    await expect(handler(null, { data: 'abc', mimeType: 'text/html' })).rejects.toThrow('Unsupported image type');
+    expect(images.saveImage).not.toHaveBeenCalled();
+  });
 
-  // The handler should validate that URLs for images.download are http/https.
-  // Currently file://, javascript:, and data: URLs get passed to net.fetch
-  // which may have different security properties.
-  it.todo('should reject images.download with non-http URL schemes');
+  // The handler validates that URLs for images.download are http/https.
+  it('should reject images.download with non-http URL schemes', async () => {
+    const handler = handlers.get('images.download')!;
+    await expect(handler(null, { url: 'file:///etc/passwd' })).rejects.toThrow('Blocked URL scheme for image download');
+    await expect(handler(null, { url: 'data:image/png;base64,abc' })).rejects.toThrow('Blocked URL scheme for image download');
+    expect(images.downloadImage).not.toHaveBeenCalled();
+  });
 
-  // The handler should validate that URLs for shell.openExternal are http/https
-  // or mailto. Currently javascript: and file: URLs get passed to Electron's
-  // shell.openExternal which could execute arbitrary code or access local files.
-  it.todo('should reject shell.openExternal with javascript: URL');
-  it.todo('should reject shell.openExternal with file:// URL');
+  // The handler validates that URLs for shell.openExternal are http/https or mailto.
+  it('should reject shell.openExternal with javascript: URL', async () => {
+    const handler = handlers.get('shell.openExternal')!;
+    await expect(handler(null, { url: 'javascript:alert(1)' })).rejects.toThrow('Blocked URL scheme');
+    expect(shell.openExternal).not.toHaveBeenCalled();
+  });
 
-  // The handler should validate that sortOrder is a non-negative integer.
-  // Currently fractional and negative values pass through to moveDocument
-  // and create inconsistent state in the sort order.
-  it.todo('should reject documents.move with negative sortOrder');
-  it.todo('should reject documents.move with fractional sortOrder');
+  it('should reject shell.openExternal with file:// URL', async () => {
+    const handler = handlers.get('shell.openExternal')!;
+    await expect(handler(null, { url: 'file:///etc/passwd' })).rejects.toThrow('Blocked URL scheme');
+    expect(shell.openExternal).not.toHaveBeenCalled();
+  });
+
+  // The handler validates that sortOrder is a non-negative integer.
+  it('should reject documents.move with negative sortOrder', async () => {
+    const handler = handlers.get('documents.move')!;
+    await expect(handler(null, { id: 'd1', parentId: null, sortOrder: -1 })).rejects.toThrow('sortOrder must be non-negative');
+    expect(docs.moveDocument).not.toHaveBeenCalled();
+  });
+
+  it('should reject documents.move with fractional sortOrder', async () => {
+    const handler = handlers.get('documents.move')!;
+    await expect(handler(null, { id: 'd1', parentId: null, sortOrder: 1.5 })).rejects.toThrow('sortOrder must be an integer');
+    expect(docs.moveDocument).not.toHaveBeenCalled();
+  });
 
   // ── Content Shape Guarantees ──────────────────────────────
 
@@ -1704,22 +1735,19 @@ describe('Complex JSON Payload Edge Cases', () => {
     expect(received).toBe(content);
   });
 
-  // Empty object as content — technically valid JSON but not a valid editor state.
-  it('empty JSON object {} passes through handler', async () => {
+  // Empty object as content — valid JSON but missing root key, now rejected.
+  it('empty JSON object {} is rejected (no root key)', async () => {
     const handler = handlers.get('documents.update')!;
-    await handler(null, { id: '1', content: '{}' });
-    const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
-    expect(received).toBe('{}');
+    await expect(handler(null, { id: '1', content: '{}' })).rejects.toThrow('content must have a root key');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 
-  // Non-JSON string as content — plain text that's not JSON at all.
-  // Currently passes through since the handler doesn't validate.
-  it('non-JSON string passes through handler (no validation exists)', async () => {
+  // Non-JSON string as content — rejected by validation.
+  it('non-JSON string is rejected by content validation', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = 'This is just plain text, not JSON at all';
-    await handler(null, { id: '1', content });
-    const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
-    expect(received).toBe(content);
+    await expect(handler(null, { id: '1', content: 'This is just plain text, not JSON at all' }))
+      .rejects.toThrow('content is not valid JSON');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 });
 
@@ -1794,24 +1822,18 @@ describe('Payload Type Validation — Wrong Types & Missing Fields', () => {
 
   // ── documents.update — missing/wrong id ─────────────────────
 
-  // If id is missing, the handler calls updateDocument(undefined, payload).
-  // The repo does getDocumentById(undefined) which returns null, then throws
-  // "Document not found: undefined".
-  it('documents.update with missing id calls repo with (undefined, payload)', async () => {
+  // Missing id is now rejected at the IPC layer before reaching the repo.
+  it('documents.update with missing id is rejected', async () => {
     const handler = handlers.get('documents.update')!;
-    await handler(null, { title: 'No ID' });
-    const callArgs = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[0]).toBeUndefined();
-    expect(callArgs[1]).toEqual({ title: 'No ID' });
+    await expect(handler(null, { title: 'No ID' })).rejects.toThrow('Missing required field: id');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 
-  // id as null — handler extracts payload.id which is null.
-  // updateDocument(null, payload) → getDocumentById(null) → WHERE id = null → no match → throws.
-  it('documents.update with null id calls repo with (null, payload)', async () => {
+  // id as null is now rejected at the IPC layer.
+  it('documents.update with null id is rejected', async () => {
     const handler = handlers.get('documents.update')!;
-    await handler(null, { id: null, content: 'data' });
-    const callArgs = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[0]).toBeNull();
+    await expect(handler(null, { id: null, content: 'data' })).rejects.toThrow('Missing required field: id');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 
   // id as number — the frontend could accidentally send a numeric ID.
@@ -1824,11 +1846,11 @@ describe('Payload Type Validation — Wrong Types & Missing Fields', () => {
     expect(callArgs[0]).toBe(123);
   });
 
-  // Empty string id — getDocumentById('') would WHERE id = '' → no match → throws.
-  it('documents.update with empty string id passes empty string to repo', async () => {
+  // Empty string id is now rejected at the IPC layer.
+  it('documents.update with empty string id is rejected', async () => {
     const handler = handlers.get('documents.update')!;
-    await handler(null, { id: '', content: 'empty-id' });
-    expect(docs.updateDocument).toHaveBeenCalledWith('', { id: '', content: 'empty-id' });
+    await expect(handler(null, { id: '', content: 'empty-id' })).rejects.toThrow('Missing required field: id');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 
   // ── documents.get — wrong id type ──────────────────────────
@@ -1883,40 +1905,32 @@ describe('Payload Type Validation — Wrong Types & Missing Fields', () => {
 
   // ── documents.move — sortOrder type errors ──────────────────
 
-  // sortOrder as string — the handler destructures payload.sortOrder.
-  // moveDocument receives the string and uses it in SQL arithmetic,
-  // which could silently coerce or produce NaN comparisons.
-  it('documents.move with string sortOrder passes string to repo', async () => {
+  // sortOrder as string — now rejected at the IPC layer.
+  it('documents.move with string sortOrder is rejected', async () => {
     const handler = handlers.get('documents.move')!;
-    await handler(null, { id: 'd1', parentId: null, sortOrder: '3' });
-    const callArgs = (docs.moveDocument as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[2]).toBe('3');
-    expect(typeof callArgs[2]).toBe('string');
+    await expect(handler(null, { id: 'd1', parentId: null, sortOrder: '3' })).rejects.toThrow('sortOrder must be an integer');
+    expect(docs.moveDocument).not.toHaveBeenCalled();
   });
 
-  // sortOrder as NaN — moveDocument receives NaN, SQL SET sortOrder = NaN
-  // would corrupt the sort order for all siblings.
-  it('documents.move with NaN sortOrder passes NaN to repo', async () => {
+  // sortOrder as NaN — rejected by Number.isInteger(NaN) === false.
+  it('documents.move with NaN sortOrder is rejected', async () => {
     const handler = handlers.get('documents.move')!;
-    await handler(null, { id: 'd1', parentId: null, sortOrder: NaN });
-    const callArgs = (docs.moveDocument as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(Number.isNaN(callArgs[2])).toBe(true);
+    await expect(handler(null, { id: 'd1', parentId: null, sortOrder: NaN })).rejects.toThrow('sortOrder must be an integer');
+    expect(docs.moveDocument).not.toHaveBeenCalled();
   });
 
-  // sortOrder missing entirely — handler extracts undefined.
-  it('documents.move with missing sortOrder passes undefined to repo', async () => {
+  // sortOrder missing entirely — undefined is not an integer, rejected.
+  it('documents.move with missing sortOrder is rejected', async () => {
     const handler = handlers.get('documents.move')!;
-    await handler(null, { id: 'd1', parentId: null });
-    const callArgs = (docs.moveDocument as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[2]).toBeUndefined();
+    await expect(handler(null, { id: 'd1', parentId: null })).rejects.toThrow('sortOrder must be an integer');
+    expect(docs.moveDocument).not.toHaveBeenCalled();
   });
 
-  // sortOrder as object — completely wrong type.
-  it('documents.move with object sortOrder passes object to repo', async () => {
+  // sortOrder as object — not an integer, rejected.
+  it('documents.move with object sortOrder is rejected', async () => {
     const handler = handlers.get('documents.move')!;
-    await handler(null, { id: 'd1', parentId: null, sortOrder: { value: 3 } });
-    const callArgs = (docs.moveDocument as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[2]).toEqual({ value: 3 });
+    await expect(handler(null, { id: 'd1', parentId: null, sortOrder: { value: 3 } })).rejects.toThrow('sortOrder must be an integer');
+    expect(docs.moveDocument).not.toHaveBeenCalled();
   });
 
   // ── images.save — wrong types ──────────────────────────────
@@ -1931,23 +1945,18 @@ describe('Payload Type Validation — Wrong Types & Missing Fields', () => {
     expect(callArgs[1]).toBe('image/png');
   });
 
-  // mimeType missing — handler calls saveImage(data, undefined).
-  // The repo does MIME_TO_EXT[undefined] → undefined → throws "Unsupported image type".
-  it('images.save with missing mimeType field calls repo with undefined', async () => {
+  // mimeType missing — rejected by MIME allowlist in IPC handler.
+  it('images.save with missing mimeType field is rejected', async () => {
     const handler = handlers.get('images.save')!;
-    await handler(null, { data: 'abc' });
-    const callArgs = (images.saveImage as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[0]).toBe('abc');
-    expect(callArgs[1]).toBeUndefined();
+    await expect(handler(null, { data: 'abc' })).rejects.toThrow('Unsupported image type');
+    expect(images.saveImage).not.toHaveBeenCalled();
   });
 
-  // Both missing — completely empty payload.
-  it('images.save with empty payload calls repo with (undefined, undefined)', async () => {
+  // Both missing — rejected by MIME allowlist in IPC handler.
+  it('images.save with empty payload is rejected', async () => {
     const handler = handlers.get('images.save')!;
-    await handler(null, {});
-    const callArgs = (images.saveImage as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[0]).toBeUndefined();
-    expect(callArgs[1]).toBeUndefined();
+    await expect(handler(null, {})).rejects.toThrow('Unsupported image type');
+    expect(images.saveImage).not.toHaveBeenCalled();
   });
 
   // data as number — totally wrong type.
@@ -1958,32 +1967,31 @@ describe('Payload Type Validation — Wrong Types & Missing Fields', () => {
     expect(callArgs[0]).toBe(12345);
   });
 
-  // mimeType as number — MIME_TO_EXT[123] → undefined → would throw.
-  it('images.save with numeric mimeType passes number to repo', async () => {
+  // mimeType as number — rejected by MIME allowlist (123 is not in allowed list).
+  it('images.save with numeric mimeType is rejected', async () => {
     const handler = handlers.get('images.save')!;
-    await handler(null, { data: 'abc', mimeType: 123 });
-    const callArgs = (images.saveImage as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[1]).toBe(123);
+    await expect(handler(null, { data: 'abc', mimeType: 123 })).rejects.toThrow('Unsupported image type');
+    expect(images.saveImage).not.toHaveBeenCalled();
   });
 
   // ── images.download — wrong URL type ───────────────────────
 
-  it('images.download with null url calls repo with null', async () => {
+  it('images.download with null url is rejected', async () => {
     const handler = handlers.get('images.download')!;
-    await handler(null, { url: null });
-    expect(images.downloadImage).toHaveBeenCalledWith(null);
+    await expect(handler(null, { url: null })).rejects.toThrow();
+    expect(images.downloadImage).not.toHaveBeenCalled();
   });
 
-  it('images.download with missing url field calls repo with undefined', async () => {
+  it('images.download with missing url field is rejected', async () => {
     const handler = handlers.get('images.download')!;
-    await handler(null, {});
-    expect(images.downloadImage).toHaveBeenCalledWith(undefined);
+    await expect(handler(null, {})).rejects.toThrow();
+    expect(images.downloadImage).not.toHaveBeenCalled();
   });
 
-  it('images.download with empty string url calls repo with empty string', async () => {
+  it('images.download with empty string url is rejected', async () => {
     const handler = handlers.get('images.download')!;
-    await handler(null, { url: '' });
-    expect(images.downloadImage).toHaveBeenCalledWith('');
+    await expect(handler(null, { url: '' })).rejects.toThrow('Blocked URL scheme for image download');
+    expect(images.downloadImage).not.toHaveBeenCalled();
   });
 
   // ── images.getPath — wrong id type ─────────────────────────
@@ -2010,22 +2018,22 @@ describe('Payload Type Validation — Wrong Types & Missing Fields', () => {
 
   // ── shell.openExternal — wrong URL type ────────────────────
 
-  it('shell.openExternal with null url calls shell with null', async () => {
+  it('shell.openExternal with null url is rejected', async () => {
     const handler = handlers.get('shell.openExternal')!;
-    await handler(null, { url: null });
-    expect(shell.openExternal).toHaveBeenCalledWith(null);
+    await expect(handler(null, { url: null })).rejects.toThrow();
+    expect(shell.openExternal).not.toHaveBeenCalled();
   });
 
-  it('shell.openExternal with empty string url calls shell with empty string', async () => {
+  it('shell.openExternal with empty string url is rejected', async () => {
     const handler = handlers.get('shell.openExternal')!;
-    await handler(null, { url: '' });
-    expect(shell.openExternal).toHaveBeenCalledWith('');
+    await expect(handler(null, { url: '' })).rejects.toThrow('Blocked URL scheme');
+    expect(shell.openExternal).not.toHaveBeenCalled();
   });
 
-  it('shell.openExternal with missing url field calls shell with undefined', async () => {
+  it('shell.openExternal with missing url field is rejected', async () => {
     const handler = handlers.get('shell.openExternal')!;
-    await handler(null, {});
-    expect(shell.openExternal).toHaveBeenCalledWith(undefined);
+    await expect(handler(null, {})).rejects.toThrow();
+    expect(shell.openExternal).not.toHaveBeenCalled();
   });
 
   // ── url.resolve — wrong URL type ───────────────────────────
@@ -2065,12 +2073,11 @@ describe('Payload Type Validation — Wrong Types & Missing Fields', () => {
     await expect(handler(null, undefined)).rejects.toThrow();
   });
 
-  // Array payload — payload.id is undefined (arrays don't have .id).
-  it('documents.update with array payload extracts undefined id', async () => {
+  // Array payload — payload.id is undefined, rejected by id validation.
+  it('documents.update with array payload is rejected (no id)', async () => {
     const handler = handlers.get('documents.update')!;
-    await handler(null, ['not', 'an', 'object']);
-    const callArgs = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(callArgs[0]).toBeUndefined();
+    await expect(handler(null, ['not', 'an', 'object'])).rejects.toThrow('Missing required field: id');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 
   // String payload — payload.id is undefined.
@@ -2269,7 +2276,7 @@ describe('Null vs Undefined Distinction', () => {
   // title: undefined — handler passes undefined. Repo preserves existing title.
   it('documents.update with title: undefined means "do not update title"', async () => {
     const handler = handlers.get('documents.update')!;
-    await handler(null, { id: '1', content: 'only content' });
+    await handler(null, { id: '1', content: '{"root":{"children":[]}}' });
     const patch = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(patch.title).toBeUndefined();
     expect('title' in patch).toBe(false);
@@ -2454,7 +2461,7 @@ describe('Handler Argument Order Verification', () => {
   // an object as id and a string as patch.
   it('documents.update arg order: arg[0] is id string, arg[1] is full payload', async () => {
     const handler = handlers.get('documents.update')!;
-    const payload = { id: 'update-me', title: 'New', content: '{}', emoji: '🎯' };
+    const payload = { id: 'update-me', title: 'New', content: '{"root":{"children":[]}}', emoji: '🎯' };
     await handler(null, payload);
     const callArgs = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(callArgs[0]).toBe('update-me');

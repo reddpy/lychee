@@ -29,6 +29,7 @@ vi.mock('../../db', () => ({
 import {
   setupImageDb, getDb, fs, net,
   downloadImage, getImagePath,
+  validImageArrayBuffer,
 } from './setup';
 
 describe('downloadImage', () => {
@@ -38,7 +39,7 @@ describe('downloadImage', () => {
   it('downloads image and detects MIME from content-type header', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
       headers: {
         get: vi.fn().mockReturnValue('image/jpeg'),
       },
@@ -52,11 +53,18 @@ describe('downloadImage', () => {
     expect(fs.writeFileSync).toHaveBeenCalled();
   });
 
-  // When the server returns a non-image content-type, downloadImage SHOULD
-  // reject it. Blindly defaulting to PNG for arbitrary content-types means
-  // HTML, JSON, executables, etc. get saved as .png files.
-  // TODO: reject unrecognized content-types in downloadImage
-  it.todo('should reject unrecognized content-type instead of defaulting to png');
+  // downloadImage rejects unrecognized content-types instead of defaulting to PNG.
+  it('should reject unrecognized content-type instead of defaulting to png', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('application/json') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/api/data'))
+      .rejects.toThrow('Unsupported content-type');
+  });
 
   // Real content-type headers often include charset: "image/jpeg; charset=utf-8".
   // The code uses .includes() to match, so "image/jpeg; charset=utf-8" should
@@ -64,7 +72,7 @@ describe('downloadImage', () => {
   it('detects MIME from content-type with extra params', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
       headers: {
         get: vi.fn().mockReturnValue('image/jpeg; charset=utf-8'),
       },
@@ -94,7 +102,7 @@ describe('downloadImage', () => {
     const db = getDb();
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: {
         get: vi.fn().mockReturnValue('image/png'),
       },
@@ -122,7 +130,7 @@ describe('downloadImage', () => {
     for (const [contentType, extPattern] of cases) {
       const mockResponse = {
         ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+        arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer(contentType)),
         headers: { get: vi.fn().mockReturnValue(contentType) },
       };
       (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -132,15 +140,31 @@ describe('downloadImage', () => {
     }
   });
 
-  // Null content-type header — headers.get() returns null.
-  // Without a content-type, we have no idea what the content is.
-  // SHOULD reject rather than blindly defaulting to PNG.
-  // TODO: reject null/missing content-type in downloadImage
-  it.todo('should reject when content-type header is null (unknown content)');
+  // Null content-type header — rejected as missing content-type.
+  it('should reject when content-type header is null (unknown content)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue(null) },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-  // Empty string content-type — same as null, unknown content.
-  // TODO: reject empty content-type in downloadImage
-  it.todo('should reject when content-type header is empty string');
+    await expect(downloadImage('https://example.com/mystery'))
+      .rejects.toThrow('Missing content-type header');
+  });
+
+  // Empty string content-type — rejected as missing content-type.
+  it('should reject when content-type header is empty string', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/unknown'))
+      .rejects.toThrow('Missing content-type header');
+  });
 
   // Various HTTP error codes — all should throw with the status code.
   it('throws with status code for various HTTP errors', async () => {
@@ -173,7 +197,7 @@ describe('downloadImage', () => {
   it('detects MIME from content-type with boundary parameter', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/gif')),
       headers: { get: vi.fn().mockReturnValue('image/gif; boundary=something') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -185,7 +209,11 @@ describe('downloadImage', () => {
   // Large download — 5MB buffer. Verify nothing crashes and the full buffer is written.
   it('handles large download (5MB) without truncation', async () => {
     const bigBuffer = new ArrayBuffer(5 * 1024 * 1024);
-    new Uint8Array(bigBuffer).fill(0xCD);
+    const view = new Uint8Array(bigBuffer);
+    view.fill(0xCD);
+    // Write PNG magic bytes at the start
+    const pngMagic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    for (let i = 0; i < pngMagic.length; i++) view[i] = pngMagic[i];
 
     const mockResponse = {
       ok: true,
@@ -202,25 +230,31 @@ describe('downloadImage', () => {
     expect(writtenBuffer.length).toBe(5 * 1024 * 1024);
   });
 
-  // Zero-byte download — the server returns an empty body.
-  // An empty response is never a valid image — SHOULD reject.
-  // TODO: implement zero-byte rejection in downloadImage
-  it.todo('should reject zero-byte download (empty response is not a valid image)');
+  // Zero-byte download — the server returns an empty body. Rejected.
+  it('should reject zero-byte download (empty response is not a valid image)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
+      headers: { get: vi.fn().mockReturnValue('image/png') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/empty.png'))
+      .rejects.toThrow('Image data is empty (zero bytes)');
+  });
 
   // Each download should produce a unique ID, even for the same URL.
   it('generates unique IDs for downloads of the same URL', async () => {
-    const mockResponse = {
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: { get: vi.fn().mockReturnValue('image/png') },
-    };
-
-    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+    });
     const r1 = await downloadImage('https://example.com/same.png');
 
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: { get: vi.fn().mockReturnValue('image/png') },
     });
     const r2 = await downloadImage('https://example.com/same.png');
@@ -232,7 +266,7 @@ describe('downloadImage', () => {
   it('downloaded image is retrievable via getImagePath', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
       headers: { get: vi.fn().mockReturnValue('image/jpeg') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -243,15 +277,29 @@ describe('downloadImage', () => {
     expect(got.filePath).toBe(downloaded.filePath);
   });
 
-  // Content-type with uppercase — "Image/JPEG" should still match as jpeg.
-  // RFC 7230 says HTTP header values for content-type are case-insensitive.
-  // The code SHOULD normalize the content-type before matching.
-  // TODO: normalize content-type to lowercase before matching in downloadImage
-  it.todo('uppercase content-type Image/JPEG should be detected as jpeg (RFC 7230)');
+  // Uppercase content-type normalized to lowercase before matching.
+  it('uppercase content-type Image/JPEG should be detected as jpeg (RFC 7230)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
+      headers: { get: vi.fn().mockReturnValue('Image/JPEG') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-  // "text/html" content-type — not an image. When a CDN returns a login page
-  // instead of the image (auth expired, region block), downloadImage SHOULD
-  // reject rather than saving HTML as a .png file.
-  // TODO: reject non-image content-types in downloadImage
-  it.todo('should reject non-image content-type text/html');
+    const result = await downloadImage('https://example.com/photo');
+    expect(result.filePath).toMatch(/\.jpg$/);
+  });
+
+  // text/html content-type is rejected — not an image.
+  it('should reject non-image content-type text/html', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('text/html') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/page'))
+      .rejects.toThrow('Unsupported content-type');
+  });
 });

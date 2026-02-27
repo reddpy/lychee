@@ -31,6 +31,7 @@ vi.mock('../../db', () => ({
 import {
   setupImageDb, getDb, fs, net,
   saveImage, getImagePath, downloadImage, deleteImage,
+  validImageBase64, validImageArrayBuffer,
 } from './setup';
 
 describe('Image Format Validation', () => {
@@ -101,28 +102,46 @@ describe('Image Format Validation', () => {
 
   // HTML content saved as "image/png" — could inject XSS into local filesystem.
   // A user might paste content from a web page that sends HTML as clipboard data.
-  // TODO: implement magic byte validation in saveImage
-  it.todo('should reject HTML content even with image/png MIME type');
+  it('should reject HTML content even with image/png MIME type', () => {
+    const html = Buffer.from('<html><body>XSS</body></html>');
+    expect(() => saveImage(html.toString('base64'), 'image/png'))
+      .toThrow('Content does not match image/png magic bytes');
+  });
 
   // PDF content disguised as image — should not be silently saved as .png.
-  // TODO: implement magic byte validation in saveImage
-  it.todo('should reject PDF content even with image/png MIME type');
+  it('should reject PDF content even with image/png MIME type', () => {
+    const pdf = Buffer.from('%PDF-1.4 fake pdf content');
+    expect(() => saveImage(pdf.toString('base64'), 'image/png'))
+      .toThrow('Content does not match image/png magic bytes');
+  });
 
   // JavaScript source saved as image — potential code execution vector.
-  // TODO: implement magic byte validation in saveImage
-  it.todo('should reject JavaScript content even with image/jpeg MIME type');
+  it('should reject JavaScript content even with image/jpeg MIME type', () => {
+    const js = Buffer.from('alert("pwned")');
+    expect(() => saveImage(js.toString('base64'), 'image/jpeg'))
+      .toThrow('Content does not match image/jpeg magic bytes');
+  });
 
   // ELF binary (Linux executable) saved as image — dangerous content.
-  // TODO: implement magic byte validation in saveImage
-  it.todo('should reject ELF binary content even with image/png MIME type');
+  it('should reject ELF binary content even with image/png MIME type', () => {
+    const elf = Buffer.from([0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0x00]);
+    expect(() => saveImage(elf.toString('base64'), 'image/png'))
+      .toThrow('Content does not match image/png magic bytes');
+  });
 
   // ZIP file disguised as image — could contain malware.
-  // TODO: implement magic byte validation in saveImage
-  it.todo('should reject ZIP content even with image/gif MIME type');
+  it('should reject ZIP content even with image/gif MIME type', () => {
+    const zip = Buffer.from([0x50, 0x4B, 0x03, 0x04, 0x0A, 0x00, 0x00, 0x00]);
+    expect(() => saveImage(zip.toString('base64'), 'image/gif'))
+      .toThrow('Content does not match image/gif magic bytes');
+  });
 
   // Plain text should never be stored as an image file.
-  // TODO: implement magic byte validation in saveImage
-  it.todo('should reject plain text content even with image/webp MIME type');
+  it('should reject plain text content even with image/webp MIME type', () => {
+    const text = Buffer.from('Just some plain text, not an image at all');
+    expect(() => saveImage(text.toString('base64'), 'image/webp'))
+      .toThrow('Content does not match image/webp magic bytes');
+  });
 
   // ── downloadImage: server lies about content-type ──
   // When a server returns HTML/JSON/binary with an image content-type,
@@ -130,27 +149,67 @@ describe('Image Format Validation', () => {
 
   // Server returns HTML with image/png content-type — common when a CDN
   // redirects to a login page but keeps the original content-type.
-  // TODO: implement magic byte validation in downloadImage
-  it.todo('download should reject HTML body even with image/png content-type');
+  it('download should reject HTML body even with image/png content-type', async () => {
+    const htmlBody = Buffer.from('<html><head><title>Login</title></head><body>Please log in</body></html>');
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(htmlBody.buffer.slice(htmlBody.byteOffset, htmlBody.byteOffset + htmlBody.byteLength)),
+      headers: { get: vi.fn().mockReturnValue('image/png') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://cdn.example.com/photo.png'))
+      .rejects.toThrow('Content does not match image/png magic bytes');
+  });
 
   // Server returns JSON error response with image content-type.
   // Common when an API endpoint returns an error but the content-type
   // was set before the error handler ran.
-  // TODO: implement magic byte validation in downloadImage
-  it.todo('download should reject JSON body even with image/jpeg content-type');
+  it('download should reject JSON body even with image/jpeg content-type', async () => {
+    const jsonBody = Buffer.from('{"error": "not found", "status": 404}');
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(jsonBody.buffer.slice(jsonBody.byteOffset, jsonBody.byteOffset + jsonBody.byteLength)),
+      headers: { get: vi.fn().mockReturnValue('image/jpeg') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://api.example.com/images/123'))
+      .rejects.toThrow('Content does not match image/jpeg magic bytes');
+  });
 
   // Server returns executable bytes with image content-type — malicious server.
-  // TODO: implement magic byte validation in downloadImage
-  it.todo('download should reject executable bytes even with image/gif content-type');
+  it('download should reject executable bytes even with image/gif content-type', async () => {
+    const elfBinary = Buffer.from([0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0x00]);
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(elfBinary.buffer.slice(elfBinary.byteOffset, elfBinary.byteOffset + elfBinary.byteLength)),
+      headers: { get: vi.fn().mockReturnValue('image/gif') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-  // ── Zero-byte images SHOULD be rejected ──
-  // A zero-byte file is never a valid image. When a server returns an empty
-  // response body, that's a failed download, not a legitimate image.
-  // TODO: implement zero-byte rejection in saveImage
-  it.todo('should reject zero-byte content as invalid image');
+    await expect(downloadImage('https://evil.example.com/malware.gif'))
+      .rejects.toThrow('Content does not match image/gif magic bytes');
+  });
 
-  // TODO: implement zero-byte rejection in downloadImage
-  it.todo('download should reject zero-byte response as invalid image');
+  // Zero-byte files are rejected — a zero-byte file is never a valid image.
+  it('should reject zero-byte content as invalid image', () => {
+    expect(() => saveImage('', 'image/png'))
+      .toThrow('Image data is empty (zero bytes)');
+  });
+
+  // Zero-byte download — empty response body is rejected.
+  it('download should reject zero-byte response as invalid image', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
+      headers: { get: vi.fn().mockReturnValue('image/png') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/empty.png'))
+      .rejects.toThrow('Image data is empty (zero bytes)');
+  });
 
   // ── Supported vs unsupported MIME types (the allowlist) ──
 
@@ -273,28 +332,67 @@ describe('Image Format Validation', () => {
     expect(row.mimeType).toBe('image/webp');
   });
 
-  // downloadImage with unsupported content-types SHOULD reject, not silently
-  // default to PNG. Saving SVG content as .png is misleading and broken.
-  // TODO: reject unsupported content-types in downloadImage instead of defaulting to png
-  it.todo('download should reject image/svg+xml content-type (not a supported format)');
+  // downloadImage rejects unsupported content-types instead of defaulting to PNG.
+  it('download should reject image/svg+xml content-type (not a supported format)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('image/svg+xml') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-  // TODO: reject unsupported content-types in downloadImage
-  it.todo('download should reject image/bmp content-type (not a supported format)');
+    await expect(downloadImage('https://example.com/icon.svg'))
+      .rejects.toThrow('Unsupported content-type');
+  });
 
-  // Non-image content-types should be rejected by downloadImage, not
-  // silently defaulted to PNG. text/html with a .png default is broken.
-  // TODO: reject non-image content-types in downloadImage
-  it.todo('download should reject text/html content-type (not an image)');
+  it('download should reject image/bmp content-type (not a supported format)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('image/bmp') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-  // application/octet-stream should not be silently defaulted to PNG.
-  // The system should require a recognized image content-type.
-  // TODO: reject ambiguous content-types in downloadImage
-  it.todo('download should reject application/octet-stream (ambiguous binary)');
+    await expect(downloadImage('https://example.com/old.bmp'))
+      .rejects.toThrow('Unsupported content-type');
+  });
 
-  // Uppercase content-type "Image/JPEG" — HTTP headers are case-insensitive
-  // per RFC 7230. The code SHOULD handle this, not silently fall through to PNG.
-  // TODO: normalize content-type to lowercase before matching in downloadImage
-  it.todo('download should handle uppercase content-type Image/JPEG as jpeg');
+  it('download should reject text/html content-type (not an image)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('text/html') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/page'))
+      .rejects.toThrow('Unsupported content-type');
+  });
+
+  it('download should reject application/octet-stream (ambiguous binary)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('application/octet-stream') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/binary'))
+      .rejects.toThrow('Unsupported content-type');
+  });
+
+  // Uppercase content-type "Image/JPEG" — normalized to lowercase before matching.
+  it('download should handle uppercase content-type Image/JPEG as jpeg', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
+      headers: { get: vi.fn().mockReturnValue('Image/JPEG') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    const result = await downloadImage('https://example.com/photo');
+    expect(result.filePath).toMatch(/\.jpg$/);
+  });
 });
 
 describe('GIF Support', () => {
@@ -401,10 +499,10 @@ describe('GIF Support', () => {
   // Mix of GIF and other formats — they coexist in the same DB table.
   it('GIFs coexist with PNG, JPEG, and WebP in DB', () => {
     const db = getDb();
-    const png = saveImage(Buffer.from('png data').toString('base64'), 'image/png');
-    const gif = saveImage(Buffer.from('GIF89a').toString('base64'), 'image/gif');
-    const jpg = saveImage(Buffer.from('jpeg data').toString('base64'), 'image/jpeg');
-    const webp = saveImage(Buffer.from('webp data').toString('base64'), 'image/webp');
+    const png = saveImage(validImageBase64('image/png'), 'image/png');
+    const gif = saveImage(validImageBase64('image/gif'), 'image/gif');
+    const jpg = saveImage(validImageBase64('image/jpeg'), 'image/jpeg');
+    const webp = saveImage(validImageBase64('image/webp'), 'image/webp');
 
     expect(png.filePath).toMatch(/\.png$/);
     expect(gif.filePath).toMatch(/\.gif$/);
@@ -441,12 +539,13 @@ describe('Data URL Format Edge Cases', () => {
 
   // Standard data URL with all parts.
   it('parses standard data URL: data:image/png;base64,<data>', () => {
-    const raw = Buffer.from('test payload');
-    const dataUrl = `data:image/png;base64,${raw.toString('base64')}`;
+    const rawBase64 = validImageBase64('image/png');
+    const dataUrl = `data:image/png;base64,${rawBase64}`;
     saveImage(dataUrl, 'image/png');
 
     const written = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0][1] as Buffer;
-    expect(written.toString()).toBe('test payload');
+    expect(written[0]).toBe(0x89); // PNG magic
+    expect(written[1]).toBe(0x50);
   });
 
   // Data URL for GIF format.
@@ -463,8 +562,8 @@ describe('Data URL Format Edge Cases', () => {
   // Data URL where prefix MIME doesn't match the mimeType argument.
   // Code ignores the prefix and trusts the argument.
   it('prefix MIME mismatch: data:image/png but saved as gif', () => {
-    const data = Buffer.from('some data');
-    const dataUrl = `data:image/png;base64,${data.toString('base64')}`;
+    const rawBase64 = validImageBase64('image/gif');
+    const dataUrl = `data:image/png;base64,${rawBase64}`;
     const result = saveImage(dataUrl, 'image/gif');
 
     expect(result.filePath).toMatch(/\.gif$/);
@@ -473,37 +572,34 @@ describe('Data URL Format Edge Cases', () => {
   // Malformed data URL — no ;base64 part, just has a comma.
   // The code splits on comma and takes [1], so it gets whatever is after the comma.
   it('handles malformed data URL with comma but no base64 marker', () => {
-    const raw = Buffer.from('payload');
-    const malformed = `data:weird/format,${raw.toString('base64')}`;
+    const rawBase64 = validImageBase64('image/png');
+    const malformed = `data:weird/format,${rawBase64}`;
     // The comma split still works — it takes everything after first comma
     saveImage(malformed, 'image/png');
 
     const written = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0][1] as Buffer;
-    expect(written.toString()).toBe('payload');
+    expect(written[0]).toBe(0x89); // PNG magic preserved
   });
 
   // Data URL with no prefix at all — just raw base64.
   it('raw base64 string without any prefix', () => {
-    const data = Buffer.from('raw image bytes');
-    const base64 = data.toString('base64');
+    const base64 = validImageBase64('image/png');
     // No comma in the string → code uses the whole string as base64
     expect(base64.includes(',')).toBe(false);
 
     saveImage(base64, 'image/png');
 
     const written = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0][1] as Buffer;
-    expect(written.toString()).toBe('raw image bytes');
+    expect(written[0]).toBe(0x89); // PNG magic
   });
 
   // Invalid base64 — Buffer.from with 'base64' encoding handles gracefully
-  // by ignoring non-base64 characters.
-  it('invalid base64 characters are silently ignored by Buffer.from', () => {
+  // by ignoring non-base64 characters. But the decoded bytes won't have
+  // valid magic bytes, so it should be rejected.
+  it('invalid base64 characters produce non-image content and are rejected', () => {
     // Node's Buffer.from('...', 'base64') ignores non-base64 chars
-    const result = saveImage('!!!not-valid-base64!!!', 'image/png');
-
-    expect(result.id).toBeDefined();
-    // Buffer.from will produce some output (it strips invalid chars)
-    expect(fs.writeFileSync).toHaveBeenCalled();
+    expect(() => saveImage('!!!not-valid-base64!!!', 'image/png'))
+      .toThrow('Content does not match image/png magic bytes');
   });
 });
 
@@ -515,7 +611,7 @@ describe('URL Extension vs Content-Type', () => {
   it('.gif URL with image/png content-type: saved as .png', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: { get: vi.fn().mockReturnValue('image/png') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -530,7 +626,7 @@ describe('URL Extension vs Content-Type', () => {
   it('.png URL with image/gif content-type: saved as .gif', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/gif')),
       headers: { get: vi.fn().mockReturnValue('image/gif') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -544,7 +640,7 @@ describe('URL Extension vs Content-Type', () => {
   it('.jpg URL with image/webp content-type: saved as .webp', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/webp')),
       headers: { get: vi.fn().mockReturnValue('image/webp') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -558,7 +654,7 @@ describe('URL Extension vs Content-Type', () => {
   it('extensionless URL with image/gif content-type: saved as .gif', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/gif')),
       headers: { get: vi.fn().mockReturnValue('image/gif') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -568,18 +664,42 @@ describe('URL Extension vs Content-Type', () => {
     expect(result.filePath).toMatch(/\.gif$/);
   });
 
-  // URL with .svg extension — SVG is not a supported raster format and can
-  // contain scripts. downloadImage SHOULD reject it, not silently save as PNG.
-  // TODO: reject unsupported content-types in downloadImage
-  it.todo('.svg URL should be rejected (SVG not a supported raster format)');
+  // URL with .svg extension — SVG content-type is rejected by downloadImage.
+  it('.svg URL should be rejected (SVG not a supported raster format)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('image/svg+xml') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-  // URL with .bmp extension — BMP is not a supported format.
-  // SHOULD reject, not silently save as PNG.
-  // TODO: reject unsupported content-types in downloadImage
-  it.todo('.bmp URL should be rejected (BMP not a supported format)');
+    await expect(downloadImage('https://example.com/icon.svg'))
+      .rejects.toThrow('Unsupported content-type');
+  });
 
-  // URL with .ico extension — ICO is not a supported format.
-  // SHOULD reject, not silently save as PNG.
-  // TODO: reject unsupported content-types in downloadImage
-  it.todo('.ico URL should be rejected (ICO not a supported format)');
+  // URL with .bmp extension — BMP content-type is rejected.
+  it('.bmp URL should be rejected (BMP not a supported format)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('image/bmp') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/old.bmp'))
+      .rejects.toThrow('Unsupported content-type');
+  });
+
+  // URL with .ico extension — ICO content-type is rejected.
+  it('.ico URL should be rejected (ICO not a supported format)', async () => {
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: { get: vi.fn().mockReturnValue('image/x-icon') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://example.com/favicon.ico'))
+      .rejects.toThrow('Unsupported content-type');
+  });
 });

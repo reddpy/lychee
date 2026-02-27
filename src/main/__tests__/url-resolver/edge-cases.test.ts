@@ -5,7 +5,7 @@
  * break the YouTube regex, bookmark fallback, or handler priority.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFetch = vi.fn();
 vi.mock('electron', () => ({
@@ -26,10 +26,22 @@ vi.mock('../../db', () => ({
   getDb: () => getTestDb(),
 }));
 
+const mockDownloadImage = vi.fn();
+vi.mock('../../repos/images', () => ({
+  downloadImage: (...args: unknown[]) => mockDownloadImage(...args),
+  saveImage: vi.fn(),
+  getImagePath: vi.fn(),
+  deleteImage: vi.fn(),
+}));
+
 import { setupResolverDb, resolveUrl } from './setup';
 
 describe('URL Resolver — Edge Cases', () => {
   setupResolverDb();
+
+  beforeEach(() => {
+    mockDownloadImage.mockResolvedValue({ id: 'mock-id', filePath: 'mock-id.png' });
+  });
 
   // ────────────────────────────────────────────────────────
   // YouTube: music.youtube.com
@@ -169,21 +181,9 @@ describe('URL Resolver — Edge Cases', () => {
   it('trusts HEAD content-type even if body would be different', async () => {
     // Server says image/png on HEAD but would serve HTML on GET.
     // Our probe trusts the HEAD response — that's the HTTP contract.
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/png' },
-        });
-      }
-      // Download
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'image/png' },
-      });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/png' },
     });
 
     const result = await resolveUrl('https://example.com/api/sneaky');
@@ -336,27 +336,15 @@ describe('URL Resolver — Edge Cases', () => {
   // Content-type with unusual casing
   // ────────────────────────────────────────────────────────
 
-  it('detects IMAGE/PNG with unusual casing via probe', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'IMAGE/PNG' },
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'IMAGE/PNG' },
-      });
+  it('detects IMAGE/PNG with unusual casing via probe (case-insensitive)', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'IMAGE/PNG' },
     });
 
     const result = await resolveUrl('https://example.com/api/avatar');
-    // IMAGE_CONTENT_TYPES uses .includes() with lowercase — uppercase won't match
-    // This documents the current behavior (case-sensitive matching)
-    expect(result.type).toBe('unsupported');
+    // Content-type is lowercased before matching — unusual casing is handled
+    expect(result.type).toBe('image');
   });
 
   // ────────────────────────────────────────────────────────
@@ -379,18 +367,9 @@ describe('URL Resolver — Edge Cases', () => {
   });
 
   it('handles concurrent resolution of different URL types', async () => {
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes('photo.png')) {
-        return Promise.resolve({
-          ok: true,
-          arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-          headers: { get: () => 'image/png' },
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        headers: { get: () => 'text/html' },
-      });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'text/html' },
     });
 
     const [yt, img, bm] = await Promise.all([
