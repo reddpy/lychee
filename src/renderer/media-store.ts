@@ -1,82 +1,83 @@
 import { create } from "zustand";
 
-type ActiveVideo = {
+type ActiveMedia = {
   noteId: string;
   noteTitle: string;
-  videoId: string;
-  /** Title of the YouTube video. */
-  videoTitle: string;
+  contentId: string;
+  contentTitle: string;
+  contentType: string;
   /** Opaque key to identify which component owns this entry. */
   key: string;
-  /** Whether this video is currently playing. */
+  /** Whether this media is currently playing. */
   isPlaying: boolean;
-  /** Callback to pause this video (provided by the component). */
+  /** Callback to pause this media (provided by the component). */
   pause: () => void;
-  /** Callback to resume this video (provided by the component). */
+  /** Callback to resume this media (provided by the component). */
   play: () => void;
-  /** Callback to scroll the video into view. */
+  /** Callback to scroll the media into view. */
   scrollTo: () => void;
 };
 
 type MediaState = {
-  activeVideo: ActiveVideo | null;
+  activeMedia: ActiveMedia | null;
 };
 
 type MediaActions = {
-  /** Record a new playing video. Auto-pauses the previous one if different. */
+  /** Record a new playing media. Auto-pauses the previous one if different. */
   setPlaying: (
     key: string,
     noteId: string,
     noteTitle: string,
-    videoId: string,
-    videoTitle: string,
+    contentId: string,
+    contentTitle: string,
+    contentType: string,
     pause: () => void,
     play: () => void,
     scrollTo: () => void,
   ) => void;
-  /** Mark video as paused (only if the caller's key matches). */
+  /** Mark media as paused (only if the caller's key matches). */
   setPaused: (key: string) => void;
-  /** Toggle play/pause on the currently active video. */
+  /** Toggle play/pause on the currently active media. */
   togglePlayback: () => void;
-  /** Dismiss the pill: pause if playing, then clear active video. */
+  /** Dismiss the pill: pause if playing, then clear active media. */
   dismiss: () => void;
 };
 
 export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
-  activeVideo: null,
+  activeMedia: null,
 
-  setPlaying(key, noteId, noteTitle, videoId, videoTitle, pause, play, scrollTo) {
-    const prev = get().activeVideo;
+  setPlaying(key, noteId, noteTitle, contentId, contentTitle, contentType, pause, play, scrollTo) {
+    const prev = get().activeMedia;
     if (prev && prev.key !== key) {
       prev.pause();
     }
-    set({ activeVideo: { key, noteId, noteTitle, videoId, videoTitle, isPlaying: true, pause, play, scrollTo } });
+    set({ activeMedia: { key, noteId, noteTitle, contentId, contentTitle, contentType, isPlaying: true, pause, play, scrollTo } });
   },
 
   setPaused(key) {
-    const current = get().activeVideo;
+    const current = get().activeMedia;
     if (current && current.key === key) {
-      set({ activeVideo: { ...current, isPlaying: false } });
+      set({ activeMedia: { ...current, isPlaying: false } });
     }
   },
 
   togglePlayback() {
-    const current = get().activeVideo;
+    const current = get().activeMedia;
     if (!current) return;
     if (current.isPlaying) {
       current.pause();
-      set({ activeVideo: { ...current, isPlaying: false } });
+      set({ activeMedia: { ...current, isPlaying: false } });
     } else {
       current.play();
-      set({ activeVideo: { ...current, isPlaying: true } });
+      set({ activeMedia: { ...current, isPlaying: true } });
     }
   },
 
   dismiss() {
-    const current = get().activeVideo;
+    const current = get().activeMedia;
     if (current) {
       if (current.isPlaying) current.pause();
-      set({ activeVideo: null });
+      set({ activeMedia: null });
     }
   },
 }));

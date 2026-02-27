@@ -21,7 +21,6 @@ import { $createImageNode } from "@/components/editor/nodes/image-node"
 import { $createBookmarkNode } from "@/components/editor/nodes/bookmark-node"
 import { $createLoadingPlaceholderNode } from "@/components/editor/nodes/loading-placeholder-node"
 import { $createYouTubeNode } from "@/components/editor/nodes/youtube-node"
-import { extractYouTubeVideoId } from "@/components/editor/plugins/youtube-plugin"
 import type { ResolvedUrlResult } from "@/shared/ipc-types"
 
 function openExternalUrl(url: string) {
@@ -230,21 +229,6 @@ export function LinkClickPlugin(): JSX.Element | null {
     if (!hoverState) return
     const { url, linkNodeKey } = hoverState
 
-    // YouTube URLs can be embedded synchronously — no network call needed
-    const ytVideoId = extractYouTubeVideoId(url)
-    if (ytVideoId) {
-      snapshotAndFocusLink(linkNodeKey)
-      editor.update(() => {
-        const yt = $createYouTubeNode(ytVideoId)
-        replaceLink(linkNodeKey, yt)
-        const sel = $createNodeSelection()
-        sel.add(yt.getKey())
-        $setSelection(sel)
-      }, { tag: HISTORY_PUSH_TAG })
-      dismiss(true)
-      return
-    }
-
     snapshotAndFocusLink(linkNodeKey)
 
     let placeholderKey: string | undefined
@@ -258,39 +242,44 @@ export function LinkClickPlugin(): JSX.Element | null {
 
     try {
       const result: ResolvedUrlResult = await window.lychee.invoke("url.resolve", { url })
-      if (result.type === "image") {
-        editor.update(() => {
-          const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
-          if (!ph) return
-          const img = $createImageNode({
-            imageId: result.id,
-            src: result.filePath,
-            sourceUrl: result.sourceUrl,
-            loading: false,
-          })
-          ph.replace(img)
-          const sel = $createNodeSelection()
-          sel.add(img.getKey())
-          $setSelection(sel)
-        }, { tag: "history-merge" })
-      } else {
-        const meta = await window.lychee.invoke("url.fetchMetadata", { url })
-        editor.update(() => {
-          const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
-          if (!ph) return
-          const bm = $createBookmarkNode({
-            url: meta.url,
-            title: meta.title,
-            description: meta.description,
-            imageUrl: meta.imageUrl,
-            faviconUrl: meta.faviconUrl,
-          })
-          ph.replace(bm)
-          const sel = $createNodeSelection()
-          sel.add(bm.getKey())
-          $setSelection(sel)
-        }, { tag: "history-merge" })
-      }
+
+      editor.update(() => {
+        const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
+        if (!ph) return
+
+        let replacement: LexicalNode | null = null
+
+        switch (result.type) {
+          case "youtube":
+            replacement = $createYouTubeNode(result.videoId)
+            break
+          case "image":
+            replacement = $createImageNode({
+              imageId: result.id,
+              src: result.filePath,
+              sourceUrl: result.sourceUrl,
+              loading: false,
+            })
+            break
+          case "bookmark":
+            replacement = $createBookmarkNode({
+              url: result.url,
+              title: result.title,
+              description: result.description,
+              imageUrl: result.imageUrl,
+              faviconUrl: result.faviconUrl,
+            })
+            break
+          default:
+            ph.remove()
+            return
+        }
+
+        ph.replace(replacement)
+        const sel = $createNodeSelection()
+        sel.add(replacement.getKey())
+        $setSelection(sel)
+      }, { tag: "history-merge" })
     } catch (err) {
       console.error("Failed to embed URL:", err)
       editor.update(() => {

@@ -1,5 +1,6 @@
 import type { ResolvedUrlResult } from '../../shared/ipc-types';
 import { downloadImage } from './images';
+import { fetchUrlMetadata } from './url-metadata';
 
 interface UrlHandler {
   name: string;
@@ -9,6 +10,24 @@ interface UrlHandler {
 
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?.*)?$/i;
 const IMAGE_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+const FETCH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/*,*/*;q=0.8',
+};
+
+const YOUTUBE_RE = /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
+
+const youtubeHandler: UrlHandler = {
+  name: 'youtube',
+  test: (url) => YOUTUBE_RE.test(url),
+  resolve: async (url) => {
+    const match = url.match(YOUTUBE_RE);
+    return match
+      ? { type: 'youtube', videoId: match[1], url }
+      : { type: 'unsupported', url, reason: 'YouTube regex failed' };
+  },
+};
 
 const imageByExtensionHandler: UrlHandler = {
   name: 'image-by-extension',
@@ -35,6 +54,7 @@ const contentTypeProbeHandler: UrlHandler = {
       // Try HEAD first, fall back to GET if HEAD fails (some servers reject HEAD)
       let response = await net.fetch(url, {
         method: 'HEAD',
+        headers: FETCH_HEADERS,
         signal: controller.signal as never,
         redirect: 'follow',
       });
@@ -42,6 +62,7 @@ const contentTypeProbeHandler: UrlHandler = {
       if (!response.ok) {
         response = await net.fetch(url, {
           method: 'GET',
+          headers: FETCH_HEADERS,
           signal: controller.signal as never,
           redirect: 'follow',
         });
@@ -53,6 +74,11 @@ const contentTypeProbeHandler: UrlHandler = {
         // It's an image — download it
         const { id, filePath } = await downloadImage(url);
         return { type: 'image', id, filePath, sourceUrl: url };
+      }
+
+      if (contentType.includes('text/html')) {
+        const meta = await fetchUrlMetadata(url);
+        return { type: 'bookmark', url: meta.url, title: meta.title, description: meta.description, imageUrl: meta.imageUrl, faviconUrl: meta.faviconUrl };
       }
 
       return { type: 'unsupported', url, reason: `Unhandled content type: ${contentType}` };
@@ -67,8 +93,8 @@ const contentTypeProbeHandler: UrlHandler = {
 // Handler registry — order matters, first match wins.
 // The fallback (content-type probe) must be last.
 const handlers: UrlHandler[] = [
+  youtubeHandler,
   imageByExtensionHandler,
-  // Future: youtubeHandler, twitterHandler, etc.
   contentTypeProbeHandler,
 ];
 

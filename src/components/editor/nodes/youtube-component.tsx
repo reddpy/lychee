@@ -1,25 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
-import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection"
 import {
-  $createParagraphNode,
   $getNodeByKey,
-  $getSelection,
-  $isNodeSelection,
-  CLICK_COMMAND,
-  COMMAND_PRIORITY_LOW,
-  KEY_BACKSPACE_COMMAND,
-  KEY_DELETE_COMMAND,
-  KEY_ENTER_COMMAND,
   type NodeKey,
 } from "lexical"
-import { mergeRegister } from "@lexical/utils"
 import { $isYouTubeNode, YouTubeNode } from "./youtube-node"
 import type { ImageAlignment } from "./image-node"
 import { cn } from "@/lib/utils"
 import { AlignLeft, AlignCenter, AlignRight } from "lucide-react"
 import { useMediaStore } from "@/renderer/media-store"
 import { useNoteContext } from "@/renderer/note-context"
+import { useDecoratorBlock } from "@/components/editor/hooks/use-decorator-block"
+import { useBlockResize } from "@/components/editor/hooks/use-block-resize"
 
 // ── YouTube IFrame API loader (singleton) ──────────────────────────
 let ytApiReady: Promise<void> | null = null
@@ -64,8 +56,6 @@ export function YouTubeComponent({
   alignment: initialAlignment,
 }: YouTubeComponentProps) {
   const [editor] = useLexicalComposerContext()
-  const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
-  const [isResizing, setIsResizing] = useState(false)
   const [currentWidth, setCurrentWidth] = useState(initialWidth)
   const [currentAlignment, setCurrentAlignment] = useState(initialAlignment)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -78,6 +68,32 @@ export function YouTubeComponent({
   // Stable ref so the YT.Player callback always reads the latest context
   const noteCtxRef = useRef(noteCtx)
   noteCtxRef.current = noteCtx
+
+  // ── Shared hooks ──
+  const applySize = useCallback(
+    (width: number) => {
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isYouTubeNode(node)) node.setWidth(width)
+      })
+    },
+    [editor, nodeKey],
+  )
+
+  const { isResizing, onResizeStart } = useBlockResize({
+    resizeRef: containerRef,
+    containerRef,
+    aspectMode: "fixed",
+    applySize: (w) => applySize(w),
+  })
+
+  const { isSelected } = useDecoratorBlock({
+    nodeKey,
+    containerRef,
+    isNodeType: $isYouTubeNode,
+    isResizing,
+    ignoreClickSelector: ".image-toolbar",
+  })
 
   // Sync with node state via mutation listener
   const stateRef = useRef({ currentWidth, currentAlignment })
@@ -117,6 +133,7 @@ export function YouTubeComponent({
                 ctx.title,
                 videoId,
                 vtitle,
+                "youtube",
                 () => { try { player.pauseVideo() } catch { /* noop */ } },
                 () => { try { player.playVideo() } catch { /* noop */ } },
                 () => containerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
@@ -142,60 +159,6 @@ export function YouTubeComponent({
     }
   }, [nodeKey, videoId, setPlaying, setPaused])
 
-  // Keyboard commands
-  useEffect(() => {
-    const onDelete = (event: KeyboardEvent) => {
-      if (isSelected && $isNodeSelection($getSelection())) {
-        event.preventDefault()
-        const node = $getNodeByKey(nodeKey)
-        if ($isYouTubeNode(node)) node.remove()
-        return true
-      }
-      return false
-    }
-
-    const onEnter = (event: KeyboardEvent | null) => {
-      if (isSelected && $isNodeSelection($getSelection())) {
-        if (event) event.preventDefault()
-        editor.update(() => {
-          const node = $getNodeByKey(nodeKey)
-          if (!node) return
-          const next = node.getNextSibling()
-          if (next) {
-            next.selectStart()
-          } else {
-            const paragraph = $createParagraphNode()
-            node.insertAfter(paragraph)
-            paragraph.selectStart()
-          }
-        })
-        return true
-      }
-      return false
-    }
-
-    return mergeRegister(
-      editor.registerCommand<MouseEvent>(
-        CLICK_COMMAND,
-        (event) => {
-          if (isResizing) return true
-          const target = event.target as Node
-          if (containerRef.current?.contains(target)) {
-            if ((target as HTMLElement).closest?.(".image-toolbar")) return true
-            if (!event.shiftKey) clearSelection()
-            setSelected(true)
-            return true
-          }
-          return false
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-      editor.registerCommand(KEY_BACKSPACE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_DELETE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_ENTER_COMMAND, onEnter, COMMAND_PRIORITY_LOW),
-    )
-  }, [editor, isResizing, isSelected, nodeKey, setSelected, clearSelection])
-
   // Alignment
   const onAlignmentChange = useCallback(
     (alignment: ImageAlignment) => {
@@ -203,45 +166,6 @@ export function YouTubeComponent({
         const node = $getNodeByKey(nodeKey)
         if ($isYouTubeNode(node)) node.setAlignment(alignment)
       })
-    },
-    [editor, nodeKey],
-  )
-
-  // Resize
-  const onResizeStart = useCallback(
-    (e: React.PointerEvent, side: "left" | "right") => {
-      e.preventDefault()
-      e.stopPropagation()
-      const container = containerRef.current
-      if (!container) return
-      setIsResizing(true)
-
-      const startX = e.clientX
-      const startWidth = container.offsetWidth
-      const maxWidth = container.parentElement?.offsetWidth ?? 800
-
-      const onMove = (me: PointerEvent) => {
-        let dx = me.clientX - startX
-        if (side === "left") dx = -dx
-        const newWidth = Math.max(200, Math.min(maxWidth, startWidth + dx))
-        container.style.width = `${newWidth}px`
-      }
-
-      const onUp = () => {
-        document.removeEventListener("pointermove", onMove)
-        document.removeEventListener("pointerup", onUp)
-
-        const finalWidth = Math.round(containerRef.current?.offsetWidth ?? startWidth)
-        editor.update(() => {
-          const node = $getNodeByKey(nodeKey)
-          if ($isYouTubeNode(node)) node.setWidth(finalWidth)
-        })
-
-        setTimeout(() => setIsResizing(false), 100)
-      }
-
-      document.addEventListener("pointermove", onMove)
-      document.addEventListener("pointerup", onUp)
     },
     [editor, nodeKey],
   )

@@ -4,7 +4,7 @@ import { useMediaStore } from "@/renderer/media-store";
 import { useDocumentStore } from "@/renderer/document-store";
 
 export function MediaPlaybackPill() {
-  const activeVideo = useMediaStore((s) => s.activeVideo);
+  const activeMedia = useMediaStore((s) => s.activeMedia);
   const togglePlayback = useMediaStore((s) => s.togglePlayback);
   const dismiss = useMediaStore((s) => s.dismiss);
   const selectedId = useDocumentStore((s) => s.selectedId);
@@ -12,19 +12,19 @@ export function MediaPlaybackPill() {
   const documents = useDocumentStore((s) => s.documents);
   const openTabs = useDocumentStore((s) => s.openTabs);
 
-  // If the video's tab was closed or replaced, dismiss the pill
+  // If the media's tab was closed or replaced, dismiss the pill
   useEffect(() => {
-    if (activeVideo && !openTabs.includes(activeVideo.noteId)) {
+    if (activeMedia && !openTabs.includes(activeMedia.noteId)) {
       dismiss();
     }
-  }, [activeVideo, openTabs, dismiss]);
+  }, [activeMedia, openTabs, dismiss]);
 
   const handleSwitchTab = useCallback(() => {
-    if (!activeVideo) return;
-    selectDocument(activeVideo.noteId);
+    if (!activeMedia) return;
+    selectDocument(activeMedia.noteId);
     // Small delay so the tab becomes visible before scrolling
-    setTimeout(() => activeVideo.scrollTo(), 50);
-  }, [activeVideo, selectDocument]);
+    setTimeout(() => activeMedia.scrollTo(), 50);
+  }, [activeMedia, selectDocument]);
 
   const handleToggle = useCallback(
     (e: React.MouseEvent) => {
@@ -42,15 +42,14 @@ export function MediaPlaybackPill() {
     [dismiss],
   );
 
-  // Show when a video is tracked on a non-active tab (playing or paused)
-  // Also hide if the video's tab was closed/replaced (effect above will clean up)
-  if (!activeVideo || activeVideo.noteId === selectedId || !openTabs.includes(activeVideo.noteId)) return null;
+  // Show when media is tracked on a non-active tab (playing or paused)
+  if (!activeMedia || activeMedia.noteId === selectedId || !openTabs.includes(activeMedia.noteId)) return null;
 
-  const doc = documents.find((d) => d.id === activeVideo.noteId);
+  const doc = documents.find((d) => d.id === activeMedia.noteId);
   const noteEmoji = doc?.emoji ?? null;
-  const noteTitle = activeVideo.noteTitle || "Untitled";
-  const videoTitle = activeVideo.videoTitle || "YouTube";
-  const isPlaying = activeVideo.isPlaying;
+  const noteTitle = activeMedia.noteTitle || "Untitled";
+  const contentTitle = activeMedia.contentTitle || "Media";
+  const isPlaying = activeMedia.isPlaying;
 
   return (
     <div
@@ -69,7 +68,7 @@ export function MediaPlaybackPill() {
         </button>
         <div className="flex flex-col min-w-0">
           <span className="text-xs font-medium text-[hsl(var(--foreground))] truncate leading-tight max-w-[180px]">
-            {videoTitle}
+            {contentTitle}
           </span>
           <span className="text-[11px] text-[hsl(var(--muted-foreground))] truncate leading-tight max-w-[180px]">
             {noteEmoji && <span className="mr-0.5">{noteEmoji}</span>}{noteTitle}
@@ -80,7 +79,7 @@ export function MediaPlaybackPill() {
         type="button"
         onClick={handleToggle}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#C14B55] text-white hover:bg-[#a83f48] transition-colors"
-        aria-label={isPlaying ? "Pause video" : "Play video"}
+        aria-label={isPlaying ? "Pause" : "Play"}
       >
         {isPlaying ? (
           <Volume2 className="h-3.5 w-3.5 group-hover:hidden" />

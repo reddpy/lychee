@@ -1,4 +1,5 @@
 import type { UrlMetadataResult } from '../../shared/ipc-types';
+import { fetchOEmbedMetadata } from './oembed';
 
 function extractMeta(html: string, property: string): string {
   // Matches <meta property="og:title" content="..." /> or <meta content="..." property="og:title" />
@@ -41,8 +42,18 @@ function extractFavicon(html: string, baseUrl: string): string {
   }
 }
 
+const FETCH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
 export async function fetchUrlMetadata(url: string): Promise<UrlMetadataResult> {
   const empty: UrlMetadataResult = { title: '', description: '', imageUrl: '', faviconUrl: '', url };
+
+  // Try oEmbed first for known providers (YouTube, Spotify, etc.)
+  const oembed = await fetchOEmbedMetadata(url);
+  if (oembed) return oembed;
 
   const { net } = await import('electron');
   const controller = new AbortController();
@@ -50,6 +61,7 @@ export async function fetchUrlMetadata(url: string): Promise<UrlMetadataResult> 
 
   try {
     const response = await net.fetch(url, {
+      headers: FETCH_HEADERS,
       signal: controller.signal as never,
       redirect: 'follow',
     });

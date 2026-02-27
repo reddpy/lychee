@@ -1,23 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
-import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection"
 import {
   $addUpdateTag,
-  $createParagraphNode,
   $getNodeByKey,
-  $getSelection,
-  $isNodeSelection,
-  CLICK_COMMAND,
-  COMMAND_PRIORITY_LOW,
-  KEY_BACKSPACE_COMMAND,
-  KEY_DELETE_COMMAND,
-  KEY_ENTER_COMMAND,
   type NodeKey,
 } from "lexical"
-import { mergeRegister } from "@lexical/utils"
 import { $isImageNode, ImageNode, type ImageAlignment } from "./image-node"
 import { cn } from "@/lib/utils"
 import { Loader2, AlignLeft, AlignCenter, AlignRight, ImageOff, ExternalLink } from "lucide-react"
+import { useDecoratorBlock } from "@/components/editor/hooks/use-decorator-block"
+import { useBlockResize } from "@/components/editor/hooks/use-block-resize"
 
 function getHostname(url: string): string {
   try { return new URL(url).hostname } catch { return url }
@@ -53,9 +45,7 @@ export function ImageComponent({
   sourceUrl: initialSourceUrl,
 }: ImageComponentProps) {
   const [editor] = useLexicalComposerContext()
-  const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
   const [resolvedSrc, setResolvedSrc] = useState(() => toImageUrl(initialSrc))
-  const [isResizing, setIsResizing] = useState(false)
   const [isLoading, setIsLoading] = useState(initialLoading)
   const [hasError, setHasError] = useState(false)
   const [isImageLoaded, setIsImageLoaded] = useState(false)
@@ -66,9 +56,34 @@ export function ImageComponent({
   const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // ── Shared hooks ──
+  const applySize = useCallback(
+    (w: number, h: number | undefined) => {
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isImageNode(node)) node.setWidthAndHeight(w, h ?? node.__height)
+      })
+    },
+    [editor, nodeKey],
+  )
+
+  const { isResizing, onResizeStart } = useBlockResize({
+    resizeRef: imageRef,
+    containerRef,
+    aspectMode: "preserve",
+    applySize,
+  })
+
+  const { isSelected } = useDecoratorBlock({
+    nodeKey,
+    containerRef,
+    isNodeType: $isImageNode,
+    isResizing,
+    ignoreClickSelector: ".image-toolbar",
+  })
+
   // Reactively read node state — ensures component stays in sync even if
   // decorate() isn't re-called (e.g. after async property updates).
-  // Uses refs for current values to avoid re-registering the listener on every state change.
   const stateRef = useRef({ isLoading, currentSrc, currentImageId, currentAlignment, currentSourceUrl })
   stateRef.current = { isLoading, currentSrc, currentImageId, currentAlignment, currentSourceUrl }
 
@@ -125,61 +140,6 @@ export function ImageComponent({
     return () => { cancelled = true }
   }, [currentImageId, currentSrc, nodeKey, editor])
 
-  // Keyboard commands when image is selected
-  useEffect(() => {
-    const onDelete = (event: KeyboardEvent) => {
-      if (isSelected && $isNodeSelection($getSelection())) {
-        event.preventDefault()
-        const node = $getNodeByKey(nodeKey)
-        if ($isImageNode(node)) node.remove()
-        return true
-      }
-      return false
-    }
-
-    const onEnter = (event: KeyboardEvent | null) => {
-      if (isSelected && $isNodeSelection($getSelection())) {
-        if (event) event.preventDefault()
-        editor.update(() => {
-          const node = $getNodeByKey(nodeKey)
-          if (!node) return
-          const next = node.getNextSibling()
-          if (next) {
-            next.selectStart()
-          } else {
-            const paragraph = $createParagraphNode()
-            node.insertAfter(paragraph)
-            paragraph.selectStart()
-          }
-        })
-        return true
-      }
-      return false
-    }
-
-    return mergeRegister(
-      editor.registerCommand<MouseEvent>(
-        CLICK_COMMAND,
-        (event) => {
-          if (isResizing) return true
-          const target = event.target as Node
-          if (containerRef.current?.contains(target)) {
-            // Don't select when clicking toolbar buttons
-            if ((target as HTMLElement).closest?.(".image-toolbar")) return true
-            if (!event.shiftKey) clearSelection()
-            setSelected(true)
-            return true
-          }
-          return false
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-      editor.registerCommand(KEY_BACKSPACE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_DELETE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
-      editor.registerCommand(KEY_ENTER_COMMAND, onEnter, COMMAND_PRIORITY_LOW),
-    )
-  }, [editor, isResizing, isSelected, nodeKey, setSelected, clearSelection])
-
   // ── Alignment ──
   const onAlignmentChange = useCallback(
     (alignment: ImageAlignment) => {
@@ -187,53 +147,6 @@ export function ImageComponent({
         const node = $getNodeByKey(nodeKey)
         if ($isImageNode(node)) node.setAlignment(alignment)
       })
-    },
-    [editor, nodeKey],
-  )
-
-  // ── Resize ──
-  const onResizeStart = useCallback(
-    (e: React.PointerEvent, side: "left" | "right") => {
-      e.preventDefault()
-      e.stopPropagation()
-      const img = imageRef.current
-      if (!img) return
-      setIsResizing(true)
-
-      const startX = e.clientX
-      const startWidth = img.offsetWidth
-      const startHeight = img.offsetHeight
-      const aspect = startWidth / startHeight
-      const maxWidth = containerRef.current?.parentElement?.offsetWidth ?? 800
-
-      const onMove = (me: PointerEvent) => {
-        let dx = me.clientX - startX
-        if (side === "left") dx = -dx
-
-        const newWidth = Math.max(100, Math.min(maxWidth, startWidth + dx))
-        const newHeight = newWidth / aspect
-
-        img.style.width = `${newWidth}px`
-        img.style.height = `${newHeight}px`
-      }
-
-      const onUp = () => {
-        document.removeEventListener("pointermove", onMove)
-        document.removeEventListener("pointerup", onUp)
-
-        const finalWidth = Math.round(imageRef.current?.offsetWidth ?? startWidth)
-        const finalHeight = Math.round(imageRef.current?.offsetHeight ?? startHeight)
-
-        editor.update(() => {
-          const node = $getNodeByKey(nodeKey)
-          if ($isImageNode(node)) node.setWidthAndHeight(finalWidth, finalHeight)
-        })
-
-        setTimeout(() => setIsResizing(false), 100)
-      }
-
-      document.addEventListener("pointermove", onMove)
-      document.addEventListener("pointerup", onUp)
     },
     [editor, nodeKey],
   )
