@@ -496,7 +496,6 @@ blockquote.is-placeholder,
   max-width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: 8px;
-  overflow: hidden;
 }
 
 .youtube-container iframe {
@@ -505,6 +504,7 @@ blockquote.is-placeholder,
   left: 0;
   width: 100%;
   height: 100%;
+  border-radius: 8px;
   border: none;
 }
 

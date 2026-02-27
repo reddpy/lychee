@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { Pause, Play, Volume2, X } from "lucide-react";
 import { useMediaStore } from "@/renderer/media-store";
 import { useDocumentStore } from "@/renderer/document-store";
@@ -10,6 +10,14 @@ export function MediaPlaybackPill() {
   const selectedId = useDocumentStore((s) => s.selectedId);
   const selectDocument = useDocumentStore((s) => s.selectDocument);
   const documents = useDocumentStore((s) => s.documents);
+  const openTabs = useDocumentStore((s) => s.openTabs);
+
+  // If the video's tab was closed or replaced, dismiss the pill
+  useEffect(() => {
+    if (activeVideo && !openTabs.includes(activeVideo.noteId)) {
+      dismiss();
+    }
+  }, [activeVideo, openTabs, dismiss]);
 
   const handleSwitchTab = useCallback(() => {
     if (!activeVideo) return;
@@ -35,7 +43,8 @@ export function MediaPlaybackPill() {
   );
 
   // Show when a video is tracked on a non-active tab (playing or paused)
-  if (!activeVideo || activeVideo.noteId === selectedId) return null;
+  // Also hide if the video's tab was closed/replaced (effect above will clean up)
+  if (!activeVideo || activeVideo.noteId === selectedId || !openTabs.includes(activeVideo.noteId)) return null;
 
   const doc = documents.find((d) => d.id === activeVideo.noteId);
   const noteEmoji = doc?.emoji ?? null;
