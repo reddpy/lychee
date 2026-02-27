@@ -19,12 +19,16 @@ export function MediaPlaybackPill() {
     }
   }, [activeMedia, openTabs, dismiss]);
 
-  const handleSwitchTab = useCallback(() => {
-    if (!activeMedia) return;
-    selectDocument(activeMedia.noteId);
-    // Small delay so the tab becomes visible before scrolling
-    setTimeout(() => activeMedia.scrollTo(), 50);
-  }, [activeMedia, selectDocument]);
+  const handleSwitchTab = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!activeMedia) return;
+      selectDocument(activeMedia.noteId);
+      // Small delay so the tab becomes visible before scrolling
+      setTimeout(() => activeMedia.scrollTo(), 50);
+    },
+    [activeMedia, selectDocument],
+  );
 
   const handleToggle = useCallback(
     (e: React.MouseEvent) => {
@@ -53,20 +57,21 @@ export function MediaPlaybackPill() {
 
   return (
     <div
-      className="group absolute top-3 right-4 z-50 flex items-center rounded-full border border-[hsl(var(--border))] bg-popover p-1 shadow-md cursor-pointer select-none animate-in fade-in-0 slide-in-from-top-2 duration-200 hover:shadow-lg transition-all"
-      onClick={handleSwitchTab}
+      data-testid="media-pill"
+      className="group absolute top-3 right-2 z-50 flex items-center rounded-full border border-[hsl(var(--border))] bg-popover p-1 shadow-md cursor-pointer select-none animate-in fade-in-0 slide-in-from-top-2 duration-200 hover:shadow-lg transition-all"
+      onClick={handleToggle}
       title={`Playing in: ${noteTitle}`}
     >
       <div className="flex items-center gap-1.5 max-w-0 overflow-hidden opacity-0 group-hover:max-w-[220px] group-hover:opacity-100 group-hover:mr-1.5 transition-all duration-200">
         <button
           type="button"
           onClick={handleDismiss}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors ml-0.5"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] hover:text-red-500 hover:bg-red-500/10 transition-colors ml-0.5"
           aria-label="Dismiss"
         >
           <X className="h-3 w-3" />
         </button>
-        <div className="flex flex-col min-w-0">
+        <div className="flex flex-col min-w-0 cursor-pointer" onClick={handleSwitchTab}>
           <span className="text-xs font-medium text-[hsl(var(--foreground))] truncate leading-tight max-w-[180px]">
             {contentTitle}
           </span>

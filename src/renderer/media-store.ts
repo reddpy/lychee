@@ -81,3 +81,7 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
     }
   },
 }));
+
+if (typeof window !== 'undefined') {
+  (window as any).__mediaStore = useMediaStore;
+}
