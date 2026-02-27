@@ -4,6 +4,7 @@ import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection"
 import {
   $createParagraphNode,
   $getNodeByKey,
+  $getRoot,
   $getSelection,
   $isNodeSelection,
   CLICK_COMMAND,
@@ -38,34 +39,47 @@ export function useDecoratorBlock({
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
 
   useEffect(() => {
+    /** Check if this node is currently part of a NodeSelection (reads Lexical state directly to avoid stale closures). */
+    const isNodeSelected = () => {
+      const selection = $getSelection()
+      return $isNodeSelection(selection) && selection.has(nodeKey)
+    }
+
     const onDelete = (event: KeyboardEvent) => {
-      if (isSelected && $isNodeSelection($getSelection())) {
-        event.preventDefault()
+      if (!isNodeSelected()) return false
+      event.preventDefault()
+      editor.update(() => {
         const node = $getNodeByKey(nodeKey)
-        if (isNodeType(node)) node!.remove()
-        return true
-      }
-      return false
+        if (!isNodeType(node)) return
+        const next = node!.getNextSibling()
+        node!.remove()
+        if (next) {
+          next.selectStart()
+        } else {
+          const paragraph = $createParagraphNode()
+          $getRoot().append(paragraph)
+          paragraph.selectStart()
+        }
+      })
+      return true
     }
 
     const onEnter = (event: KeyboardEvent | null) => {
-      if (isSelected && $isNodeSelection($getSelection())) {
-        if (event) event.preventDefault()
-        editor.update(() => {
-          const node = $getNodeByKey(nodeKey)
-          if (!node) return
-          const next = node.getNextSibling()
-          if (next) {
-            next.selectStart()
-          } else {
-            const paragraph = $createParagraphNode()
-            node.insertAfter(paragraph)
-            paragraph.selectStart()
-          }
-        })
-        return true
-      }
-      return false
+      if (!isNodeSelected()) return false
+      if (event) event.preventDefault()
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if (!node) return
+        const next = node.getNextSibling()
+        if (next) {
+          next.selectStart()
+        } else {
+          const paragraph = $createParagraphNode()
+          node.insertAfter(paragraph)
+          paragraph.selectStart()
+        }
+      })
+      return true
     }
 
     return mergeRegister(
@@ -88,7 +102,7 @@ export function useDecoratorBlock({
       editor.registerCommand(KEY_DELETE_COMMAND, onDelete, COMMAND_PRIORITY_LOW),
       editor.registerCommand(KEY_ENTER_COMMAND, onEnter, COMMAND_PRIORITY_LOW),
     )
-  }, [editor, isResizing, isSelected, nodeKey, setSelected, clearSelection, isNodeType, containerRef, ignoreClickSelector])
+  }, [editor, isResizing, nodeKey, setSelected, clearSelection, isNodeType, containerRef, ignoreClickSelector])
 
   return { isSelected, setSelected, clearSelection }
 }
