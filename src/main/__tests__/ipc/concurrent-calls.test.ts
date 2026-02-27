@@ -77,6 +77,9 @@ import {
 /** Helper: resolve after N ms */
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/** Wrap arbitrary text in minimal valid editor state JSON. */
+const editorJson = (text: string) => JSON.stringify({ root: { children: [{ type: 'text', text }] } });
+
 describe('IPC Concurrent & Rapid-Fire Calls', () => {
   beforeEach(() => {
     handlers.clear();
@@ -101,7 +104,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
 
     const handler = handlers.get('documents.update')!;
     const promises = Array.from({ length: 50 }, (_, i) =>
-      handler(null, { id: 'doc1', content: `version-${i}` }),
+      handler(null, { id: 'doc1', content: editorJson(`version-${i}`) }),
     );
 
     const results = await Promise.all(promises);
@@ -110,7 +113,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     // Every single result must have its own version — no mixing
     results.forEach((result, i) => {
       const doc = (result as { document: { content: string } }).document;
-      expect(doc.content).toBe(`version-${i}`);
+      expect(doc.content).toBe(editorJson(`version-${i}`));
     });
   });
 
@@ -133,7 +136,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     const promises: Promise<unknown>[] = [];
     for (let i = 0; i < 10; i++) {
       promises.push(handler(null, { id: 'doc1', title: `title-${i}` }));
-      promises.push(handler(null, { id: 'doc1', content: `content-${i}` }));
+      promises.push(handler(null, { id: 'doc1', content: editorJson(`content-${i}`) }));
     }
 
     await Promise.all(promises);
@@ -147,7 +150,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     // Each version is distinct
     for (let i = 0; i < 10; i++) {
       expect(titles[i].value).toBe(`title-${i}`);
-      expect(contents[i].value).toBe(`content-${i}`);
+      expect(contents[i].value).toBe(editorJson(`content-${i}`));
     }
   });
 
@@ -168,8 +171,8 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     // 10 saves for doc-A interleaved with 10 saves for doc-B
     const promises: Promise<unknown>[] = [];
     for (let i = 0; i < 10; i++) {
-      promises.push(handler(null, { id: 'doc-A', content: `A-v${i}` }));
-      promises.push(handler(null, { id: 'doc-B', content: `B-v${i}` }));
+      promises.push(handler(null, { id: 'doc-A', content: editorJson(`A-v${i}`) }));
+      promises.push(handler(null, { id: 'doc-B', content: editorJson(`B-v${i}`) }));
     }
 
     await Promise.all(promises);
@@ -177,8 +180,8 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     expect(savedDocs.get('doc-A')!.length).toBe(10);
     expect(savedDocs.get('doc-B')!.length).toBe(10);
     // No cross-contamination
-    savedDocs.get('doc-A')!.forEach(v => expect(v).toMatch(/^A-v/));
-    savedDocs.get('doc-B')!.forEach(v => expect(v).toMatch(/^B-v/));
+    savedDocs.get('doc-A')!.forEach(v => expect(v).toContain('A-v'));
+    savedDocs.get('doc-B')!.forEach(v => expect(v).toContain('B-v'));
   });
 
   // Image downloads with varying async delays — simulates real network latency.
@@ -224,16 +227,16 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
 
     // Simulate: type in tab-1, switch to tab-2 (flush tab-1), type, switch, ...
     await Promise.all([
-      handler(null, { id: 'tab-1', content: 'final-1' }),
-      handler(null, { id: 'tab-2', content: 'final-2' }),
-      handler(null, { id: 'tab-3', content: 'final-3' }),
-      handler(null, { id: 'tab-4', content: 'final-4' }),
-      handler(null, { id: 'tab-5', content: 'final-5' }),
+      handler(null, { id: 'tab-1', content: editorJson('final-1') }),
+      handler(null, { id: 'tab-2', content: editorJson('final-2') }),
+      handler(null, { id: 'tab-3', content: editorJson('final-3') }),
+      handler(null, { id: 'tab-4', content: editorJson('final-4') }),
+      handler(null, { id: 'tab-5', content: editorJson('final-5') }),
     ]);
 
     expect(savedByDoc.size).toBe(5);
     for (let i = 1; i <= 5; i++) {
-      expect(savedByDoc.get(`tab-${i}`)).toBe(`final-${i}`);
+      expect(savedByDoc.get(`tab-${i}`)).toBe(editorJson(`final-${i}`));
     }
   });
 
@@ -257,7 +260,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     const handler = handlers.get('documents.update')!;
     const results = await Promise.allSettled(
       Array.from({ length: 10 }, (_, i) =>
-        handler(null, { id: '1', content: `v${i}` }),
+        handler(null, { id: '1', content: editorJson(`v${i}`) }),
       ),
     );
 
@@ -282,7 +285,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     const handler = handlers.get('documents.update')!;
     const results = await Promise.allSettled(
       Array.from({ length: 20 }, (_, i) =>
-        handler(null, { id: '1', content: `v${i}` }),
+        handler(null, { id: '1', content: editorJson(`v${i}`) }),
       ),
     );
 
@@ -332,7 +335,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     const handler = handlers.get('documents.update')!;
     const results = await Promise.allSettled(
       Array.from({ length: 5 }, (_, i) =>
-        handler(null, { id: '1', content: `v${i}` }),
+        handler(null, { id: '1', content: editorJson(`v${i}`) }),
       ),
     );
 
@@ -354,7 +357,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     const handler = handlers.get('documents.update')!;
     const results = await Promise.allSettled(
       Array.from({ length: 5 }, (_, i) =>
-        handler(null, { id: '1', content: `v${i}` }),
+        handler(null, { id: '1', content: editorJson(`v${i}`) }),
       ),
     );
 
@@ -747,7 +750,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     });
 
     const results = await Promise.all([
-      handlers.get('documents.update')!(null, { id: 'doc1', content: '{}' }),
+      handlers.get('documents.update')!(null, { id: 'doc1', content: editorJson('saved') }),
       handlers.get('images.save')!(null, { data: 'd1', mimeType: 'image/png' }),
       handlers.get('images.save')!(null, { data: 'd2', mimeType: 'image/jpeg' }),
       handlers.get('images.save')!(null, { data: 'd3', mimeType: 'image/gif' }),
@@ -777,7 +780,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     });
 
     const results = await Promise.all([
-      handlers.get('documents.update')!(null, { id: 'doc-a', content: '{}' }),
+      handlers.get('documents.update')!(null, { id: 'doc-a', content: editorJson('saved') }),
       handlers.get('documents.move')!(null, { id: 'doc-b', parentId: null, sortOrder: 0 }),
       handlers.get('documents.trash')!(null, { id: 'doc-c' }),
       handlers.get('images.download')!(null, { url: 'https://cdn.example.com/img.png' }),
@@ -818,7 +821,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     });
 
     const promises: Promise<unknown>[] = [];
-    for (let i = 0; i < 50; i++) promises.push(handlers.get('documents.update')!(null, { id: 'doc1', content: `v${i}` }));
+    for (let i = 0; i < 50; i++) promises.push(handlers.get('documents.update')!(null, { id: 'doc1', content: editorJson(`v${i}`) }));
     for (let i = 0; i < 10; i++) promises.push(handlers.get('images.save')!(null, { data: `d${i}`, mimeType: 'image/png' }));
     for (let i = 0; i < 5; i++) promises.push(handlers.get('url.resolve')!(null, { url: `https://example.com/${i}` }));
     for (let i = 0; i < 3; i++) promises.push(handlers.get('documents.move')!(null, { id: `m${i}`, parentId: null, sortOrder: i }));
@@ -868,7 +871,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     });
 
     const promises: Promise<unknown>[] = [];
-    for (let i = 0; i < 50; i++) promises.push(handlers.get('documents.update')!(null, { id: '1', content: `v${i}` }));
+    for (let i = 0; i < 50; i++) promises.push(handlers.get('documents.update')!(null, { id: '1', content: editorJson(`v${i}`) }));
     for (let i = 0; i < 10; i++) promises.push(handlers.get('images.save')!(null, { data: `d${i}`, mimeType: 'image/png' }));
     for (let i = 0; i < 5; i++) promises.push(handlers.get('url.resolve')!(null, { url: `u${i}` }));
     for (let i = 0; i < 3; i++) promises.push(handlers.get('documents.move')!(null, { id: `m${i}`, parentId: null, sortOrder: i }));
@@ -925,12 +928,12 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     );
 
     const [updateResult, moveResult] = await Promise.all([
-      handlers.get('documents.update')!(null, { id: 'doc-1', content: 'typing...' }),
+      handlers.get('documents.update')!(null, { id: 'doc-1', content: editorJson('typing...') }),
       handlers.get('documents.move')!(null, { id: 'doc-1', parentId: null, sortOrder: 3 }),
     ]);
 
     const updated = (updateResult as { document: { content: string } }).document;
-    expect(updated.content).toBe('typing...');
+    expect(updated.content).toBe(editorJson('typing...'));
     const moved = (moveResult as { document: { sortOrder: number } }).document;
     expect(moved.sortOrder).toBe(3);
   });
@@ -947,7 +950,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     });
 
     const [updateResult, trashResult] = await Promise.all([
-      handlers.get('documents.update')!(null, { id: 'doc-1', content: 'last save' }),
+      handlers.get('documents.update')!(null, { id: 'doc-1', content: editorJson('last save') }),
       handlers.get('documents.trash')!(null, { id: 'doc-1' }),
     ]);
 
@@ -971,12 +974,12 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     );
 
     await Promise.all([
-      handlers.get('documents.update')!(null, { id: 'doc-1', content: '{}' }),
+      handlers.get('documents.update')!(null, { id: 'doc-1', content: editorJson('test') }),
       handlers.get('documents.update')!(null, { id: 'doc-1', emoji: '🎉' }),
     ]);
 
     expect(calls).toHaveLength(2);
-    expect(calls.find(c => c.field === 'content')!.value).toBe('{}');
+    expect(calls.find(c => c.field === 'content')!.value).toBe(editorJson('test'));
     expect(calls.find(c => c.field === 'emoji')!.value).toBe('🎉');
   });
 
@@ -992,7 +995,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     });
 
     const [docResult, imgResult] = await Promise.all([
-      handlers.get('documents.update')!(null, { id: 'doc-1', content: '{}' }),
+      handlers.get('documents.update')!(null, { id: 'doc-1', content: editorJson('saved') }),
       handlers.get('images.save')!(null, { data: 'base64data', mimeType: 'image/png' }),
     ]);
 
@@ -1036,11 +1039,11 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
 
     const [trashResult, updateResult] = await Promise.all([
       handlers.get('documents.trash')!(null, { id: 'doc-A' }),
-      handlers.get('documents.update')!(null, { id: 'doc-B', content: 'still alive' }),
+      handlers.get('documents.update')!(null, { id: 'doc-B', content: editorJson('still alive') }),
     ]);
 
     expect((trashResult as { trashedIds: string[] }).trashedIds).toContain('doc-A');
-    expect((updateResult as { document: { content: string } }).document.content).toBe('still alive');
+    expect((updateResult as { document: { content: string } }).document.content).toBe(editorJson('still alive'));
   });
 
   // One channel errors, the other succeeds. The error must not poison
@@ -1076,7 +1079,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
 
     const results = await Promise.allSettled([
       handlers.get('images.download')!(null, { url: 'https://broken.com/img.png' }),
-      handlers.get('documents.update')!(null, { id: 'doc-1', content: '{}' }),
+      handlers.get('documents.update')!(null, { id: 'doc-1', content: editorJson('saved') }),
     ]);
 
     expect(results[0].status).toBe('rejected');
@@ -1107,7 +1110,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     });
 
     const results = await Promise.allSettled([
-      handlers.get('documents.update')!(null, { id: 'doc-1', content: '{}' }),
+      handlers.get('documents.update')!(null, { id: 'doc-1', content: editorJson('saved') }),
       handlers.get('documents.move')!(null, { id: 'doc-1', parentId: 'p', sortOrder: 0 }),
       handlers.get('documents.trash')!(null, { id: 'doc-1' }),
       handlers.get('images.save')!(null, { data: 'x', mimeType: 'image/png' }),
@@ -1157,11 +1160,11 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
     const createResult = await handlers.get('documents.create')!(null, { parentId: null });
     const docId = (createResult as { document: { id: string } }).document.id;
 
-    const updateResult = await handlers.get('documents.update')!(null, { id: docId, content: 'first draft' });
+    const updateResult = await handlers.get('documents.update')!(null, { id: docId, content: editorJson('first draft') });
     const moveResult = await handlers.get('documents.move')!(null, { id: docId, parentId: 'folder-1', sortOrder: 0 });
 
     expect(docId).toBe('new-doc');
-    expect((updateResult as { document: { content: string } }).document.content).toBe('first draft');
+    expect((updateResult as { document: { content: string } }).document.content).toBe(editorJson('first draft'));
     expect((moveResult as { document: { parentId: string } }).document.parentId).toBe('folder-1');
   });
 

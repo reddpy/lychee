@@ -190,7 +190,7 @@ describe('IPC Payload Edge Cases', () => {
   // in the patch is ignored by updateDocument, but we should verify this.
   it('documents.update receives full payload including id field', async () => {
     const handler = handlers.get('documents.update')!;
-    const payload = { id: '1', title: 'Updated', content: '{"root":{}}' };
+    const payload = { id: '1', title: 'Updated', content: '{"root":{"children":[]}}' };
     await handler(null, payload);
     // The handler calls updateDocument('1', { id: '1', title: 'Updated', content: '...' })
     // The second arg is the full payload — the repo ignores the `id` in the patch.
@@ -319,10 +319,10 @@ describe('IPC Payload Edge Cases', () => {
   // Even larger — 500KB note (heavy user with tons of content)
   it('documents.update with ~500KB content payload', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = 'x'.repeat(500 * 1024);
+    const content = '{"root":{"children":[{"type":"text","text":"' + 'x'.repeat(500 * 1024) + '"}]}}';
     await handler(null, { id: '1', content });
     const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
-    expect(received.length).toBe(500 * 1024);
+    expect(received.length).toBe(content.length);
   });
 
   // Content with special characters — unicode, emoji, null bytes.
@@ -331,7 +331,7 @@ describe('IPC Payload Edge Cases', () => {
     const handler = handlers.get('documents.update')!;
     const payload = {
       id: '1',
-      content: '{"text":"Hello 世界 🌍 café naïve"}',
+      content: '{"root":{"children":[{"type":"paragraph","children":[{"type":"text","text":"Hello 世界 🌍 café naïve"}]}]}}',
       title: '日本語タイトル 🎌',
     };
     await handler(null, payload);
@@ -341,29 +341,31 @@ describe('IPC Payload Edge Cases', () => {
   // Content with characters that could break JSON or SQL if improperly escaped.
   it('documents.update with content containing quotes and backslashes', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = '{"text":"He said \\"hello\\" and used a \\\\backslash"}';
+    const content = '{"root":{"children":[{"type":"text","text":"He said \\"hello\\" and used a \\\\backslash"}]}}';
     await handler(null, { id: '1', content });
     const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
     expect(received).toBe(content);
   });
 
-  // Content with newlines, tabs, and null bytes.
+  // Content with newlines, tabs, and null bytes inside valid JSON structure.
   it('documents.update with control characters in content', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = 'line1\nline2\ttab\r\nwindows\0null';
+    const textWithControls = 'line1\nline2\ttab\r\nwindows\0null';
+    const content = JSON.stringify({ root: { children: [{ type: 'text', text: textWithControls }] } });
     await handler(null, { id: '1', content });
     const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
     expect(received).toBe(content);
-    expect(received).toContain('\0');
+    expect(received).toContain('\\u0000');
   });
 
   // Content containing an SQL injection attempt. The handler must pass it
   // through as a plain string — parameterized queries in the repo protect us.
   it('documents.update with SQL-injection-like content', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = "Robert'); DROP TABLE documents;--";
-    await handler(null, { id: '1', title: content, content });
-    expect(docs.updateDocument).toHaveBeenCalledWith('1', { id: '1', title: content, content });
+    const sqlInjection = "Robert'); DROP TABLE documents;--";
+    const content = JSON.stringify({ root: { children: [{ type: 'text', text: sqlInjection }] } });
+    await handler(null, { id: '1', title: sqlInjection, content });
+    expect(docs.updateDocument).toHaveBeenCalledWith('1', { id: '1', title: sqlInjection, content });
   });
 
   // Emoji field update — user sets or clears the note icon.
@@ -1428,11 +1430,25 @@ describe('Complex JSON Payload Edge Cases', () => {
   // contains non-node objects. The handler currently passes it through
   // — the editor validates on load. But the IPC layer SHOULD validate
   // that content has the basic structure.
-  it.todo('should reject content without root key (invalid editor state)');
+  it('should reject content without root key (invalid editor state)', async () => {
+    const handler = handlers.get('documents.update')!;
+    const content = JSON.stringify({ nodes: [], version: 1 });
+    await expect(handler(null, { id: 'no-root', content })).rejects.toThrow('content must have a root key');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
-  it.todo('should reject content where root.children is not an array');
+  it('should reject content where root.children is not an array', async () => {
+    const handler = handlers.get('documents.update')!;
+    const content = JSON.stringify({ root: { children: 'not-an-array', type: 'root' } });
+    await expect(handler(null, { id: 'bad-children', content })).rejects.toThrow('content root.children must be an array');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
-  it.todo('should reject content that is not valid JSON at all');
+  it('should reject content that is not valid JSON at all', async () => {
+    const handler = handlers.get('documents.update')!;
+    await expect(handler(null, { id: 'bad-json', content: '{not valid json}' })).rejects.toThrow('content is not valid JSON');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
   // A code-block with executable shell commands — a local note-taking app
   // stores these as data, but if content is ever evaluated or interpolated,
@@ -1645,9 +1661,12 @@ describe('Complex JSON Payload Edge Cases', () => {
     expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 
-  // Content validation is NOT implemented — content is opaque to the backend.
-  // The editor validates on load. This todo remains as aspirational.
-  it.todo('should reject documents.update with content that is not valid JSON');
+  // Content validation rejects non-JSON strings in the update handler.
+  it('should reject documents.update with content that is not valid JSON', async () => {
+    const handler = handlers.get('documents.update')!;
+    await expect(handler(null, { id: 'bad-json', content: 'this is not JSON' })).rejects.toThrow('content is not valid JSON');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
+  });
 
   // The handler validates image MIME types before passing to saveImage.
   it('should reject images.save with mimeType not in the allowlist', async () => {
@@ -1716,22 +1735,19 @@ describe('Complex JSON Payload Edge Cases', () => {
     expect(received).toBe(content);
   });
 
-  // Empty object as content — technically valid JSON but not a valid editor state.
-  it('empty JSON object {} passes through handler', async () => {
+  // Empty object as content — valid JSON but missing root key, now rejected.
+  it('empty JSON object {} is rejected (no root key)', async () => {
     const handler = handlers.get('documents.update')!;
-    await handler(null, { id: '1', content: '{}' });
-    const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
-    expect(received).toBe('{}');
+    await expect(handler(null, { id: '1', content: '{}' })).rejects.toThrow('content must have a root key');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 
-  // Non-JSON string as content — plain text that's not JSON at all.
-  // Currently passes through since the handler doesn't validate.
-  it('non-JSON string passes through handler (no validation exists)', async () => {
+  // Non-JSON string as content — rejected by validation.
+  it('non-JSON string is rejected by content validation', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = 'This is just plain text, not JSON at all';
-    await handler(null, { id: '1', content });
-    const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
-    expect(received).toBe(content);
+    await expect(handler(null, { id: '1', content: 'This is just plain text, not JSON at all' }))
+      .rejects.toThrow('content is not valid JSON');
+    expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 });
 
@@ -2260,7 +2276,7 @@ describe('Null vs Undefined Distinction', () => {
   // title: undefined — handler passes undefined. Repo preserves existing title.
   it('documents.update with title: undefined means "do not update title"', async () => {
     const handler = handlers.get('documents.update')!;
-    await handler(null, { id: '1', content: 'only content' });
+    await handler(null, { id: '1', content: '{"root":{"children":[]}}' });
     const patch = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(patch.title).toBeUndefined();
     expect('title' in patch).toBe(false);
@@ -2445,7 +2461,7 @@ describe('Handler Argument Order Verification', () => {
   // an object as id and a string as patch.
   it('documents.update arg order: arg[0] is id string, arg[1] is full payload', async () => {
     const handler = handlers.get('documents.update')!;
-    const payload = { id: 'update-me', title: 'New', content: '{}', emoji: '🎯' };
+    const payload = { id: 'update-me', title: 'New', content: '{"root":{"children":[]}}', emoji: '🎯' };
     await handler(null, payload);
     const callArgs = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(callArgs[0]).toBe('update-me');

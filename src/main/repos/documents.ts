@@ -324,7 +324,7 @@ export function moveDocument(
     throw new Error('Cannot move document into itself');
   }
 
-  // Validate target parent exists and is not trashed
+  // Validate target parent exists and entire ancestor chain is not trashed
   if (newParentId !== null) {
     const parent = getDocumentById(newParentId);
     if (!parent) {
@@ -332,6 +332,16 @@ export function moveDocument(
     }
     if (parent.deletedAt) {
       throw new Error('Cannot move document under a trashed parent');
+    }
+    // Walk up the ancestor chain to detect zombie nodes (active node under a trashed ancestor)
+    let ancestorId = parent.parentId;
+    while (ancestorId !== null) {
+      const ancestor = getDocumentById(ancestorId);
+      if (!ancestor) break;
+      if (ancestor.deletedAt) {
+        throw new Error('Cannot move document under a trashed parent');
+      }
+      ancestorId = ancestor.parentId;
     }
   }
 

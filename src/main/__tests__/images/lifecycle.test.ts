@@ -31,6 +31,7 @@ vi.mock('../../db', () => ({
 import {
   setupImageDb, getDb, fs, net,
   saveImage, getImagePath, downloadImage, deleteImage,
+  validImageBase64, validImageArrayBuffer,
 } from './setup';
 
 describe('Round-trip Lifecycle', () => {
@@ -38,20 +39,14 @@ describe('Round-trip Lifecycle', () => {
 
   // save -> get -> delete -> get should work end-to-end.
   it('save then get returns matching filename', () => {
-    const saved = saveImage(
-      Buffer.from('test data').toString('base64'),
-      'image/png',
-    );
+    const saved = saveImage(validImageBase64('image/png'), 'image/png');
     const got = getImagePath(saved.id);
     expect(got.filePath).toBe(saved.filePath);
   });
 
   // After delete, get should throw — the image is gone.
   it('save then delete then get throws', () => {
-    const saved = saveImage(
-      Buffer.from('test data').toString('base64'),
-      'image/png',
-    );
+    const saved = saveImage(validImageBase64('image/png'), 'image/png');
     deleteImage(saved.id);
     expect(() => getImagePath(saved.id)).toThrow('Image not found');
   });
@@ -61,7 +56,7 @@ describe('Round-trip Lifecycle', () => {
     const types = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
     for (const mime of types) {
-      const saved = saveImage(Buffer.from(`${mime} data`).toString('base64'), mime);
+      const saved = saveImage(validImageBase64(mime), mime);
       const got = getImagePath(saved.id);
       expect(got.filePath).toBe(saved.filePath);
 
@@ -74,7 +69,7 @@ describe('Round-trip Lifecycle', () => {
   it('download then get then delete then get throws', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/webp')),
       headers: { get: vi.fn().mockReturnValue('image/webp') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -90,7 +85,7 @@ describe('Round-trip Lifecycle', () => {
   // Save multiple, delete one, verify the rest are unaffected.
   it('deleting one image does not affect others in a batch', () => {
     const images = Array.from({ length: 5 }, (_, i) =>
-      saveImage(Buffer.from(`image ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `img${i}`), 'image/png'),
     );
 
     // Delete the middle one
@@ -110,12 +105,12 @@ describe('Round-trip Lifecycle', () => {
   // removing them rapidly. DB state should stay consistent.
   it('interleaved save and delete maintains DB consistency', () => {
     const db = getDb();
-    const a = saveImage(Buffer.from('a').toString('base64'), 'image/png');
-    const b = saveImage(Buffer.from('b').toString('base64'), 'image/jpeg');
+    const a = saveImage(validImageBase64('image/png'), 'image/png');
+    const b = saveImage(validImageBase64('image/jpeg'), 'image/jpeg');
     deleteImage(a.id);
-    const c = saveImage(Buffer.from('c').toString('base64'), 'image/gif');
+    const c = saveImage(validImageBase64('image/gif'), 'image/gif');
     deleteImage(b.id);
-    const d = saveImage(Buffer.from('d').toString('base64'), 'image/webp');
+    const d = saveImage(validImageBase64('image/webp'), 'image/webp');
 
     // Only c and d should remain
     expect(() => getImagePath(a.id)).toThrow();
@@ -138,10 +133,7 @@ describe('Bulk & Stress Tests', () => {
     const images: { id: string; filePath: string }[] = [];
 
     for (let i = 0; i < 100; i++) {
-      const result = saveImage(
-        Buffer.from(`image data ${i}`).toString('base64'),
-        'image/png',
-      );
+      const result = saveImage(validImageBase64('image/png', `img${i}`), 'image/png');
       images.push(result);
     }
 
@@ -167,7 +159,7 @@ describe('Bulk & Stress Tests', () => {
   it('save 50 then delete all — DB is clean', () => {
     const db = getDb();
     const images = Array.from({ length: 50 }, (_, i) =>
-      saveImage(Buffer.from(`img ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `img${i}`), 'image/png'),
     );
 
     for (const img of images) {
@@ -188,10 +180,7 @@ describe('Bulk & Stress Tests', () => {
   it('rapid save-and-delete churn (50 cycles) leaves clean DB', () => {
     const db = getDb();
     for (let i = 0; i < 50; i++) {
-      const result = saveImage(
-        Buffer.from(`churn ${i}`).toString('base64'),
-        'image/png',
-      );
+      const result = saveImage(validImageBase64('image/png', `churn${i}`), 'image/png');
       deleteImage(result.id);
     }
 
@@ -215,10 +204,7 @@ describe('Bulk & Stress Tests', () => {
 
     for (let i = 0; i < 100; i++) {
       const mime = types[i % 4];
-      const result = saveImage(
-        Buffer.from(`data ${i}`).toString('base64'),
-        mime,
-      );
+      const result = saveImage(validImageBase64(mime, `data${i}`), mime);
       images.push({ ...result, mime });
     }
 
@@ -237,7 +223,7 @@ describe('Bulk & Stress Tests', () => {
   it('delete every other image from 100 — exactly 50 remain', () => {
     const db = getDb();
     const images = Array.from({ length: 100 }, (_, i) =>
-      saveImage(Buffer.from(`img ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `img${i}`), 'image/png'),
     );
 
     // Delete even-indexed images
@@ -263,7 +249,7 @@ describe('Bulk & Stress Tests', () => {
   it('reverse-order delete works correctly', () => {
     const db = getDb();
     const images = Array.from({ length: 50 }, (_, i) =>
-      saveImage(Buffer.from(`rev ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `rev${i}`), 'image/png'),
     );
 
     for (let i = images.length - 1; i >= 0; i--) {
@@ -287,7 +273,7 @@ describe('Bulk & Stress Tests', () => {
     for (let i = 0; i < 10; i++) {
       const mockResponse = {
         ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(i + 1)),
+        arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png', `dl${i}`)),
         headers: { get: vi.fn().mockReturnValue('image/png') },
       };
       (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -314,7 +300,7 @@ describe('Bulk & Stress Tests', () => {
     const db = getDb();
     // Save 5
     const saved = Array.from({ length: 5 }, (_, i) =>
-      saveImage(Buffer.from(`saved ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `saved${i}`), 'image/png'),
     );
 
     // Download 5
@@ -322,7 +308,7 @@ describe('Bulk & Stress Tests', () => {
     for (let i = 0; i < 5; i++) {
       const mockResponse = {
         ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+        arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg', `dl${i}`)),
         headers: { get: vi.fn().mockReturnValue('image/jpeg') },
       };
       (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -344,26 +330,25 @@ describe('Bulk & Stress Tests', () => {
     }
   });
 
-  // Bulk save with varying payload sizes — 0 bytes to 100KB.
+  // Bulk save with varying payload sizes — header + extra bytes.
   // Verifies no size-dependent issues.
-  it('saves images of varying sizes (0B to 100KB) without issues', () => {
-    const sizes = [1, 100, 1024, 10240, 102400]; // 1B, 100B, 1KB, 10KB, 100KB
+  it('saves images of varying sizes (header to 100KB) without issues', () => {
+    const extraSizes = [0, 100, 1024, 10240, 102400]; // extra bytes beyond header
 
-    for (const size of sizes) {
-      const data = Buffer.alloc(size, 0xAB);
-      const result = saveImage(data.toString('base64'), 'image/png');
+    for (const extra of extraSizes) {
+      const result = saveImage(validImageBase64('image/png', extra), 'image/png');
       expect(result.id).toBeDefined();
 
       const writeCalls = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls;
       const lastWrite = writeCalls[writeCalls.length - 1][1] as Buffer;
-      expect(lastWrite.length).toBe(size);
+      expect(lastWrite.length).toBe(8 + extra); // 8-byte PNG header + extra
     }
   });
 
   // writeFileSync call count should match the number of saves exactly.
   it('writeFileSync called exactly once per save', () => {
     for (let i = 0; i < 20; i++) {
-      saveImage(Buffer.from(`img ${i}`).toString('base64'), 'image/png');
+      saveImage(validImageBase64('image/png', `img${i}`), 'image/png');
     }
 
     expect(fs.writeFileSync).toHaveBeenCalledTimes(20);
@@ -372,7 +357,7 @@ describe('Bulk & Stress Tests', () => {
   // unlinkSync call count matches only successful deletes (not no-ops).
   it('unlinkSync called once per existing image delete, not for no-ops', () => {
     const images = Array.from({ length: 10 }, (_, i) =>
-      saveImage(Buffer.from(`img ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `img${i}`), 'image/png'),
     );
 
     // Delete 5 real images + 5 nonexistent IDs
@@ -467,7 +452,7 @@ describe('DB Consistency', () => {
   it('count after bulk save and partial delete is accurate', () => {
     const db = getDb();
     const images = Array.from({ length: 50 }, (_, i) =>
-      saveImage(Buffer.from(`img ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `img${i}`), 'image/png'),
     );
 
     for (let i = 0; i < 30; i++) {
@@ -500,7 +485,7 @@ describe('DB Consistency', () => {
   // Direct SQL deletion should make getImagePath throw.
   it('directly deleted DB record makes getImagePath throw', () => {
     const db = getDb();
-    const saved = saveImage(Buffer.from('data').toString('base64'), 'image/png');
+    const saved = saveImage(validImageBase64('image/png'), 'image/png');
 
     db.prepare(`DELETE FROM images WHERE id = ?`).run(saved.id);
 
@@ -519,7 +504,7 @@ describe('Concurrent Download Simulation', () => {
     for (let i = 0; i < 5; i++) {
       (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(i + 1)),
+        arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png', `dl${i}`)),
         headers: { get: vi.fn().mockReturnValue('image/png') },
       });
 
@@ -546,7 +531,7 @@ describe('Concurrent Download Simulation', () => {
       if (outcomes[i]) {
         (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
           ok: true,
-          arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+          arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png', `ok${i}`)),
           headers: { get: vi.fn().mockReturnValue('image/png') },
         });
       } else {
@@ -579,7 +564,7 @@ describe('Concurrent Download Simulation', () => {
   it('save then immediate delete leaves no trace', () => {
     const db = getDb();
     for (let i = 0; i < 20; i++) {
-      const saved = saveImage(Buffer.from(`race ${i}`).toString('base64'), 'image/png');
+      const saved = saveImage(validImageBase64('image/png', `race${i}`), 'image/png');
       deleteImage(saved.id);
     }
 
@@ -628,35 +613,45 @@ describe('Data Integrity Edge Cases', () => {
     expect(writtenBuffer.toString('ascii').startsWith('GIF89a')).toBe(true);
   });
 
-  // All-zeros data — edge case for blank/corrupted images.
-  it('preserves all-zeros data', () => {
+  // All-zeros payload after valid header — edge case for blank/corrupted images.
+  it('preserves all-zeros payload after valid header', () => {
+    const header = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
     const zeros = Buffer.alloc(256, 0x00);
-    const base64 = zeros.toString('base64');
+    const data = Buffer.concat([header, zeros]);
+    const base64 = data.toString('base64');
 
     saveImage(base64, 'image/png');
 
     const writtenBuffer = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock
       .calls[0][1] as Buffer;
-    expect(writtenBuffer.length).toBe(256);
-    expect(writtenBuffer.every((b) => b === 0)).toBe(true);
+    expect(writtenBuffer.length).toBe(264); // 8 header + 256 zeros
+    // Verify zeros in payload portion
+    for (let i = 8; i < writtenBuffer.length; i++) {
+      expect(writtenBuffer[i]).toBe(0);
+    }
   });
 
-  // All-ones (0xFF) data.
-  it('preserves all-0xFF data', () => {
+  // All-0xFF payload after valid header.
+  it('preserves all-0xFF payload after valid header', () => {
+    const header = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
     const ones = Buffer.alloc(256, 0xFF);
-    const base64 = ones.toString('base64');
+    const data = Buffer.concat([header, ones]);
+    const base64 = data.toString('base64');
 
     saveImage(base64, 'image/png');
 
     const writtenBuffer = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock
       .calls[0][1] as Buffer;
-    expect(writtenBuffer.length).toBe(256);
-    expect(writtenBuffer.every((b) => b === 0xFF)).toBe(true);
+    expect(writtenBuffer.length).toBe(264);
+    for (let i = 8; i < writtenBuffer.length; i++) {
+      expect(writtenBuffer[i]).toBe(0xFF);
+    }
   });
 
   // Download preserves binary data from ArrayBuffer -> Buffer -> file.
   it('download preserves binary data through ArrayBuffer->Buffer conversion', async () => {
-    const sourceData = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x00, 0xFF, 0xAB, 0xCD]);
+    // Valid PNG magic (8 bytes) + extra payload bytes
+    const sourceData = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xAB, 0xCD]);
     const arrayBuffer = sourceData.buffer.slice(
       sourceData.byteOffset,
       sourceData.byteOffset + sourceData.byteLength,
@@ -673,8 +668,8 @@ describe('Data Integrity Edge Cases', () => {
 
     const writtenBuffer = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock
       .calls[0][1] as Buffer;
-    expect(writtenBuffer.length).toBe(8);
+    expect(writtenBuffer.length).toBe(10);
     expect(writtenBuffer[0]).toBe(0x89);
-    expect(writtenBuffer[7]).toBe(0xCD);
+    expect(writtenBuffer[9]).toBe(0xCD);
   });
 });

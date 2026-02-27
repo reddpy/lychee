@@ -14,7 +14,7 @@
  * - Non-image content types
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFetch = vi.fn();
 vi.mock('electron', () => ({
@@ -35,10 +35,22 @@ vi.mock('../../db', () => ({
   getDb: () => getTestDb(),
 }));
 
+const mockDownloadImage = vi.fn();
+vi.mock('../../repos/images', () => ({
+  downloadImage: (...args: unknown[]) => mockDownloadImage(...args),
+  saveImage: vi.fn(),
+  getImagePath: vi.fn(),
+  deleteImage: vi.fn(),
+}));
+
 import { setupResolverDb, resolveUrl } from './setup';
 
 describe('URL Resolver — Content-Type Probe', () => {
   setupResolverDb();
+
+  beforeEach(() => {
+    mockDownloadImage.mockResolvedValue({ id: 'mock-id', filePath: 'mock-id.png' });
+  });
 
   // ────────────────────────────────────────────────────────
   // HEAD Probe
@@ -47,28 +59,16 @@ describe('URL Resolver — Content-Type Probe', () => {
   // URLs without a file extension (e.g., API endpoints) fall through to
   // the content-type probe handler. If HEAD returns image/*, download it.
   it('probes extensionless URL with HEAD request', async () => {
-    // First call: HEAD request → returns image content-type
-    // Second call: download (from downloadImage)
-    let callCount = 0;
-    mockFetch.mockImplementation((_url: string, opts?: { method?: string }) => {
-      callCount++;
-      if (callCount === 1) {
-        // HEAD probe
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/jpeg' },
-        });
-      }
-      // Download
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'image/jpeg' },
-      });
+    const url = 'https://example.com/api/avatar/123';
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/jpeg' },
     });
 
-    const result = await resolveUrl('https://example.com/api/avatar/123');
+    const result = await resolveUrl(url);
     expect(result.type).toBe('image');
+    // Probe detected image content-type → forwarded URL to downloadImage
+    expect(mockDownloadImage).toHaveBeenCalledWith(url);
   });
 
   // Some servers reject HEAD requests (405 Method Not Allowed).
@@ -85,17 +85,9 @@ describe('URL Resolver — Content-Type Probe', () => {
           headers: { get: () => '' },
         });
       }
-      if (callCount === 2) {
-        // GET succeeds with image
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/png' },
-        });
-      }
-      // Download
+      // GET succeeds with image
       return Promise.resolve({
         ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
         headers: { get: () => 'image/png' },
       });
     });
@@ -113,25 +105,16 @@ describe('URL Resolver — Content-Type Probe', () => {
 
     const result = await resolveUrl('https://example.com/page');
     expect(result.type).toBe('bookmark');
+    // No download for HTML — goes to fetchUrlMetadata instead
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // Content-type headers often include parameters like charset.
   // "image/webp; charset=utf-8" should still be detected as an image.
   it('detects image content-type with extra params', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/webp; charset=utf-8' },
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'image/webp' },
-      });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/webp; charset=utf-8' },
     });
 
     const result = await resolveUrl('https://example.com/api/photo');
@@ -144,22 +127,9 @@ describe('URL Resolver — Content-Type Probe', () => {
 
   // GIF detected via content-type probe (extensionless URL, server returns image/gif).
   it('detects GIF via content-type probe on extensionless URL', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        // HEAD probe returns image/gif
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/gif' },
-        });
-      }
-      // Download
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'image/gif' },
-      });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/gif' },
     });
 
     const result = await resolveUrl('https://api.example.com/v1/media/67890');
@@ -168,20 +138,9 @@ describe('URL Resolver — Content-Type Probe', () => {
 
   // Probe detects image/gif via HEAD.
   it('probe detects image/gif content-type', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/gif' },
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'image/gif' },
-      });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/gif' },
     });
 
     const result = await resolveUrl('https://example.com/api/media');
@@ -190,20 +149,9 @@ describe('URL Resolver — Content-Type Probe', () => {
 
   // Probe detects image/webp via HEAD.
   it('probe detects image/webp content-type', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/webp' },
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'image/webp' },
-      });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/webp' },
     });
 
     const result = await resolveUrl('https://example.com/api/photo');
@@ -228,6 +176,8 @@ describe('URL Resolver — Content-Type Probe', () => {
     if (result.type === 'unsupported') {
       expect(result.reason).toContain('Unhandled content type: image/svg+xml');
     }
+    // No download attempted — SVG rejected at the probe level
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // Probe rejects image/bmp — not in IMAGE_CONTENT_TYPES.
@@ -239,6 +189,7 @@ describe('URL Resolver — Content-Type Probe', () => {
 
     const result = await resolveUrl('https://example.com/api/bitmap');
     expect(result.type).toBe('unsupported');
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // ────────────────────────────────────────────────────────
@@ -301,19 +252,11 @@ describe('URL Resolver — Content-Type Probe', () => {
   // HEAD probe succeeds with image content-type, but the subsequent
   // downloadImage call fails. This should hit the catch block.
   it('returns unsupported when probe detects image but download fails', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        // HEAD probe succeeds
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/png' },
-        });
-      }
-      // Download fails
-      return Promise.reject(new Error('Download timeout'));
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/png' },
     });
+    mockDownloadImage.mockRejectedValue(new Error('Download timeout'));
 
     const result = await resolveUrl('https://example.com/api/large-image');
     expect(result.type).toBe('unsupported');
@@ -345,20 +288,9 @@ describe('URL Resolver — Content-Type Probe', () => {
   // "multipart/x-mixed-replace;boundary=image/jpeg" contains "image/jpeg"
   // as a substring. The `includes()` check would match this incorrectly.
   it('false-positive: content-type containing image type as substring', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'multipart/x-mixed-replace;boundary=image/jpeg' },
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'image/jpeg' },
-      });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'multipart/x-mixed-replace;boundary=image/jpeg' },
     });
 
     const result = await resolveUrl('https://example.com/api/stream');
@@ -512,20 +444,9 @@ describe('URL Resolver — Content-Type Probe', () => {
 
   // image/jpeg with boundary param (unusual but valid HTTP).
   it('detects image/jpeg with extra parameters', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve({
-          ok: true,
-          headers: { get: () => 'image/jpeg; boundary=something' },
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-        headers: { get: () => 'image/jpeg' },
-      });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/jpeg; boundary=something' },
     });
 
     const result = await resolveUrl('https://example.com/api/photo');

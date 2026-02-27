@@ -124,7 +124,7 @@ describe('IPC Error Propagation', () => {
     });
 
     const handler = handlers.get('documents.update')!;
-    await expect(handler(null, { id: '1', content: '{}' })).rejects.toThrow(
+    await expect(handler(null, { id: '1', content: '{"root":{"children":[]}}' })).rejects.toThrow(
       'SQLITE_BUSY',
     );
   });

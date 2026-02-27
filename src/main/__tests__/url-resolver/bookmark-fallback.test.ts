@@ -13,7 +13,7 @@
  * - HEAD fails → GET returns HTML → still produces bookmark
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFetch = vi.fn();
 vi.mock('electron', () => ({
@@ -32,6 +32,14 @@ vi.mock('fs', () => ({
 import { getTestDb } from '../helpers';
 vi.mock('../../db', () => ({
   getDb: () => getTestDb(),
+}));
+
+const mockDownloadImage = vi.fn();
+vi.mock('../../repos/images', () => ({
+  downloadImage: (...args: unknown[]) => mockDownloadImage(...args),
+  saveImage: vi.fn(),
+  getImagePath: vi.fn(),
+  deleteImage: vi.fn(),
 }));
 
 import { setupResolverDb, resolveUrl } from './setup';
@@ -62,6 +70,10 @@ function mockHtmlPage(html: string) {
 
 describe('URL Resolver — Bookmark Fallback', () => {
   setupResolverDb();
+
+  beforeEach(() => {
+    mockDownloadImage.mockResolvedValue({ id: 'mock-id', filePath: 'mock-id.png' });
+  });
 
   // ────────────────────────────────────────────────────────
   // Basic Bookmark Creation
@@ -196,12 +208,8 @@ describe('URL Resolver — Bookmark Fallback', () => {
   // ────────────────────────────────────────────────────────
 
   it('image extension takes priority over bookmark (not reached)', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/png' },
-    });
-
+    // downloadImage is mocked to succeed — extension handler handles .png
+    // before content-type probe can run
     const result = await resolveUrl('https://example.com/photo.png');
     expect(result.type).toBe('image');
   });

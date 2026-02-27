@@ -760,9 +760,27 @@ describe('Document Repository — Nesting & Unnesting', () => {
     // Nesting under a partially-restored subtree. Trash grandparent (cascades),
     // manually un-trash the middle node, then try to nest something under it.
     // The middle node's parent is still trashed, making the middle node a "zombie"
-    // (active but under a trashed parent). BUG: moveDocument should reject this.
-    // TODO: validate entire ancestor chain is not trashed in moveDocument
-    it.todo('nesting under a zombie node (active but under trashed parent) should be rejected');
+    // (active but under a trashed parent). moveDocument rejects this by walking
+    // the entire ancestor chain.
+    it('nesting under a zombie node (active but under trashed parent) should be rejected', () => {
+      const grandparent = createDocument({ title: 'Grandparent' });
+      const parent = createDocument({ title: 'Parent', parentId: grandparent.id });
+      const note = createDocument({ title: 'Note' });
+
+      // Trash grandparent — cascades to parent
+      trashDocument(grandparent.id);
+      expect(getDocumentById(parent.id)!.deletedAt).not.toBeNull();
+
+      // Manually un-trash parent (simulating partial restore), making it a zombie
+      getDb().prepare(`UPDATE documents SET deletedAt = NULL WHERE id = ?`).run(parent.id);
+      expect(getDocumentById(parent.id)!.deletedAt).toBeNull();
+      // But grandparent is still trashed
+      expect(getDocumentById(grandparent.id)!.deletedAt).not.toBeNull();
+
+      // Trying to nest note under the zombie parent should be rejected
+      expect(() => moveDocument(note.id, parent.id, 0))
+        .toThrow('Cannot move document under a trashed parent');
+    });
 
     // getDescendantIds includes trashed descendants in the circular check.
     // This means you can't move a node under its own trashed child.

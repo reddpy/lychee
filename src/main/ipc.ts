@@ -25,6 +25,22 @@ function handle<C extends IpcChannel>(channel: C, fn: Handler<C>) {
   ipcMain.handle(channel, async (_event, payload: IpcContract[C]['req']) => fn(payload));
 }
 
+function validateContentJson(content: string): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error('content is not valid JSON');
+  }
+  if (typeof parsed !== 'object' || parsed === null || !('root' in parsed)) {
+    throw new Error('content must have a root key');
+  }
+  const root = (parsed as Record<string, unknown>).root;
+  if (typeof root !== 'object' || root === null || !Array.isArray((root as Record<string, unknown>).children)) {
+    throw new Error('content root.children must be an array');
+  }
+}
+
 export function registerIpcHandlers() {
   handle('documents.list', (payload) => ({
     documents: listDocuments(payload),
@@ -34,12 +50,18 @@ export function registerIpcHandlers() {
     document: getDocumentById(payload.id),
   }));
 
-  handle('documents.create', (payload) => ({
-    document: createDocument(payload),
-  }));
+  handle('documents.create', (payload) => {
+    if (payload && typeof payload.content === 'string' && payload.content !== '') {
+      validateContentJson(payload.content);
+    }
+    return { document: createDocument(payload) };
+  });
 
   handle('documents.update', (payload) => {
     if (!payload.id) throw new Error('Missing required field: id');
+    if (typeof payload.content === 'string' && payload.content !== '') {
+      validateContentJson(payload.content);
+    }
     return { document: updateDocument(payload.id, payload) };
   });
 

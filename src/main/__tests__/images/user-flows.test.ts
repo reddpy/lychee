@@ -32,6 +32,7 @@ vi.mock('../../db', () => ({
 import {
   setupImageDb, getDb, fs, net,
   saveImage, getImagePath, downloadImage, deleteImage,
+  validImageBase64, validImageArrayBuffer,
 } from './setup';
 
 describe('User Flow: Clipboard Paste', () => {
@@ -172,8 +173,18 @@ describe('User Flow: URL Image Download', () => {
 
   // User drops a URL that requires authentication — CDN returns a login page
   // instead of the image. The download SHOULD fail, not save HTML as .png.
-  // TODO: reject non-image content-types in downloadImage
-  it.todo('auth-gated URL: server returns login page HTML — should fail gracefully');
+  it('auth-gated URL: server returns login page HTML — should fail gracefully', async () => {
+    const loginPage = Buffer.from('<html><body>Please log in to continue</body></html>');
+    const mockResponse = {
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(loginPage.buffer.slice(loginPage.byteOffset, loginPage.byteOffset + loginPage.byteLength)),
+      headers: { get: vi.fn().mockReturnValue('image/png') },
+    };
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+    await expect(downloadImage('https://private-cdn.example.com/photo.png'))
+      .rejects.toThrow('Content does not match image/png magic bytes');
+  });
 
   // User drops a URL to a file that no longer exists (404).
   it('broken URL: server returns 404 — throws HTTP error', async () => {
@@ -211,7 +222,7 @@ describe('User Flow: URL Image Download', () => {
     for (const { url, ct } of urls) {
       (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+        arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer(ct)),
         headers: { get: vi.fn().mockReturnValue(ct) },
       });
       results.push(await downloadImage(url));
@@ -233,7 +244,7 @@ describe('User Flow: URL Image Download', () => {
     const db = getDb();
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: { get: vi.fn().mockReturnValue('image/png') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -263,10 +274,7 @@ describe('User Flow: Note with Many Images', () => {
 
     for (let i = 0; i < 30; i++) {
       const mime = mimeTypes[i % 4];
-      const result = saveImage(
-        Buffer.from(`image content ${i}`).toString('base64'),
-        mime,
-      );
+      const result = saveImage(validImageBase64(mime, `img${i}`), mime);
       images.push({ ...result, mime });
     }
 
@@ -291,7 +299,7 @@ describe('User Flow: Note with Many Images', () => {
   it('note deletion: all 20 images from a note can be batch deleted', () => {
     const db = getDb();
     const images = Array.from({ length: 20 }, (_, i) =>
-      saveImage(Buffer.from(`note img ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `noteimg${i}`), 'image/png'),
     );
 
     // Simulate note deletion cleaning up all images
@@ -314,12 +322,12 @@ describe('User Flow: Note with Many Images', () => {
     const db = getDb();
     // Note A images
     const noteA = Array.from({ length: 5 }, (_, i) =>
-      saveImage(Buffer.from(`noteA img ${i}`).toString('base64'), 'image/png'),
+      saveImage(validImageBase64('image/png', `noteA${i}`), 'image/png'),
     );
 
     // Note B images
     const noteB = Array.from({ length: 5 }, (_, i) =>
-      saveImage(Buffer.from(`noteB img ${i}`).toString('base64'), 'image/jpeg'),
+      saveImage(validImageBase64('image/jpeg', `noteB${i}`), 'image/jpeg'),
     );
 
     // Delete all Note A images
@@ -344,10 +352,7 @@ describe('User Flow: Edge Cases in Real Usage', () => {
   // On restart, the image is in the DB but may not be referenced by any note.
   // The image should still be retrievable by ID (orphan cleanup is a separate concern).
   it('orphaned image is still retrievable by ID', () => {
-    const saved = saveImage(
-      Buffer.from([0x89, 0x50, 0x4E, 0x47]).toString('base64'),
-      'image/png',
-    );
+    const saved = saveImage(validImageBase64('image/png'), 'image/png');
 
     // Image exists in DB even though no note references it
     expect(getImagePath(saved.id).filePath).toBe(saved.filePath);
@@ -357,10 +362,7 @@ describe('User Flow: Edge Cases in Real Usage', () => {
   // The undo should trigger a delete to clean up the unused image.
   it('undo after paste: deleting the just-saved image cleans up properly', () => {
     const db = getDb();
-    const saved = saveImage(
-      Buffer.from([0x89, 0x50, 0x4E, 0x47]).toString('base64'),
-      'image/png',
-    );
+    const saved = saveImage(validImageBase64('image/png'), 'image/png');
 
     // Simulating undo: delete the image that was just pasted
     deleteImage(saved.id);
@@ -374,16 +376,10 @@ describe('User Flow: Edge Cases in Real Usage', () => {
   // The old image should be deletable, and the new one should work.
   it('image replacement: delete old image and save new one', () => {
     const db = getDb();
-    const oldImg = saveImage(
-      Buffer.from([0xFF, 0xD8, 0xFF]).toString('base64'),
-      'image/jpeg',
-    );
+    const oldImg = saveImage(validImageBase64('image/jpeg'), 'image/jpeg');
     deleteImage(oldImg.id);
 
-    const newImg = saveImage(
-      Buffer.from([0x89, 0x50, 0x4E, 0x47]).toString('base64'),
-      'image/png',
-    );
+    const newImg = saveImage(validImageBase64('image/png'), 'image/png');
 
     expect(() => getImagePath(oldImg.id)).toThrow();
     expect(getImagePath(newImg.id).filePath).toBe(newImg.filePath);
@@ -396,7 +392,7 @@ describe('User Flow: Edge Cases in Real Usage', () => {
   // Each paste SHOULD create a separate DB entry (no deduplication) because each
   // image node in the editor is independent.
   it('duplicate content paste: each paste creates a separate DB entry', () => {
-    const sameContent = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).toString('base64');
+    const sameContent = validImageBase64('image/png');
 
     const img1 = saveImage(sameContent, 'image/png');
     const img2 = saveImage(sameContent, 'image/png');
@@ -416,10 +412,10 @@ describe('User Flow: Edge Cases in Real Usage', () => {
   // The DB and filesystem should handle mixed formats correctly.
   it('mixed format note: PNG, JPEG, GIF, and WebP in the same note', () => {
     const db = getDb();
-    const png = saveImage(Buffer.from([0x89, 0x50, 0x4E, 0x47]).toString('base64'), 'image/png');
-    const jpg = saveImage(Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]).toString('base64'), 'image/jpeg');
-    const gif = saveImage(Buffer.from('GIF89a').toString('base64'), 'image/gif');
-    const webp = saveImage(Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]).toString('base64'), 'image/webp');
+    const png = saveImage(validImageBase64('image/png'), 'image/png');
+    const jpg = saveImage(validImageBase64('image/jpeg'), 'image/jpeg');
+    const gif = saveImage(validImageBase64('image/gif'), 'image/gif');
+    const webp = saveImage(validImageBase64('image/webp'), 'image/webp');
 
     // All stored with correct extensions
     expect(png.filePath).toMatch(/\.png$/);
@@ -445,16 +441,12 @@ describe('User Flow: Edge Cases in Real Usage', () => {
   it('same image from URL and clipboard: both entries coexist', async () => {
     const db = getDb();
     // Clipboard paste
-    const pasted = saveImage(
-      Buffer.from([0x89, 0x50, 0x4E, 0x47]).toString('base64'),
-      'image/png',
-    );
+    const pasted = saveImage(validImageBase64('image/png'), 'image/png');
 
     // URL download
-    const pngBytes = Buffer.from([0x89, 0x50, 0x4E, 0x47]);
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(pngBytes.buffer.slice(pngBytes.byteOffset, pngBytes.byteOffset + pngBytes.byteLength)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: { get: vi.fn().mockReturnValue('image/png') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);

@@ -10,7 +10,7 @@
  * - Download failure after extension match
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFetch = vi.fn();
 vi.mock('electron', () => ({
@@ -31,103 +31,79 @@ vi.mock('../../db', () => ({
   getDb: () => getTestDb(),
 }));
 
+const mockDownloadImage = vi.fn();
+vi.mock('../../repos/images', () => ({
+  downloadImage: (...args: unknown[]) => mockDownloadImage(...args),
+  saveImage: vi.fn(),
+  getImagePath: vi.fn(),
+  deleteImage: vi.fn(),
+}));
+
 import { setupResolverDb, resolveUrl } from './setup';
 
 describe('URL Resolver — Extension Detection', () => {
   setupResolverDb();
+
+  beforeEach(() => {
+    mockDownloadImage.mockResolvedValue({ id: 'mock-id', filePath: 'mock-id.png' });
+  });
 
   // ────────────────────────────────────────────────────────
   // Core Extension Types
   // ────────────────────────────────────────────────────────
 
   // .png is the most common image extension. The handler should detect it
-  // from the URL path without making any network requests.
+  // from the URL path and forward the URL to downloadImage.
   it('detects .png URL by extension', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/png' },
-    });
-
-    const result = await resolveUrl('https://example.com/image.png');
+    const url = 'https://example.com/image.png';
+    const result = await resolveUrl(url);
     expect(result.type).toBe('image');
     if (result.type === 'image') {
-      expect(result.sourceUrl).toBe('https://example.com/image.png');
+      expect(result.sourceUrl).toBe(url);
     }
+    expect(mockDownloadImage).toHaveBeenCalledWith(url);
   });
 
   // Extension matching must be case-insensitive — URLs from some servers
   // have uppercase extensions like .PNG or .JPG.
   it('detects uppercase extension .PNG (case-insensitive)', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/png' },
-    });
-
-    const result = await resolveUrl('https://example.com/PHOTO.PNG');
+    const url = 'https://example.com/PHOTO.PNG';
+    const result = await resolveUrl(url);
     expect(result.type).toBe('image');
+    expect(mockDownloadImage).toHaveBeenCalledWith(url);
   });
 
   // .jpg extension (most common JPEG extension).
   it('detects .jpg URL by extension', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/jpeg' },
-    });
-
     const result = await resolveUrl('https://example.com/photo.jpg');
     expect(result.type).toBe('image');
   });
 
   // .jpeg extension (alternate JPEG extension, matched by jpe?g regex).
   it('detects .jpeg URL by extension', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/jpeg' },
-    });
-
     const result = await resolveUrl('https://example.com/photo.jpeg');
     expect(result.type).toBe('image');
   });
 
   // .webp extension.
   it('detects .webp URL by extension', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/webp' },
-    });
-
     const result = await resolveUrl('https://example.com/modern.webp');
     expect(result.type).toBe('image');
   });
 
   // .gif is in IMAGE_EXTENSIONS regex and image/gif is in IMAGE_CONTENT_TYPES.
   it('detects .gif URL by extension', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/gif' },
-    });
-
-    const result = await resolveUrl('https://example.com/reaction.gif');
+    const url = 'https://example.com/reaction.gif';
+    const result = await resolveUrl(url);
     expect(result.type).toBe('image');
     if (result.type === 'image') {
-      expect(result.sourceUrl).toBe('https://example.com/reaction.gif');
+      expect(result.sourceUrl).toBe(url);
     }
+    expect(mockDownloadImage).toHaveBeenCalledWith(url);
   });
 
   // Uppercase .GIF extension — regex is case-insensitive.
   it('detects uppercase .GIF extension', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/gif' },
-    });
-
     const result = await resolveUrl('https://example.com/FUNNY.GIF');
     expect(result.type).toBe('image');
   });
@@ -137,76 +113,41 @@ describe('URL Resolver — Extension Detection', () => {
   // ────────────────────────────────────────────────────────
 
   // Many image URLs have query parameters (resize params, cache busters).
-  // The regex must match the extension even with ?params after it.
+  // The handler runs regex against `new URL(url).pathname`, so query params
+  // are stripped. But the full URL is forwarded to downloadImage.
   it('detects extension with query parameters', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/jpeg' },
-    });
-
-    const result = await resolveUrl(
-      'https://example.com/photo.jpg?width=800&quality=90',
-    );
+    const url = 'https://example.com/photo.jpg?width=800&quality=90';
+    const result = await resolveUrl(url);
     expect(result.type).toBe('image');
+    expect(mockDownloadImage).toHaveBeenCalledWith(url);
   });
 
   // GIF URL with query params (common on image CDNs).
   it('detects .gif URL with query parameters', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/gif' },
-    });
-
     const result = await resolveUrl('https://cdn.example.com/emoji.gif?size=128&v=2');
     expect(result.type).toBe('image');
   });
 
   // URL with fragment (#) — fragment is stripped by URL parser, extension still detected.
   it('detects extension in URL with fragment', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/gif' },
-    });
-
     const result = await resolveUrl('https://example.com/img.gif#section');
     expect(result.type).toBe('image');
   });
 
   // URL with encoded characters.
   it('detects extension in URL with encoded path', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/png' },
-    });
-
     const result = await resolveUrl('https://example.com/my%20photo.png');
     expect(result.type).toBe('image');
   });
 
   // URL with port number.
   it('detects extension in URL with port', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/jpeg' },
-    });
-
     const result = await resolveUrl('https://example.com:8080/image.jpg');
     expect(result.type).toBe('image');
   });
 
   // URL with deep path segments.
   it('detects extension in URL with path segments', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/gif' },
-    });
-
     const result = await resolveUrl('https://example.com/a/b/c/d/deep/nested/reaction.gif');
     expect(result.type).toBe('image');
   });
@@ -216,45 +157,35 @@ describe('URL Resolver — Extension Detection', () => {
   // ────────────────────────────────────────────────────────
   // IMAGE_EXTENSIONS matches .svg, .bmp, .ico but these aren't in
   // MIME_TO_EXT or IMAGE_CONTENT_TYPES. The extension handler detects
-  // them and calls downloadImage, which defaults unrecognized content-types
-  // to image/png. This is a subtle behavior gap.
+  // them and calls downloadImage, which rejects unsupported content-types.
 
-  // .svg extension matches regex → download succeeds → saved as .png
-  // because image/svg+xml is not in MIME_TO_EXT.
+  // .svg extension matches regex → downloadImage rejects because
+  // image/svg+xml is not in MIME_TO_EXT. User sees nothing embedded.
   it('.svg URL: extension matches but download rejects unsupported content-type', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/svg+xml' },
-    });
+    mockDownloadImage.mockRejectedValue(new Error('Unsupported content-type: image/svg+xml'));
 
     const result = await resolveUrl('https://example.com/icon.svg');
-    // SVG content-type is not in the supported list, download rejects
     expect(result.type).toBe('unsupported');
+    // Verify the handler still attempted the download (extension matched)
+    expect(mockDownloadImage).toHaveBeenCalledWith('https://example.com/icon.svg');
   });
 
   // .bmp extension matches regex → download rejects unsupported content-type.
   it('.bmp URL: extension matches but download rejects unsupported content-type', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/bmp' },
-    });
+    mockDownloadImage.mockRejectedValue(new Error('Unsupported content-type: image/bmp'));
 
     const result = await resolveUrl('https://example.com/old.bmp');
     expect(result.type).toBe('unsupported');
+    expect(mockDownloadImage).toHaveBeenCalledWith('https://example.com/old.bmp');
   });
 
   // .ico extension matches regex → download rejects unsupported content-type.
   it('.ico URL: extension matches but download rejects unsupported content-type', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/x-icon' },
-    });
+    mockDownloadImage.mockRejectedValue(new Error('Unsupported content-type: image/x-icon'));
 
     const result = await resolveUrl('https://example.com/favicon.ico');
     expect(result.type).toBe('unsupported');
+    expect(mockDownloadImage).toHaveBeenCalledWith('https://example.com/favicon.ico');
   });
 
   // ────────────────────────────────────────────────────────
@@ -273,6 +204,8 @@ describe('URL Resolver — Extension Detection', () => {
     if (result.type === 'unsupported') {
       expect(result.reason).toContain('Unhandled content type');
     }
+    // downloadImage should NOT be called — extension handler didn't match
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // .html should NOT match extension handler, falls through to probe → bookmark.
@@ -284,6 +217,7 @@ describe('URL Resolver — Extension Detection', () => {
 
     const result = await resolveUrl('https://example.com/page.html');
     expect(result.type).toBe('bookmark');
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // .mp4 video should NOT match.
@@ -295,6 +229,7 @@ describe('URL Resolver — Extension Detection', () => {
 
     const result = await resolveUrl('https://example.com/video.mp4');
     expect(result.type).toBe('unsupported');
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // ────────────────────────────────────────────────────────
@@ -305,7 +240,7 @@ describe('URL Resolver — Extension Detection', () => {
   // timeout, etc.), the handler should return 'unsupported' with a reason
   // instead of crashing.
   it('returns unsupported when extension matches but download fails', async () => {
-    mockFetch.mockRejectedValue(new Error('Network error'));
+    mockDownloadImage.mockRejectedValue(new Error('Network error'));
 
     const result = await resolveUrl('https://example.com/broken.png');
     expect(result.type).toBe('unsupported');
@@ -316,7 +251,7 @@ describe('URL Resolver — Extension Detection', () => {
 
   // GIF download failure — extension matches but server is down.
   it('returns unsupported when .gif extension matches but download fails', async () => {
-    mockFetch.mockRejectedValue(new Error('ETIMEDOUT'));
+    mockDownloadImage.mockRejectedValue(new Error('ETIMEDOUT'));
 
     const result = await resolveUrl('https://example.com/broken.gif');
     expect(result.type).toBe('unsupported');
@@ -327,11 +262,7 @@ describe('URL Resolver — Extension Detection', () => {
 
   // HTTP error (non-OK response) during download after extension match.
   it('returns unsupported when extension matches but server returns 404', async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 404,
-      headers: { get: (): null => null },
-    });
+    mockDownloadImage.mockRejectedValue(new Error('HTTP 404'));
 
     const result = await resolveUrl('https://example.com/deleted.png');
     expect(result.type).toBe('unsupported');
@@ -347,12 +278,6 @@ describe('URL Resolver — Extension Detection', () => {
   // URL with multiple dots — the regex matches the LAST extension.
   // "file.backup.png" should match .png, not .backup.
   it('matches extension on filename with multiple dots', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/png' },
-    });
-
     const result = await resolveUrl('https://example.com/file.backup.png');
     expect(result.type).toBe('image');
   });
@@ -368,6 +293,7 @@ describe('URL Resolver — Extension Detection', () => {
 
     const result = await resolveUrl('https://example.com/page?file=photo.png');
     expect(result.type).toBe('bookmark');
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // URL with trailing slash — no extension in pathname. Falls through to probe → bookmark.
@@ -410,12 +336,6 @@ describe('URL Resolver — Extension Detection', () => {
 
   // Mixed-case extension in the middle of a realistic CDN URL.
   it('detects mixed-case .JpEg extension', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-      headers: { get: () => 'image/jpeg' },
-    });
-
     const result = await resolveUrl('https://cdn.example.com/uploads/Photo.JpEg');
     expect(result.type).toBe('image');
   });

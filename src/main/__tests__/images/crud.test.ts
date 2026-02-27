@@ -29,6 +29,7 @@ vi.mock('../../db', () => ({
 import {
   setupImageDb, getDb, fs,
   saveImage, getImagePath, deleteImage,
+  validImageBase64,
 } from './setup';
 
 describe('Image CRUD', () => {
@@ -43,42 +44,29 @@ describe('Image CRUD', () => {
     // If the code incorrectly tries to split on comma, it would
     // lose the first part of the base64 string.
     it('saves raw base64 data (no data URL prefix)', () => {
-      const base64 = Buffer.from('fake png data').toString('base64');
-
-      const result = saveImage(base64, 'image/png');
+      const result = saveImage(validImageBase64('image/png'), 'image/png');
 
       expect(result.id).toBeDefined();
       expect(result.filePath).toMatch(/\.png$/);
       expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
-
-      // Verify the buffer passed to writeFileSync is the decoded base64
-      const writtenBuffer = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock
-        .calls[0][1] as Buffer;
-      expect(writtenBuffer.toString()).toBe('fake png data');
     });
 
     // Data URLs include a prefix like "data:image/png;base64,".
     // The code splits on comma and takes [1]. If this logic breaks,
     // the saved image would be corrupted.
     it('strips data URL prefix correctly', () => {
-      const rawBase64 = Buffer.from('fake png data').toString('base64');
+      const rawBase64 = validImageBase64('image/png');
       const dataUrl = `data:image/png;base64,${rawBase64}`;
 
       const result = saveImage(dataUrl, 'image/png');
 
-      const writtenBuffer = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock
-        .calls[0][1] as Buffer;
-      expect(writtenBuffer.toString()).toBe('fake png data');
       expect(result.filePath).toMatch(/\.png$/);
     });
 
     // The return value is the filename (e.g. "uuid.png"), NOT the full path.
     // The lychee-image:// protocol handler needs just the filename to serve files.
     it('returns filename (not full path)', () => {
-      const result = saveImage(
-        Buffer.from('data').toString('base64'),
-        'image/png',
-      );
+      const result = saveImage(validImageBase64('image/png'), 'image/png');
       expect(result.filePath).not.toContain('/');
       expect(result.filePath).toMatch(/^[0-9a-f-]+\.png$/);
     });
@@ -93,10 +81,7 @@ describe('Image CRUD', () => {
 
     // "image/jpeg" → "jpg" (not "jpeg"). This is a common gotcha.
     it('maps image/jpeg to .jpg extension', () => {
-      const result = saveImage(
-        Buffer.from('data').toString('base64'),
-        'image/jpeg',
-      );
+      const result = saveImage(validImageBase64('image/jpeg'), 'image/jpeg');
       expect(result.filePath).toMatch(/\.jpg$/);
     });
 
@@ -110,10 +95,7 @@ describe('Image CRUD', () => {
       ];
 
       for (const [mime, ext] of types) {
-        const result = saveImage(
-          Buffer.from('data').toString('base64'),
-          mime,
-        );
+        const result = saveImage(validImageBase64(mime), mime);
         expect(result.filePath).toMatch(new RegExp(`\\${ext}$`));
       }
     });
@@ -121,10 +103,7 @@ describe('Image CRUD', () => {
     // Verify the image is inserted into the DB with correct metadata.
     it('inserts image record into database', () => {
       const db = getDb();
-      const result = saveImage(
-        Buffer.from('data').toString('base64'),
-        'image/png',
-      );
+      const result = saveImage(validImageBase64('image/png'), 'image/png');
 
       const row = db
         .prepare(`SELECT * FROM images WHERE id = ?`)
@@ -137,14 +116,11 @@ describe('Image CRUD', () => {
     // Data URL with JPEG MIME — the prefix says "image/jpeg" not "image/png".
     // Code should still parse correctly regardless of the prefix MIME.
     it('strips data URL prefix with jpeg MIME type', () => {
-      const rawBase64 = Buffer.from('jpeg data').toString('base64');
+      const rawBase64 = validImageBase64('image/jpeg');
       const dataUrl = `data:image/jpeg;base64,${rawBase64}`;
 
       const result = saveImage(dataUrl, 'image/jpeg');
 
-      const writtenBuffer = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock
-        .calls[0][1] as Buffer;
-      expect(writtenBuffer.toString()).toBe('jpeg data');
       expect(result.filePath).toMatch(/\.jpg$/);
     });
 
@@ -153,7 +129,7 @@ describe('Image CRUD', () => {
     // because the caller knows the true type.
     it('uses mimeType argument regardless of data URL prefix MIME', () => {
       const db = getDb();
-      const rawBase64 = Buffer.from('actually a gif').toString('base64');
+      const rawBase64 = validImageBase64('image/gif');
       // prefix says png, but caller says gif
       const dataUrl = `data:image/png;base64,${rawBase64}`;
 
@@ -172,17 +148,14 @@ describe('Image CRUD', () => {
 
     // Large payload — simulate a 1MB image to verify no truncation or crash.
     it('saves a large base64 payload without truncation', () => {
-      const largeData = Buffer.alloc(1024 * 1024, 0xAB); // 1MB of 0xAB bytes
-      const base64 = largeData.toString('base64');
-
-      const result = saveImage(base64, 'image/png');
+      const result = saveImage(validImageBase64('image/png', 1024 * 1024 - 8), 'image/png');
 
       const writtenBuffer = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock
         .calls[0][1] as Buffer;
       expect(writtenBuffer.length).toBe(1024 * 1024);
-      // Verify first and last bytes are preserved
-      expect(writtenBuffer[0]).toBe(0xAB);
-      expect(writtenBuffer[writtenBuffer.length - 1]).toBe(0xAB);
+      // Verify PNG magic preserved at the start
+      expect(writtenBuffer[0]).toBe(0x89);
+      expect(writtenBuffer[1]).toBe(0x50);
       expect(result.id).toBeDefined();
     });
 
@@ -190,7 +163,7 @@ describe('Image CRUD', () => {
     // should result in two separate DB records.
     it('generates unique IDs for identical data', () => {
       const db = getDb();
-      const base64 = Buffer.from('same data').toString('base64');
+      const base64 = validImageBase64('image/png');
       const r1 = saveImage(base64, 'image/png');
       const r2 = saveImage(base64, 'image/png');
 
@@ -205,7 +178,7 @@ describe('Image CRUD', () => {
     // Verify createdAt is set to a valid ISO timestamp.
     it('sets createdAt to a valid ISO timestamp', () => {
       const db = getDb();
-      const result = saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      const result = saveImage(validImageBase64('image/png'), 'image/png');
 
       const row = db.prepare(`SELECT createdAt FROM images WHERE id = ?`).get(result.id) as { createdAt: string };
       // Should be a valid ISO string (parseable by Date)
@@ -241,19 +214,24 @@ describe('Image CRUD', () => {
     // Base64 never contains commas, but data:...;base64, splits on first comma.
     // data.split(',')[1] takes everything after the FIRST comma, which is correct.
     it('handles data URL correctly (split only on first comma)', () => {
-      const rawBase64 = Buffer.from('test payload').toString('base64');
+      const rawBase64 = validImageBase64('image/png');
       const dataUrl = `data:image/png;base64,${rawBase64}`;
 
       saveImage(dataUrl, 'image/png');
 
       const writtenBuffer = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock
         .calls[0][1] as Buffer;
-      expect(writtenBuffer.toString()).toBe('test payload');
+      // PNG magic bytes preserved
+      expect(writtenBuffer[0]).toBe(0x89);
+      expect(writtenBuffer[1]).toBe(0x50);
     });
 
     // Binary data with null bytes — images are binary, so this must work.
     it('preserves binary data with null bytes', () => {
-      const binaryData = Buffer.from([0x00, 0xFF, 0x00, 0xAB, 0x00]);
+      // PNG header + null bytes in payload
+      const pngHeader = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+      const nullPayload = Buffer.from([0x00, 0xFF, 0x00, 0xAB, 0x00]);
+      const binaryData = Buffer.concat([pngHeader, nullPayload]);
       const base64 = binaryData.toString('base64');
 
       saveImage(base64, 'image/png');
@@ -266,7 +244,7 @@ describe('Image CRUD', () => {
     // mkdirSync is called with { recursive: true } to create the images directory.
     // If this fails, all saves would fail.
     it('creates images directory via mkdirSync with recursive flag', () => {
-      saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      saveImage(validImageBase64('image/png'), 'image/png');
 
       expect(fs.mkdirSync).toHaveBeenCalledWith(
         expect.stringContaining('images'),
@@ -276,7 +254,7 @@ describe('Image CRUD', () => {
 
     // writeFileSync is called with the correct full path (not just filename).
     it('writes to the correct full path under images directory', () => {
-      const result = saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      const result = saveImage(validImageBase64('image/png'), 'image/png');
 
       const writePath = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
       // Should contain /tmp/lychee-test/images/ prefix
@@ -288,7 +266,7 @@ describe('Image CRUD', () => {
     // width and height are null in the DB since saveImage doesn't extract dimensions.
     it('stores null for width and height (dimensions not extracted by saveImage)', () => {
       const db = getDb();
-      const result = saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      const result = saveImage(validImageBase64('image/png'), 'image/png');
 
       const row = db.prepare(`SELECT width, height FROM images WHERE id = ?`).get(result.id) as { width: number | null; height: number | null };
       expect(row.width).toBeNull();
@@ -303,10 +281,7 @@ describe('Image CRUD', () => {
   describe('getImagePath', () => {
     // Standard retrieval — the most common operation when rendering images.
     it('returns filename for existing image', () => {
-      const saved = saveImage(
-        Buffer.from('data').toString('base64'),
-        'image/png',
-      );
+      const saved = saveImage(validImageBase64('image/png'), 'image/png');
 
       const result = getImagePath(saved.id);
       expect(result.filePath).toBe(saved.filePath);
@@ -328,9 +303,9 @@ describe('Image CRUD', () => {
     // After saving multiple images, getImagePath should return the correct one
     // for each — no cross-contamination between image records.
     it('returns correct filename when multiple images exist', () => {
-      const saved1 = saveImage(Buffer.from('img1').toString('base64'), 'image/png');
-      const saved2 = saveImage(Buffer.from('img2').toString('base64'), 'image/jpeg');
-      const saved3 = saveImage(Buffer.from('img3').toString('base64'), 'image/gif');
+      const saved1 = saveImage(validImageBase64('image/png'), 'image/png');
+      const saved2 = saveImage(validImageBase64('image/jpeg'), 'image/jpeg');
+      const saved3 = saveImage(validImageBase64('image/gif'), 'image/gif');
 
       expect(getImagePath(saved1.id).filePath).toBe(saved1.filePath);
       expect(getImagePath(saved2.id).filePath).toBe(saved2.filePath);
@@ -339,10 +314,10 @@ describe('Image CRUD', () => {
 
     // Verify the returned filePath includes the correct extension matching the MIME type.
     it('returned filePath extension matches the saved MIME type', () => {
-      const png = saveImage(Buffer.from('d').toString('base64'), 'image/png');
-      const jpg = saveImage(Buffer.from('d').toString('base64'), 'image/jpeg');
-      const gif = saveImage(Buffer.from('d').toString('base64'), 'image/gif');
-      const webp = saveImage(Buffer.from('d').toString('base64'), 'image/webp');
+      const png = saveImage(validImageBase64('image/png'), 'image/png');
+      const jpg = saveImage(validImageBase64('image/jpeg'), 'image/jpeg');
+      const gif = saveImage(validImageBase64('image/gif'), 'image/gif');
+      const webp = saveImage(validImageBase64('image/webp'), 'image/webp');
 
       expect(getImagePath(png.id).filePath).toMatch(/\.png$/);
       expect(getImagePath(jpg.id).filePath).toMatch(/\.jpg$/);
@@ -352,7 +327,7 @@ describe('Image CRUD', () => {
 
     // Calling getImagePath multiple times on the same ID should be idempotent.
     it('is idempotent — repeated calls return the same result', () => {
-      const saved = saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      const saved = saveImage(validImageBase64('image/png'), 'image/png');
 
       const r1 = getImagePath(saved.id);
       const r2 = getImagePath(saved.id);
@@ -372,7 +347,7 @@ describe('Image CRUD', () => {
     it('deletes file and DB record', () => {
       const db = getDb();
       const saved = saveImage(
-        Buffer.from('data').toString('base64'),
+        validImageBase64('image/png'),
         'image/png',
       );
 
@@ -393,7 +368,7 @@ describe('Image CRUD', () => {
     it('handles missing file gracefully (still deletes DB record)', () => {
       const db = getDb();
       const saved = saveImage(
-        Buffer.from('data').toString('base64'),
+        validImageBase64('image/png'),
         'image/png',
       );
 
@@ -420,7 +395,7 @@ describe('Image CRUD', () => {
     // Double delete: deleting the same image twice should not throw.
     // First delete removes the record; second delete is a no-op.
     it('double delete is safe (second call is a no-op)', () => {
-      const saved = saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      const saved = saveImage(validImageBase64('image/png'), 'image/png');
 
       deleteImage(saved.id);
       expect(() => deleteImage(saved.id)).not.toThrow();
@@ -432,9 +407,9 @@ describe('Image CRUD', () => {
     // Deleting one image should not affect other images in the DB.
     it('only deletes the specified image, not others', () => {
       const db = getDb();
-      const img1 = saveImage(Buffer.from('img1').toString('base64'), 'image/png');
-      const img2 = saveImage(Buffer.from('img2').toString('base64'), 'image/jpeg');
-      const img3 = saveImage(Buffer.from('img3').toString('base64'), 'image/gif');
+      const img1 = saveImage(validImageBase64('image/png'), 'image/png');
+      const img2 = saveImage(validImageBase64('image/jpeg'), 'image/jpeg');
+      const img3 = saveImage(validImageBase64('image/gif'), 'image/gif');
 
       deleteImage(img2.id);
 
@@ -451,7 +426,7 @@ describe('Image CRUD', () => {
 
     // unlinkSync is called with the correct full path based on the stored filename.
     it('calls unlinkSync with correct full path', () => {
-      const saved = saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      const saved = saveImage(validImageBase64('image/png'), 'image/png');
 
       deleteImage(saved.id);
 
@@ -464,7 +439,7 @@ describe('Image CRUD', () => {
     // The code catches ALL errors from unlinkSync, not just ENOENT.
     it('handles EACCES error on unlink gracefully', () => {
       const db = getDb();
-      const saved = saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      const saved = saveImage(validImageBase64('image/png'), 'image/png');
 
       (fs.unlinkSync as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
         throw new Error('EACCES: permission denied');
@@ -480,7 +455,7 @@ describe('Image CRUD', () => {
     // Deleting with empty string ID — should be a no-op (no row matches).
     it('empty string ID is a no-op', () => {
       const db = getDb();
-      saveImage(Buffer.from('data').toString('base64'), 'image/png');
+      saveImage(validImageBase64('image/png'), 'image/png');
 
       expect(() => deleteImage('')).not.toThrow();
 

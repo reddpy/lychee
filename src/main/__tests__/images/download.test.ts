@@ -29,6 +29,7 @@ vi.mock('../../db', () => ({
 import {
   setupImageDb, getDb, fs, net,
   downloadImage, getImagePath,
+  validImageArrayBuffer,
 } from './setup';
 
 describe('downloadImage', () => {
@@ -38,7 +39,7 @@ describe('downloadImage', () => {
   it('downloads image and detects MIME from content-type header', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
       headers: {
         get: vi.fn().mockReturnValue('image/jpeg'),
       },
@@ -71,7 +72,7 @@ describe('downloadImage', () => {
   it('detects MIME from content-type with extra params', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
       headers: {
         get: vi.fn().mockReturnValue('image/jpeg; charset=utf-8'),
       },
@@ -101,7 +102,7 @@ describe('downloadImage', () => {
     const db = getDb();
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: {
         get: vi.fn().mockReturnValue('image/png'),
       },
@@ -129,7 +130,7 @@ describe('downloadImage', () => {
     for (const [contentType, extPattern] of cases) {
       const mockResponse = {
         ok: true,
-        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+        arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer(contentType)),
         headers: { get: vi.fn().mockReturnValue(contentType) },
       };
       (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -196,7 +197,7 @@ describe('downloadImage', () => {
   it('detects MIME from content-type with boundary parameter', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/gif')),
       headers: { get: vi.fn().mockReturnValue('image/gif; boundary=something') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -208,7 +209,11 @@ describe('downloadImage', () => {
   // Large download — 5MB buffer. Verify nothing crashes and the full buffer is written.
   it('handles large download (5MB) without truncation', async () => {
     const bigBuffer = new ArrayBuffer(5 * 1024 * 1024);
-    new Uint8Array(bigBuffer).fill(0xCD);
+    const view = new Uint8Array(bigBuffer);
+    view.fill(0xCD);
+    // Write PNG magic bytes at the start
+    const pngMagic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    for (let i = 0; i < pngMagic.length; i++) view[i] = pngMagic[i];
 
     const mockResponse = {
       ok: true,
@@ -240,18 +245,16 @@ describe('downloadImage', () => {
 
   // Each download should produce a unique ID, even for the same URL.
   it('generates unique IDs for downloads of the same URL', async () => {
-    const mockResponse = {
+    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: { get: vi.fn().mockReturnValue('image/png') },
-    };
-
-    (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+    });
     const r1 = await downloadImage('https://example.com/same.png');
 
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/png')),
       headers: { get: vi.fn().mockReturnValue('image/png') },
     });
     const r2 = await downloadImage('https://example.com/same.png');
@@ -263,7 +266,7 @@ describe('downloadImage', () => {
   it('downloaded image is retrievable via getImagePath', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(4)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
       headers: { get: vi.fn().mockReturnValue('image/jpeg') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
@@ -278,7 +281,7 @@ describe('downloadImage', () => {
   it('uppercase content-type Image/JPEG should be detected as jpeg (RFC 7230)', async () => {
     const mockResponse = {
       ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      arrayBuffer: vi.fn().mockResolvedValue(validImageArrayBuffer('image/jpeg')),
       headers: { get: vi.fn().mockReturnValue('Image/JPEG') },
     };
     (net.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
