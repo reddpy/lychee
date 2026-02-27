@@ -308,7 +308,7 @@ describe('IPC Error Propagation', () => {
 
     const handler = handlers.get('shell.openExternal')!;
     await expect(
-      handler(null, { url: 'file:///etc/passwd' }),
+      handler(null, { url: 'https://example.com/broken' }),
     ).rejects.toThrow('Failed to open URL');
   });
 

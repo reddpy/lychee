@@ -164,11 +164,11 @@ describe('Image CRUD', () => {
       expect(row.mimeType).toBe('image/gif');
     });
 
-    // Empty base64 string results in a zero-byte file. A zero-byte file is
-    // never a valid image — it can't be rendered and indicates a broken upload.
-    // The system SHOULD reject this rather than creating an unrenderable file.
-    // TODO: implement zero-byte rejection in saveImage
-    it.todo('should reject empty base64 data (zero-byte image is never valid)');
+    // Empty base64 string results in a zero-byte buffer — rejected.
+    it('should reject empty base64 data (zero-byte image is never valid)', () => {
+      expect(() => saveImage('', 'image/png'))
+        .toThrow('Image data is empty (zero bytes)');
+    });
 
     // Large payload — simulate a 1MB image to verify no truncation or crash.
     it('saves a large base64 payload without truncation', () => {

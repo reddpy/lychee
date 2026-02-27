@@ -347,7 +347,7 @@ describe('Bulk & Stress Tests', () => {
   // Bulk save with varying payload sizes — 0 bytes to 100KB.
   // Verifies no size-dependent issues.
   it('saves images of varying sizes (0B to 100KB) without issues', () => {
-    const sizes = [0, 1, 100, 1024, 10240, 102400]; // 0B, 1B, 100B, 1KB, 10KB, 100KB
+    const sizes = [1, 100, 1024, 10240, 102400]; // 1B, 100B, 1KB, 10KB, 100KB
 
     for (const size of sizes) {
       const data = Buffer.alloc(size, 0xAB);

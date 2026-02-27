@@ -472,31 +472,61 @@ describe('Document Repository — Nesting & Unnesting', () => {
 
     // ── Edge Cases ───────────────────────────────────────
 
-    // BUG: Nesting under a trashed parent leaves the doc in limbo — it has
-    // deletedAt=NULL but its parent is trashed, so it won't appear in
-    // listDocuments (parent is hidden) or listTrashedDocuments (doc isn't trashed).
-    // moveDocument should reject nesting under a trashed parent.
-    // TODO: validate target parent is not trashed in moveDocument
-    it.todo('nesting under a trashed parent should be rejected');
+    // moveDocument rejects nesting under a trashed parent to prevent
+    // docs from ending up in limbo (not in listDocuments or listTrashedDocuments).
+    it('nesting under a trashed parent should be rejected', () => {
+      const parent = createDocument({ title: 'Parent' });
+      const note = createDocument({ title: 'Note' });
+      trashDocument(parent.id);
 
-    // BUG: Nesting a trashed doc silently moves it without restoring it.
-    // A trashed doc shouldn't be movable — the user should restore it first.
-    // TODO: validate source doc is not trashed in moveDocument
-    it.todo('nesting a trashed doc should be rejected');
+      expect(() => moveDocument(note.id, parent.id, 0))
+        .toThrow('Cannot move document under a trashed parent');
+    });
 
-    // BUG: Nesting under a nonexistent parentId creates an orphan with a
-    // dangling reference. moveDocument should validate the target exists.
-    // TODO: validate target parent exists in moveDocument
-    it.todo('nesting under nonexistent parent should be rejected');
+    // moveDocument rejects moving a trashed doc — user must restore first.
+    it('nesting a trashed doc should be rejected', () => {
+      const folder = createDocument({ title: 'Folder' });
+      const note = createDocument({ title: 'Note' });
+      trashDocument(note.id);
 
-    // BUG: sortOrder beyond sibling count creates a gap (e.g., sortOrder=100
-    // when there are 0 siblings). Should be clamped to the sibling count.
-    // TODO: clamp sortOrder to sibling count in moveDocument
-    it.todo('nesting with sortOrder beyond sibling count should be clamped');
+      expect(() => moveDocument(note.id, folder.id, 0))
+        .toThrow('Cannot move a trashed document');
+    });
 
-    // BUG: Negative sortOrder creates invalid state. Should be clamped to 0.
-    // TODO: clamp negative sortOrder to 0 in moveDocument
-    it.todo('nesting with negative sortOrder should be clamped to 0');
+    // moveDocument validates that the target parent exists.
+    it('nesting under nonexistent parent should be rejected', () => {
+      const note = createDocument({ title: 'Note' });
+
+      expect(() => moveDocument(note.id, 'nonexistent-id', 0))
+        .toThrow('Target parent not found');
+    });
+
+    // sortOrder beyond sibling count is clamped to the actual sibling count.
+    it('nesting with sortOrder beyond sibling count should be clamped', () => {
+      const folder = createDocument({ title: 'Folder' });
+      createDocument({ title: 'Existing', parentId: folder.id });
+      const note = createDocument({ title: 'Note' });
+
+      // folder has 1 child (existing). Nesting note with sortOrder=100 should clamp to 1.
+      moveDocument(note.id, folder.id, 100);
+
+      const moved = getDocumentById(note.id)!;
+      expect(moved.parentId).toBe(folder.id);
+      expect(moved.sortOrder).toBe(1);
+      expect(getSortOrders(getDb(), folder.id)).toEqual([0, 1]);
+    });
+
+    // Negative sortOrder is clamped to 0.
+    it('nesting with negative sortOrder should be clamped to 0', () => {
+      const folder = createDocument({ title: 'Folder' });
+      const note = createDocument({ title: 'Note' });
+
+      moveDocument(note.id, folder.id, -5);
+
+      const moved = getDocumentById(note.id)!;
+      expect(moved.parentId).toBe(folder.id);
+      expect(moved.sortOrder).toBe(0);
+    });
 
     // Nesting must preserve content, title, emoji, createdAt.
     // Only parentId, sortOrder, and updatedAt should change.
@@ -743,11 +773,9 @@ describe('Document Repository — Nesting & Unnesting', () => {
 
       trashDocument(b.id);
 
-      // B is trashed but still structurally a child of A.
-      // getDescendantIds traverses all children regardless of deletedAt.
-      // So moving A under B should detect the cycle.
+      // B is trashed — moveDocument now rejects moving under a trashed parent
       expect(() => moveDocument(a.id, b.id, 0)).toThrow(
-        'Cannot move document into its descendant',
+        'Cannot move document under a trashed parent',
       );
     });
 

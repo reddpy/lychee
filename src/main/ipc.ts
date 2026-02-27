@@ -38,9 +38,10 @@ export function registerIpcHandlers() {
     document: createDocument(payload),
   }));
 
-  handle('documents.update', (payload) => ({
-    document: updateDocument(payload.id, payload),
-  }));
+  handle('documents.update', (payload) => {
+    if (!payload.id) throw new Error('Missing required field: id');
+    return { document: updateDocument(payload.id, payload) };
+  });
 
   handle('documents.delete', (payload) => {
     deleteDocument(payload.id);
@@ -59,20 +60,40 @@ export function registerIpcHandlers() {
     permanentDeleteDocument(payload.id),
   );
 
-  handle('documents.move', (payload) => ({
-    document: moveDocument(payload.id, payload.parentId, payload.sortOrder),
-  }));
+  handle('documents.move', (payload) => {
+    if (payload.sortOrder < 0) throw new Error('sortOrder must be non-negative');
+    if (!Number.isInteger(payload.sortOrder)) throw new Error('sortOrder must be an integer');
+    return { document: moveDocument(payload.id, payload.parentId, payload.sortOrder) };
+  });
 
   handle('shell.openExternal', async (payload) => {
+    const url = payload.url;
+    const scheme = url.split(':')[0]?.toLowerCase();
+    const allowedSchemes = ['http', 'https', 'mailto'];
+    if (!scheme || !allowedSchemes.includes(scheme)) {
+      throw new Error(`Blocked URL scheme: ${scheme}`);
+    }
     await shell.openExternal(payload.url);
     return { ok: true };
   });
 
-  handle('images.save', (payload) => saveImage(payload.data, payload.mimeType));
+  handle('images.save', (payload) => {
+    const allowedMimes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+    if (!allowedMimes.includes(payload.mimeType)) {
+      throw new Error(`Unsupported image type: ${payload.mimeType}`);
+    }
+    return saveImage(payload.data, payload.mimeType);
+  });
 
   handle('images.getPath', (payload) => getImagePath(payload.id));
 
-  handle('images.download', (payload) => downloadImage(payload.url));
+  handle('images.download', (payload) => {
+    const scheme = payload.url.split(':')[0]?.toLowerCase();
+    if (scheme !== 'http' && scheme !== 'https') {
+      throw new Error(`Blocked URL scheme for image download: ${scheme}`);
+    }
+    return downloadImage(payload.url);
+  });
 
   handle('images.delete', (payload) => {
     deleteImage(payload.id);

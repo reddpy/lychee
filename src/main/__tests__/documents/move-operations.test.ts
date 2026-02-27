@@ -613,7 +613,7 @@ describe('Document Repository — Move Operations', () => {
 
     // ── Bug #6: moveDocument doesn't validate sort order range ──────
 
-    it('BUG: same-parent move beyond sibling count creates gap', () => {
+    it('same-parent move beyond sibling count is clamped', () => {
       createDocument({ title: 'A' });
       createDocument({ title: 'B' });
       createDocument({ title: 'C' });
@@ -622,16 +622,15 @@ describe('Document Repository — Move Operations', () => {
       const c = getAllDocs(getDb()).find((d) => d.title === 'C')!;
       moveDocument(c.id, null, 100); // way beyond valid range
 
-      // C is now at position 100, leaving a massive gap
+      // C is clamped to position 2 (sibling count)
       const cDoc = getDocumentById(c.id)!;
-      expect(cDoc.sortOrder).toBe(100); // BUG: should be clamped to 2
+      expect(cDoc.sortOrder).toBe(2);
 
       const orders = getSortOrders(getDb(), null);
-      // Should be [0, 1, 2] but instead has a huge gap
-      expect(orders).toEqual([0, 1, 100]); // BUG: not contiguous
+      expect(orders).toEqual([0, 1, 2]); // contiguous
     });
 
-    it('BUG: same-parent move with negative sortOrder creates invalid state', () => {
+    it('same-parent move with negative sortOrder is clamped to 0', () => {
       createDocument({ title: 'A' });
       createDocument({ title: 'B' });
       createDocument({ title: 'C' });
@@ -641,13 +640,13 @@ describe('Document Repository — Move Operations', () => {
       moveDocument(a.id, null, -5); // negative
 
       const aDoc = getDocumentById(a.id)!;
-      expect(aDoc.sortOrder).toBe(-5); // BUG: should be clamped to 0
+      expect(aDoc.sortOrder).toBe(0); // clamped to 0
 
       const orders = getSortOrders(getDb(), null);
-      expect(orders[0]).toBeLessThan(0); // BUG: negative sort order
+      expect(orders[0]).toBeGreaterThanOrEqual(0);
     });
 
-    it('BUG: cross-parent move with out-of-range sortOrder creates gap', () => {
+    it('cross-parent move with out-of-range sortOrder is clamped', () => {
       const folder = createDocument({ title: 'Folder' });
       createDocument({ title: 'X', parentId: folder.id });
       // Folder children: X(0)
@@ -656,10 +655,10 @@ describe('Document Repository — Move Operations', () => {
       moveDocument(doc.id, folder.id, 50); // only 1 sibling, valid range is 0-1
 
       const docRefreshed = getDocumentById(doc.id)!;
-      expect(docRefreshed.sortOrder).toBe(50); // BUG: should be clamped to 1
+      expect(docRefreshed.sortOrder).toBe(1); // clamped to 1
 
       const orders = getSortOrders(getDb(), folder.id);
-      expect(orders).toEqual([0, 50]); // BUG: gap between 0 and 50
+      expect(orders).toEqual([0, 1]); // contiguous
     });
 
     // Explicitly pass the same parentId (not relying on same-parent detection).
@@ -777,22 +776,18 @@ describe('Document Repository — Move Operations', () => {
     // Fractional sortOrder. JavaScript numbers allow 1.5, SQLite stores it as REAL.
     // The shift logic uses INTEGER arithmetic (sortOrder + 1, sortOrder - 1).
     // A fractional sortOrder could break comparisons like sortOrder >= ? AND sortOrder < ?.
-    it('fractional sortOrder creates inconsistent state', () => {
+    it('fractional sortOrder is floored to integer', () => {
       createDocument({ title: 'A' });
       createDocument({ title: 'B' });
       createDocument({ title: 'C' });
       // C(0) B(1) A(2)
 
-      // Move B to fractional position 0.5
+      // Move B to fractional position 0.5 — should be floored to 0
       const b = getAllDocs(getDb()).find((d) => d.title === 'B')!;
       moveDocument(b.id, null, 0.5);
 
-      // B is now at 0.5, which is between C(0) and A.
-      // The shift logic would have shifted items in range (1, 0.5] — which is empty.
-      // So nothing shifted but B moved to 0.5. This leaves:
-      // C(0), B(0.5), A(1) — technically "sorted" but not integer-contiguous.
       const bDoc = getDocumentById(b.id)!;
-      expect(bDoc.sortOrder).toBe(0.5); // SQLite stores this fine
+      expect(bDoc.sortOrder).toBe(0); // floored from 0.5 to 0
     });
 
     // Return value should always reflect the actual DB state after the move.

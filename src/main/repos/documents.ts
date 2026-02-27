@@ -229,11 +229,22 @@ export function restoreDocument(id: string): { document: DocumentRow; restoredId
 
   if (restoredIds.length > 0) {
     const tx = db.transaction(() => {
-      // Make room at the original sortOrder position by shifting siblings
+      // Clamp restore position to current sibling count
+      const siblingCount = (db.prepare(
+        `SELECT COUNT(*) as c FROM documents WHERE parentId IS ? AND deletedAt IS NULL`,
+      ).get(existing.parentId) as { c: number }).c;
+      const restorePosition = Math.min(existing.sortOrder, siblingCount);
+
+      // Make room at the restore position by shifting siblings
       db.prepare(
         `UPDATE documents SET sortOrder = sortOrder + 1
          WHERE parentId IS ? AND sortOrder >= ? AND deletedAt IS NULL`,
-      ).run(existing.parentId, existing.sortOrder);
+      ).run(existing.parentId, restorePosition);
+
+      // Update the document's sortOrder to the clamped position
+      db.prepare(
+        `UPDATE documents SET sortOrder = ? WHERE id = ?`,
+      ).run(restorePosition, id);
 
       // Restore all documents
       const placeholders = restoredIds.map(() => '?').join(',');
@@ -244,8 +255,8 @@ export function restoreDocument(id: string): { document: DocumentRow; restoredId
     tx();
   }
 
-  const doc: DocumentRow = { ...existing, deletedAt: null, updatedAt };
-  return { document: doc, restoredIds };
+  const restored = getDocumentById(id)!;
+  return { document: restored, restoredIds };
 }
 
 /** Permanently delete a document and all its descendants from the database. */
@@ -303,9 +314,25 @@ export function moveDocument(
     throw new Error(`Document not found: ${id}`);
   }
 
+  // Reject moving a trashed document — restore it first
+  if (existing.deletedAt) {
+    throw new Error('Cannot move a trashed document');
+  }
+
   // Prevent moving to self
   if (newParentId === id) {
     throw new Error('Cannot move document into itself');
+  }
+
+  // Validate target parent exists and is not trashed
+  if (newParentId !== null) {
+    const parent = getDocumentById(newParentId);
+    if (!parent) {
+      throw new Error(`Target parent not found: ${newParentId}`);
+    }
+    if (parent.deletedAt) {
+      throw new Error('Cannot move document under a trashed parent');
+    }
   }
 
   // Prevent circular reference (moving to a descendant)
@@ -315,6 +342,13 @@ export function moveDocument(
       throw new Error('Cannot move document into its descendant');
     }
   }
+
+  // Clamp sortOrder to valid range
+  newSortOrder = Math.max(0, Math.floor(newSortOrder));
+  const siblingCount = (db.prepare(
+    `SELECT COUNT(*) as c FROM documents WHERE parentId IS ? AND deletedAt IS NULL AND id != ?`,
+  ).get(newParentId, id) as { c: number }).c;
+  newSortOrder = Math.min(newSortOrder, siblingCount);
 
   const oldParentId = existing.parentId;
   const oldSortOrder = existing.sortOrder;

@@ -20,6 +20,7 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/webp': 'webp',
 };
 
+
 function getImagesDir(): string {
   const dir = path.join(app.getPath('userData'), 'images');
   fs.mkdirSync(dir, { recursive: true });
@@ -36,7 +37,13 @@ export function saveImage(data: string, mimeType: string): { id: string; filePat
 
   // Strip data URL prefix if present (e.g. "data:image/png;base64,...")
   const base64 = data.includes(',') ? data.split(',')[1] : data;
-  fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+  const buf = Buffer.from(base64, 'base64');
+
+  if (buf.length === 0) {
+    throw new Error('Image data is empty (zero bytes)');
+  }
+
+  fs.writeFileSync(filePath, buf);
 
   const db = getDb();
   db.prepare(
@@ -62,8 +69,17 @@ export async function downloadImage(url: string): Promise<{ id: string; filePath
     const response = await net.fetch(url, { signal: controller.signal as never });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const buffer = Buffer.from(await response.arrayBuffer());
-    const contentType = response.headers.get('content-type') || '';
-    const mimeType = Object.keys(MIME_TO_EXT).find((m) => contentType.includes(m)) || 'image/png';
+    if (buffer.length === 0) {
+      throw new Error('Image data is empty (zero bytes)');
+    }
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (!contentType) {
+      throw new Error('Missing content-type header');
+    }
+    const mimeType = Object.keys(MIME_TO_EXT).find((m) => contentType.includes(m));
+    if (!mimeType) {
+      throw new Error(`Unsupported content-type: ${contentType}`);
+    }
     const ext = MIME_TO_EXT[mimeType];
     const id = randomUUID();
     const filename = `${id}.${ext}`;

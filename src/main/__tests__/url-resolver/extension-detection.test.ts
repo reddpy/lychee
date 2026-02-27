@@ -221,7 +221,7 @@ describe('URL Resolver — Extension Detection', () => {
 
   // .svg extension matches regex → download succeeds → saved as .png
   // because image/svg+xml is not in MIME_TO_EXT.
-  it('.svg URL: extension matches but download stores as .png (SVG not in MIME_TO_EXT)', async () => {
+  it('.svg URL: extension matches but download rejects unsupported content-type', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
@@ -229,15 +229,12 @@ describe('URL Resolver — Extension Detection', () => {
     });
 
     const result = await resolveUrl('https://example.com/icon.svg');
-    expect(result.type).toBe('image');
-    if (result.type === 'image') {
-      // Downloaded but stored as .png due to content-type fallback
-      expect(result.filePath).toMatch(/\.png$/);
-    }
+    // SVG content-type is not in the supported list, download rejects
+    expect(result.type).toBe('unsupported');
   });
 
-  // .bmp extension matches regex → download succeeds → saved as .png.
-  it('.bmp URL: extension matches but download stores as .png (BMP not in MIME_TO_EXT)', async () => {
+  // .bmp extension matches regex → download rejects unsupported content-type.
+  it('.bmp URL: extension matches but download rejects unsupported content-type', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
@@ -245,14 +242,11 @@ describe('URL Resolver — Extension Detection', () => {
     });
 
     const result = await resolveUrl('https://example.com/old.bmp');
-    expect(result.type).toBe('image');
-    if (result.type === 'image') {
-      expect(result.filePath).toMatch(/\.png$/);
-    }
+    expect(result.type).toBe('unsupported');
   });
 
-  // .ico extension matches regex → download succeeds → saved as .png.
-  it('.ico URL: extension matches but download stores as .png (ICO not in MIME_TO_EXT)', async () => {
+  // .ico extension matches regex → download rejects unsupported content-type.
+  it('.ico URL: extension matches but download rejects unsupported content-type', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
@@ -260,10 +254,7 @@ describe('URL Resolver — Extension Detection', () => {
     });
 
     const result = await resolveUrl('https://example.com/favicon.ico');
-    expect(result.type).toBe('image');
-    if (result.type === 'image') {
-      expect(result.filePath).toMatch(/\.png$/);
-    }
+    expect(result.type).toBe('unsupported');
   });
 
   // ────────────────────────────────────────────────────────
