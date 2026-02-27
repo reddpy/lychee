@@ -153,39 +153,47 @@ describe('URL Resolver — Extension Detection', () => {
   });
 
   // ────────────────────────────────────────────────────────
-  // Extensions matched by regex but NOT in MIME_TO_EXT
+  // Unsupported image extensions (NOT in IMAGE_EXTENSIONS regex)
   // ────────────────────────────────────────────────────────
-  // IMAGE_EXTENSIONS matches .svg, .bmp, .ico but these aren't in
-  // MIME_TO_EXT or IMAGE_CONTENT_TYPES. The extension handler detects
-  // them and calls downloadImage, which rejects unsupported content-types.
+  // .svg, .bmp, .ico are NOT in the extension regex. They fall through
+  // to the content-type probe, which rejects them cheaply via HEAD
+  // (no wasted download round-trip).
 
-  // .svg extension matches regex → downloadImage rejects because
-  // image/svg+xml is not in MIME_TO_EXT. User sees nothing embedded.
-  it('.svg URL: extension matches but download rejects unsupported content-type', async () => {
-    mockDownloadImage.mockRejectedValue(new Error('Unsupported content-type: image/svg+xml'));
+  // .svg falls through to probe → probe sees image/svg+xml → unsupported.
+  it('.svg URL falls through to probe, rejected as unsupported', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/svg+xml' },
+    });
 
     const result = await resolveUrl('https://example.com/icon.svg');
     expect(result.type).toBe('unsupported');
-    // Verify the handler still attempted the download (extension matched)
-    expect(mockDownloadImage).toHaveBeenCalledWith('https://example.com/icon.svg');
+    // Extension handler did NOT match — no download attempted
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
-  // .bmp extension matches regex → download rejects unsupported content-type.
-  it('.bmp URL: extension matches but download rejects unsupported content-type', async () => {
-    mockDownloadImage.mockRejectedValue(new Error('Unsupported content-type: image/bmp'));
+  // .bmp falls through to probe → probe sees image/bmp → unsupported.
+  it('.bmp URL falls through to probe, rejected as unsupported', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/bmp' },
+    });
 
     const result = await resolveUrl('https://example.com/old.bmp');
     expect(result.type).toBe('unsupported');
-    expect(mockDownloadImage).toHaveBeenCalledWith('https://example.com/old.bmp');
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
-  // .ico extension matches regex → download rejects unsupported content-type.
-  it('.ico URL: extension matches but download rejects unsupported content-type', async () => {
-    mockDownloadImage.mockRejectedValue(new Error('Unsupported content-type: image/x-icon'));
+  // .ico falls through to probe → probe sees image/x-icon → unsupported.
+  it('.ico URL falls through to probe, rejected as unsupported', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/x-icon' },
+    });
 
     const result = await resolveUrl('https://example.com/favicon.ico');
     expect(result.type).toBe('unsupported');
-    expect(mockDownloadImage).toHaveBeenCalledWith('https://example.com/favicon.ico');
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // ────────────────────────────────────────────────────────

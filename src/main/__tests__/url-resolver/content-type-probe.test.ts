@@ -285,18 +285,17 @@ describe('URL Resolver — Content-Type Probe', () => {
   });
 
   // Content-type that CONTAINS an image type as substring but isn't one.
-  // "multipart/x-mixed-replace;boundary=image/jpeg" contains "image/jpeg"
-  // as a substring. The `includes()` check would match this incorrectly.
-  it('false-positive: content-type containing image type as substring', async () => {
+  // "multipart/x-mixed-replace;boundary=image/jpeg" has base type
+  // "multipart/x-mixed-replace" which is NOT in IMAGE_CONTENT_TYPES.
+  it('rejects content-type with image substring in params (not base type)', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       headers: { get: () => 'multipart/x-mixed-replace;boundary=image/jpeg' },
     });
 
     const result = await resolveUrl('https://example.com/api/stream');
-    // Current behavior: includes() matches the substring, so it's treated as image.
-    // This is a known limitation — the check isn't strict.
-    expect(result.type).toBe('image');
+    expect(result.type).toBe('unsupported');
+    expect(mockDownloadImage).not.toHaveBeenCalled();
   });
 
   // ────────────────────────────────────────────────────────
@@ -327,10 +326,9 @@ describe('URL Resolver — Content-Type Probe', () => {
     expect(result.type).toBe('bookmark');
   });
 
-  // HEAD fails with network error (throws), the code re-fetches with GET.
-  // But the code doesn't catch HEAD throw — it only checks !response.ok.
-  // If HEAD throws, the catch at line 59 fires and returns 'Failed to probe'.
-  it('HEAD throws network error — catch fires, no GET fallback', async () => {
+  // HEAD fails with network error (throws). The .catch(() => null) on HEAD
+  // converts the throw to null, triggering the GET fallback.
+  it('HEAD throws network error — falls back to GET successfully', async () => {
     let callCount = 0;
     mockFetch.mockImplementation(() => {
       callCount++;
@@ -338,7 +336,7 @@ describe('URL Resolver — Content-Type Probe', () => {
         // HEAD throws
         return Promise.reject(new Error('Connection refused'));
       }
-      // GET would succeed — but we never get here
+      // GET succeeds with image
       return Promise.resolve({
         ok: true,
         headers: { get: () => 'image/png' },
@@ -346,13 +344,9 @@ describe('URL Resolver — Content-Type Probe', () => {
     });
 
     const result = await resolveUrl('https://example.com/api/image');
-    expect(result.type).toBe('unsupported');
-    if (result.type === 'unsupported') {
-      // Since HEAD threw, the catch block fires — no GET fallback
-      expect(result.reason).toContain('Failed to probe');
-    }
-    // Only 1 fetch call was made (HEAD), not 2
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(result.type).toBe('image');
+    // Both HEAD and GET were called
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   // ────────────────────────────────────────────────────────

@@ -336,16 +336,15 @@ describe('URL Resolver — Edge Cases', () => {
   // Content-type with unusual casing
   // ────────────────────────────────────────────────────────
 
-  it('detects IMAGE/PNG with unusual casing via probe', async () => {
+  it('detects IMAGE/PNG with unusual casing via probe (case-insensitive)', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       headers: { get: () => 'IMAGE/PNG' },
     });
 
     const result = await resolveUrl('https://example.com/api/avatar');
-    // IMAGE_CONTENT_TYPES uses .includes() with lowercase — uppercase won't match
-    // This documents the current behavior (case-sensitive matching)
-    expect(result.type).toBe('unsupported');
+    // Content-type is lowercased before matching — unusual casing is handled
+    expect(result.type).toBe('image');
   });
 
   // ────────────────────────────────────────────────────────
