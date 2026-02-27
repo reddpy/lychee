@@ -20,6 +20,8 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { $createImageNode } from "@/components/editor/nodes/image-node"
 import { $createBookmarkNode } from "@/components/editor/nodes/bookmark-node"
 import { $createLoadingPlaceholderNode } from "@/components/editor/nodes/loading-placeholder-node"
+import { $createYouTubeNode } from "@/components/editor/nodes/youtube-node"
+import { extractYouTubeVideoId } from "@/components/editor/plugins/youtube-plugin"
 import type { ResolvedUrlResult } from "@/shared/ipc-types"
 
 function openExternalUrl(url: string) {
@@ -227,6 +229,21 @@ export function LinkClickPlugin(): JSX.Element | null {
   const handleEmbed = useCallback(async () => {
     if (!hoverState) return
     const { url, linkNodeKey } = hoverState
+
+    // YouTube URLs can be embedded synchronously — no network call needed
+    const ytVideoId = extractYouTubeVideoId(url)
+    if (ytVideoId) {
+      snapshotAndFocusLink(linkNodeKey)
+      editor.update(() => {
+        const yt = $createYouTubeNode(ytVideoId)
+        replaceLink(linkNodeKey, yt)
+        const sel = $createNodeSelection()
+        sel.add(yt.getKey())
+        $setSelection(sel)
+      }, { tag: HISTORY_PUSH_TAG })
+      dismiss(true)
+      return
+    }
 
     snapshotAndFocusLink(linkNodeKey)
 

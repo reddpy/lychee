@@ -31,7 +31,7 @@ const config: ForgeConfig = {
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
-      devContentSecurityPolicy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; img-src 'self' data: https: http: lychee-image:; connect-src 'self' ws:",
+      devContentSecurityPolicy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com; img-src 'self' data: https: http: lychee-image:; connect-src 'self' ws:; frame-src https://www.youtube-nocookie.com https://www.youtube.com",
       mainConfig,
       renderer: {
         config: rendererConfig,
