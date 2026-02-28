@@ -136,6 +136,8 @@ export function ImageComponent({
         const node = $getNodeByKey(nodeKey)
         if ($isImageNode(node)) node.setSrc(filePath)
       })
+    }).catch(() => {
+      if (!cancelled) setHasError(true)
     })
     return () => { cancelled = true }
   }, [currentImageId, currentSrc, nodeKey, editor])

@@ -485,7 +485,7 @@ test.describe('Image Edge Cases', () => {
     // Typing should go into the new paragraph, not replace the image
     await window.keyboard.type('text after image');
     await window.waitForTimeout(200);
-    const body = window.locator('.ContentEditable__root');
+    const body = window.locator('main:visible .ContentEditable__root');
     await expect(body).toContainText('text after image');
     await expect(imageContainer).toBeVisible();
   });
@@ -649,6 +649,59 @@ test.describe('Image Edge Cases', () => {
     expect(href).toContain('placehold.co');
   });
 
+  test('shows error state when image row is missing from database', async ({ window }) => {
+    const docId = await createNoteWithTitle(window, 'Orphan Image');
+    await typeUrlInBody(window, 'https://placehold.co/100x100.png');
+    await expect(window.locator('.ContentEditable__root a').first()).toBeVisible({ timeout: 5000 });
+    await clickEmbed(window);
+
+    const imageContainer = window.locator('.image-container');
+    await expect(imageContainer.locator('img')).toBeVisible({ timeout: 15000 });
+
+    // Type after the embed to trigger a fresh onChange that includes the image node
+    await window.keyboard.press('ArrowDown');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type(' ');
+    await window.waitForTimeout(1500);
+
+    // Retry until the DB content includes the image node (debounce timing can vary)
+    let imageId: string | undefined;
+    await expect(async () => {
+      const doc = await window.evaluate(
+        (id: string) => (window as any).lychee.invoke('documents.get', { id }),
+        docId,
+      );
+      const content = JSON.parse(doc.document.content);
+      const imageNode = findNodeByType(content, 'image');
+      expect(imageNode).not.toBeNull();
+      expect(imageNode.imageId).toBeTruthy();
+      imageId = imageNode.imageId;
+    }).toPass({ timeout: 5000 });
+
+    // Delete the image row from the database — orphans the reference
+    await window.evaluate(
+      (id) => (window as any).lychee.invoke('images.delete', { id }),
+      imageId,
+    );
+
+    // Close the tab
+    const closeBtn = window
+      .locator('[data-tab-id]')
+      .filter({ hasText: 'Orphan Image' })
+      .locator('[aria-label="Close tab"]');
+    await closeBtn.click({ force: true });
+    await window.waitForTimeout(600);
+
+    // Reopen from sidebar — image node still in content but DB row is gone
+    await window.locator('[data-note-id]').filter({ hasText: 'Orphan Image' }).click();
+    await window.waitForTimeout(1000);
+
+    // Should show error state, not infinite spinner
+    const errorPlaceholder = window.locator('main:visible .image-error');
+    await expect(errorPlaceholder).toBeVisible({ timeout: 5000 });
+    await expect(errorPlaceholder).toContainText('Failed to load image');
+  });
+
   test('undo then redo restores the image', async ({ window }) => {
     await createNoteWithTitle(window, 'Image Undo Redo');
     await typeUrlInBody(window, 'https://placehold.co/100x100.png');
@@ -726,7 +779,7 @@ test.describe('Bookmark Edge Cases', () => {
     // Typing goes into the new paragraph
     await window.keyboard.type('text after bookmark');
     await window.waitForTimeout(200);
-    await expect(window.locator('.ContentEditable__root')).toContainText('text after bookmark');
+    await expect(window.locator('main:visible .ContentEditable__root')).toContainText('text after bookmark');
     await expect(bookmarkCard).toBeVisible();
   });
 
@@ -1098,7 +1151,7 @@ test.describe('Mixed Embed & Stress Tests', () => {
     // Editor body should be editable — type to confirm
     await window.keyboard.type('clean');
     await window.waitForTimeout(200);
-    await expect(window.locator('.ContentEditable__root')).toContainText('clean');
+    await expect(window.locator('main:visible .ContentEditable__root')).toContainText('clean');
   });
 });
 
