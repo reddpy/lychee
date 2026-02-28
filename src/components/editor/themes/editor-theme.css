@@ -1,12 +1,74 @@
+/* ── Table ─────────────────────────────────────────────── */
+
 .EditorTheme__table {
   border-collapse: collapse;
   border-spacing: 0;
   overflow-y: scroll;
   overflow-x: scroll;
   table-layout: fixed;
-  width: fit-content;
   width: 100%;
-  margin: 0px 0px 30px 0px;
+  margin: 8px 0 12px 0;
+}
+
+.EditorTheme__tableCell,
+.EditorTheme__tableCellHeader {
+  border: 1px solid hsl(var(--border));
+  padding: 6px 10px;
+  min-width: 60px;
+  vertical-align: top;
+  text-align: left;
+  position: relative;
+  outline: none;
+}
+
+.EditorTheme__tableCellHeader {
+  background-color: hsl(var(--muted) / 0.5);
+  font-weight: 600;
+}
+
+.EditorTheme__tableCellSelected {
+  background-color: hsl(var(--primary) / 0.08);
+}
+
+.EditorTheme__tableCellPrimarySelected {
+  border: 2px solid hsl(var(--primary));
+  display: block;
+  height: calc(100% - 2px);
+  position: absolute;
+  width: calc(100% - 2px);
+  left: -1px;
+  top: -1px;
+  z-index: 2;
+}
+
+.EditorTheme__tableCellResizer {
+  position: absolute;
+  right: -2px;
+  height: 100%;
+  width: 4px;
+  cursor: ew-resize;
+  z-index: 10;
+  top: 0;
+}
+
+.EditorTheme__tableCellResizer:hover {
+  background-color: hsl(var(--primary) / 0.3);
+}
+
+.EditorTheme__tableSelection {
+  background-color: transparent;
+}
+
+.EditorTheme__tableSelected {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+/* Paragraph inside table cells should have no extra margin */
+.EditorTheme__tableCell p,
+.EditorTheme__tableCellHeader p {
+  margin: 0;
+  line-height: 1.5;
 }
 .Collapsible__container {
   background-color: var(--background);

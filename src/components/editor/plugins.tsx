@@ -11,6 +11,7 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin"
 import { TabIndentationPlugin } from "@lexical/react/LexicalTabIndentationPlugin"
 import { ListPlugin } from "@lexical/react/LexicalListPlugin"
 import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin"
+import { TablePlugin } from "@lexical/react/LexicalTablePlugin"
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin"
 import {
   HEADING,
@@ -47,7 +48,9 @@ import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highligh
 import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
 import { YouTubePlugin } from "@/components/editor/plugins/youtube-plugin"
 import { ClickToAppendPlugin } from "@/components/editor/plugins/click-to-append-plugin"
+import { TableActionMenuPlugin } from "@/components/editor/plugins/table-action-menu-plugin"
 import { IMAGE, IMAGE_EXPORT } from "@/components/editor/plugins/image-markdown-transformer"
+import { TABLE, TABLE_EXPORT } from "@/components/editor/plugins/table-markdown-transformer"
 
 const TRANSFORMERS = [
   HEADING,
@@ -56,6 +59,7 @@ const TRANSFORMERS = [
   ORDERED_LIST,
   CHECK_LIST,
   IMAGE_EXPORT,
+  TABLE_EXPORT,
   CODE,
   INLINE_CODE,
   BOLD_ITALIC_STAR,
@@ -67,6 +71,7 @@ const TRANSFORMERS = [
   ITALIC_UNDERSCORE,
   STRIKETHROUGH,
   IMAGE,
+  TABLE,
   LINK,
 ]
 
@@ -115,6 +120,8 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
       <CheckListPlugin />
       <TabIndentationPlugin />
       <HorizontalRulePlugin />
+      <TablePlugin hasCellMerge={false} hasCellBackgroundColor={false} hasTabHandler={true} />
+      <TableActionMenuPlugin />
       <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
       <LinkPlugin />
       <AutoLinkPlugin matchers={MATCHERS} />

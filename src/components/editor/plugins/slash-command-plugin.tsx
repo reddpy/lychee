@@ -18,6 +18,7 @@ import {
   INSERT_ORDERED_LIST_COMMAND,
   INSERT_CHECK_LIST_COMMAND,
 } from "@lexical/list"
+import { INSERT_TABLE_COMMAND } from "@lexical/table"
 import {
   Heading1,
   Heading2,
@@ -29,6 +30,7 @@ import {
   Code,
   Minus,
   Type,
+  Table,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { $isTitleNode } from "@/components/editor/nodes/title-node"
@@ -183,6 +185,17 @@ function getBaseOptions(): SlashCommandOption[] {
       keywords: ["hr", "divider", "horizontal", "rule", "line"],
       onSelect: (editor) => {
         editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)
+      },
+    }),
+    new SlashCommandOption("Table", {
+      icon: <Table className="h-4 w-4" />,
+      keywords: ["table", "grid", "spreadsheet"],
+      onSelect: (editor) => {
+        editor.dispatchCommand(INSERT_TABLE_COMMAND, {
+          rows: "3",
+          columns: "3",
+          includeHeaders: { rows: true, columns: false },
+        })
       },
     }),
   ]
