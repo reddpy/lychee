@@ -92,6 +92,7 @@ export const editorTheme: EditorThemeClasses = {
   tableCellSortedIndicator: "EditorTheme__tableCellSortedIndicator",
   tableResizeRuler: "EditorTheme__tableCellResizeRuler",
   tableRowStriping: "EditorTheme__tableRowStriping",
+  tableScrollableWrapper: "EditorTheme__tableScrollableWrapper",
   tableSelected: "EditorTheme__tableSelected",
   tableSelection: "EditorTheme__tableSelection",
   layoutItem: "border border-dashed px-4 py-2",

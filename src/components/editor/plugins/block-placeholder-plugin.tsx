@@ -17,13 +17,17 @@ import {
   $isListItemNode,
   $isListNode,
 } from "@lexical/list"
+import { $isTableCellNode } from "@lexical/table"
 import { mergeRegister } from "@lexical/utils"
 
 const PLACEHOLDER_CLASS = "is-placeholder"
 
 function getPlaceholderText(node: LexicalNode): string | null {
   if ($isTitleNode(node)) return null
-  if ($isParagraphNode(node)) return "Type something, or press '/' for commands..."
+  if ($isParagraphNode(node)) {
+    if ($isTableCellNode(node.getParent())) return "Type or press '/'"
+    return "Type something, or press '/' for commands..."
+  }
   if ($isHeadingNode(node)) {
     const tag = node.getTag()
     if (tag === "h1") return "Heading 1"

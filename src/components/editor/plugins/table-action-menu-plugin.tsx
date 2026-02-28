@@ -6,6 +6,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import {
   $createParagraphNode,
   $createTextNode,
+  $getNodeByKey,
   $getSelection,
   $insertNodes,
   $isRangeSelection,
@@ -53,14 +54,20 @@ function TableActionBar({
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
+    const cellKey = tableCellNode.getKey()
     const update = () => {
       editor.getEditorState().read(() => {
-        const tableNode = $findTableNode(tableCellNode)
+        const cellNode = $getNodeByKey(cellKey)
+        if (!cellNode) {
+          setPosition(null)
+          return
+        }
+        const tableNode = $findTableNode(cellNode)
         if (!tableNode) {
           setPosition(null)
           return
         }
-        const cellElem = editor.getElementByKey(tableCellNode.getKey())
+        const cellElem = editor.getElementByKey(cellKey)
         if (!cellElem) {
           setPosition(null)
           return
@@ -76,9 +83,15 @@ function TableActionBar({
 
     update()
 
+    // ResizeObserver repositions when cell dimensions change (e.g. column resizing)
+    const cellElem = editor.getElementByKey(cellKey)
+    const resizeObserver = cellElem ? new ResizeObserver(update) : null
+    if (cellElem && resizeObserver) resizeObserver.observe(cellElem)
+
     window.addEventListener("scroll", update, true)
     window.addEventListener("resize", update)
     return () => {
+      resizeObserver?.disconnect()
       window.removeEventListener("scroll", update, true)
       window.removeEventListener("resize", update)
     }
@@ -151,7 +164,7 @@ function TableActionBar({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 flex flex-col items-end"
+      className="fixed z-50 flex flex-col items-end table-action-menu"
       style={{ top: position.top, left: position.left, transform: "translateX(-100%)" }}
     >
       {/* Trigger */}

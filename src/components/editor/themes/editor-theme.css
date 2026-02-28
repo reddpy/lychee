@@ -1,13 +1,15 @@
 /* ── Table ─────────────────────────────────────────────── */
 
+.EditorTheme__tableScrollableWrapper {
+  overflow-x: auto;
+  margin: 8px 0 12px 0;
+}
+
 .EditorTheme__table {
   border-collapse: collapse;
   border-spacing: 0;
-  overflow-y: scroll;
-  overflow-x: scroll;
   table-layout: fixed;
   width: 100%;
-  margin: 8px 0 12px 0;
 }
 
 .EditorTheme__tableCell,
@@ -43,16 +45,35 @@
 
 .EditorTheme__tableCellResizer {
   position: absolute;
-  right: -2px;
+  right: 0;
   height: 100%;
-  width: 4px;
+  width: 12px;
   cursor: ew-resize;
   z-index: 10;
   top: 0;
+  background: transparent;
 }
 
-.EditorTheme__tableCellResizer:hover {
+.EditorTheme__tableCellResizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+}
+
+.EditorTheme__tableCellResizer:hover::after {
   background-color: hsl(var(--primary) / 0.3);
+}
+
+.EditorTheme__tableCellResizer.active::after {
+  background-color: hsl(var(--primary) / 0.5);
+}
+
+body[data-col-resizing] .table-action-menu {
+  display: none !important;
 }
 
 .EditorTheme__tableSelection {
