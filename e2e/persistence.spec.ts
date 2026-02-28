@@ -59,7 +59,7 @@ base.describe('Persistence — data survives app restart', () => {
     // Create first note with a title
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
-    await window.locator('h1.editor-title').click();
+    await window.locator('main:visible h1.editor-title').click();
     await window.keyboard.type('Persistent Note A');
     await window.waitForTimeout(700);
 
