@@ -75,11 +75,14 @@ export const test = base.extend<Fixtures>({
       timeout: 30_000,
     };
 
+    // --no-sandbox is required on Linux CI (GitHub Actions)
+    const extraArgs = process.env.CI ? ['--no-sandbox'] : [];
+
     if (packagedBinary) {
       launchOpts.executablePath = packagedBinary;
-      launchOpts.args = [`--user-data-dir=${tmpDir}`];
+      launchOpts.args = [`--user-data-dir=${tmpDir}`, ...extraArgs];
     } else {
-      launchOpts.args = [PROJECT_ROOT, `--user-data-dir=${tmpDir}`];
+      launchOpts.args = [PROJECT_ROOT, `--user-data-dir=${tmpDir}`, ...extraArgs];
     }
 
     const app = await _electron.launch(launchOpts);
