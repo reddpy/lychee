@@ -638,7 +638,7 @@ test.describe('Image Edge Cases', () => {
     await expect(window.locator('.image-container img')).toBeVisible({ timeout: 15000 });
 
     // Undo (Cmd+Z on macOS)
-    await window.keyboard.press('Meta+z');
+    await window.keyboard.press('ControlOrMeta+z');
     await window.waitForTimeout(500);
 
     // Image should be gone, link should be restored
@@ -711,12 +711,12 @@ test.describe('Image Edge Cases', () => {
     await expect(window.locator('.image-container img')).toBeVisible({ timeout: 15000 });
 
     // Undo
-    await window.keyboard.press('Meta+z');
+    await window.keyboard.press('ControlOrMeta+z');
     await window.waitForTimeout(500);
     await expect(window.locator('.image-container')).not.toBeVisible();
 
     // Redo (Cmd+Shift+Z)
-    await window.keyboard.press('Meta+Shift+z');
+    await window.keyboard.press('ControlOrMeta+Shift+z');
     await window.waitForTimeout(500);
 
     // Image should reappear
@@ -878,7 +878,7 @@ test.describe('Bookmark Edge Cases', () => {
     await expect(window.locator('.bookmark-card')).toBeVisible({ timeout: 15000 });
 
     // Undo
-    await window.keyboard.press('Meta+z');
+    await window.keyboard.press('ControlOrMeta+z');
     await window.waitForTimeout(500);
 
     await expect(window.locator('.bookmark-card')).not.toBeVisible();
@@ -1076,24 +1076,24 @@ test.describe('Mixed Embed & Stress Tests', () => {
     await expect(window.locator('.image-container img')).toBeVisible({ timeout: 15000 });
 
     // Undo → link
-    await window.keyboard.press('Meta+z');
+    await window.keyboard.press('ControlOrMeta+z');
     await window.waitForTimeout(500);
     await expect(window.locator('.image-container')).not.toBeVisible();
     await expect(window.locator('.ContentEditable__root a').first()).toBeVisible();
 
     // Redo → image
-    await window.keyboard.press('Meta+Shift+z');
+    await window.keyboard.press('ControlOrMeta+Shift+z');
     await window.waitForTimeout(500);
     await expect(window.locator('.image-container img')).toBeVisible({ timeout: 5000 });
 
     // Undo again → link
-    await window.keyboard.press('Meta+z');
+    await window.keyboard.press('ControlOrMeta+z');
     await window.waitForTimeout(500);
     await expect(window.locator('.image-container')).not.toBeVisible();
     await expect(window.locator('.ContentEditable__root a').first()).toBeVisible();
 
     // Redo again → image
-    await window.keyboard.press('Meta+Shift+z');
+    await window.keyboard.press('ControlOrMeta+Shift+z');
     await window.waitForTimeout(500);
     await expect(window.locator('.image-container img')).toBeVisible({ timeout: 5000 });
   });
