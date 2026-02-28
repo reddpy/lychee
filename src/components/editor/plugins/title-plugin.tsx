@@ -72,11 +72,15 @@ export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): 
             prevTitleRef.current = titleText
             onTitleChange?.(titleText)
 
-            // Toggle placeholder class based on whether title is empty
-            const titleDom = editor.getElementByKey(firstChild.getKey())
-            if (titleDom) {
-              titleDom.classList.toggle("is-placeholder", titleText.length === 0)
-            }
+            // Defer DOM class toggle to next frame to avoid blocking the keystroke
+            const key = firstChild.getKey()
+            const isEmpty = titleText.length === 0
+            requestAnimationFrame(() => {
+              const titleDom = editor.getElementByKey(key)
+              if (titleDom) {
+                titleDom.classList.toggle("is-placeholder", isEmpty)
+              }
+            })
           }
         }
       })
