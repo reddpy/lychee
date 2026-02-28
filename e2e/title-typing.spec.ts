@@ -508,6 +508,150 @@ test.describe('Title Typing Performance & Persistence', () => {
     expect(doc!.title).toBe('Before Close');
   });
 
+  // ── Rapid typing + close / reopen (debounce stress) ─────────────────
+
+  test('rapid burst typing then immediate tab close persists final title', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+
+    // 40 chars at 5ms delay — debounce resets ~40 times in quick succession
+    const text = 'RapidBurstThenCloseImmediatelyAfterward';
+    await window.keyboard.type(text, { delay: 5 });
+
+    // Grab doc ID before closing
+    const noteId = await window
+      .locator('[data-note-id]')
+      .first()
+      .getAttribute('data-note-id');
+
+    // Close immediately — no natural debounce fires, flush must save it
+    const closeBtn = window
+      .locator('[data-tab-id]')
+      .first()
+      .locator('[aria-label="Close tab"]');
+    await closeBtn.click({ force: true });
+
+    // Wait for flush + IPC
+    await window.waitForTimeout(800);
+
+    const doc = await getDocumentFromDb(window, noteId!);
+    expect(doc!.title).toBe(text);
+  });
+
+  test('edit-backspace-retype cycle then close persists only final title', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await title.click();
+
+    // Type, select-all, replace — multiple debounce resets
+    await window.keyboard.type('First Draft', { delay: 10 });
+    await window.keyboard.press(`${modifier}+a`);
+    await window.keyboard.type('Second Draft', { delay: 10 });
+    await window.keyboard.press(`${modifier}+a`);
+    await window.keyboard.type('Final Draft', { delay: 10 });
+
+    const noteId = await window
+      .locator('[data-note-id]')
+      .first()
+      .getAttribute('data-note-id');
+
+    // Close before any debounce fires
+    const closeBtn = window
+      .locator('[data-tab-id]')
+      .first()
+      .locator('[aria-label="Close tab"]');
+    await closeBtn.click({ force: true });
+
+    await window.waitForTimeout(800);
+
+    const doc = await getDocumentFromDb(window, noteId!);
+    expect(doc!.title).toBe('Final Draft');
+  });
+
+  test('type then close then reopen shows correct title from DB', async ({ window }) => {
+    const visibleTitle = window.locator('main:visible h1.editor-title');
+    await visibleTitle.click();
+
+    await window.keyboard.type('Reopen Me', { delay: 10 });
+
+    // Grab the sidebar note entry before closing
+    const sidebarNote = window.locator('[data-note-id]').first();
+    const noteId = await sidebarNote.getAttribute('data-note-id');
+
+    // Close the tab immediately
+    const closeBtn = window
+      .locator('[data-tab-id]')
+      .first()
+      .locator('[aria-label="Close tab"]');
+    await closeBtn.click({ force: true });
+
+    await window.waitForTimeout(800);
+
+    // Reopen by clicking the sidebar entry
+    await sidebarNote.click();
+    await window.waitForTimeout(600);
+
+    // Title loaded from DB should match what was typed
+    await expect(window.locator('main:visible h1.editor-title')).toHaveText('Reopen Me');
+
+    const doc = await getDocumentFromDb(window, noteId!);
+    expect(doc!.title).toBe('Reopen Me');
+  });
+
+  test('sidebar shows correct title after tab close with pending debounce', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+
+    await window.keyboard.type('Sidebar Sync', { delay: 10 });
+
+    // Close immediately — debounced store update hasn't fired yet
+    const closeBtn = window
+      .locator('[data-tab-id]')
+      .first()
+      .locator('[aria-label="Close tab"]');
+    await closeBtn.click({ force: true });
+
+    // After flush, sidebar should reflect the final title
+    await window.waitForTimeout(800);
+
+    await expect(window.locator('[data-note-id]').first()).toContainText('Sidebar Sync');
+  });
+
+  test('rapid type in note A, switch to B, close B, note A DB title intact', async ({ window }) => {
+    const visibleTitle = window.locator('main:visible h1.editor-title');
+
+    // Type in note A — debounce pending
+    await visibleTitle.click();
+    await window.keyboard.type('Note A Rapid', { delay: 5 });
+
+    const noteAId = await window
+      .locator('[data-note-id]')
+      .first()
+      .getAttribute('data-note-id');
+
+    // Create note B (switches away from A — triggers A's flush)
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle.click();
+    await window.keyboard.type('Note B Temp', { delay: 10 });
+
+    // Close note B immediately
+    const closeBtnB = window
+      .locator('[data-tab-id]')
+      .filter({ hasText: 'Note B' })
+      .locator('[aria-label="Close tab"]');
+    await closeBtnB.click({ force: true });
+
+    await window.waitForTimeout(800);
+
+    // Note A's title should have been flushed when we switched away
+    const docA = await getDocumentFromDb(window, noteAId!);
+    expect(docA!.title).toBe('Note A Rapid');
+
+    // Note A should now be active again with correct title
+    await expect(window.locator('main:visible h1.editor-title')).toHaveText('Note A Rapid');
+  });
+
   // ── Cursor position edge cases ─────────────────────────────────────
 
   test('typing in middle of title via arrow keys saves correctly', async ({ window }) => {
