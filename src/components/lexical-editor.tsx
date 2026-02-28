@@ -135,12 +135,21 @@ export function LexicalEditor({
     [updateDocumentInStore],
   );
 
+  const debouncedStoreUpdate = React.useMemo(
+    () =>
+      debounce((id: string, title: string) => {
+        updateDocumentInStore(id, { title });
+      }, 300),
+    [updateDocumentInStore],
+  );
+
   React.useEffect(() => {
     return () => {
       saveContent.flush();
       saveTitle.flush();
+      debouncedStoreUpdate.flush();
     };
-  }, [saveContent, saveTitle]);
+  }, [saveContent, saveTitle, debouncedStoreUpdate]);
 
   const handleEditorStateChange = React.useCallback(
     (editorState: EditorState) => {
@@ -151,10 +160,10 @@ export function LexicalEditor({
 
   const handleTitleChange = React.useCallback(
     (title: string) => {
-      updateDocumentInStore(documentId, { title });
+      debouncedStoreUpdate(documentId, title);
       saveTitle(documentId, title);
     },
-    [documentId, updateDocumentInStore, saveTitle],
+    [documentId, debouncedStoreUpdate, saveTitle],
   );
 
   return (

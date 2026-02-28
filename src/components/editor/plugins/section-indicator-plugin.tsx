@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { $getNodeByKey, $getRoot, $setSelection, type NodeKey, TextNode } from "lexical"
 import { $isHeadingNode, HeadingNode, type HeadingTagType } from "@lexical/rich-text"
+import { $isTitleNode } from "../nodes/title-node"
 import { HIGHLIGHT_BLOCK_COMMAND } from "./block-highlight-plugin"
 
 interface HeadingInfo {
@@ -58,7 +59,10 @@ export function SectionIndicatorPlugin(): ReactElement | null {
       editor.getEditorState().read(() => {
         for (const [key] of mutations) {
           const node = $getNodeByKey(key)
-          if (node && $isHeadingNode(node.getParent())) {
+          if (!node) continue
+          const parent = node.getParent()
+          if ($isTitleNode(parent)) continue
+          if ($isHeadingNode(parent)) {
             needsUpdate = true
             return
           }
