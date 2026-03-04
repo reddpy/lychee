@@ -21,11 +21,13 @@ function buildLaunchOpts(tmpDir: string) {
     timeout: 30_000,
   };
 
+  const extraArgs = process.env.CI ? ['--no-sandbox'] : [];
+
   if (packagedBinary) {
     opts.executablePath = packagedBinary;
-    opts.args = [`--user-data-dir=${tmpDir}`];
+    opts.args = [`--user-data-dir=${tmpDir}`, ...extraArgs];
   } else if (hasDevBuild()) {
-    opts.args = [PROJECT_ROOT, `--user-data-dir=${tmpDir}`];
+    opts.args = [PROJECT_ROOT, `--user-data-dir=${tmpDir}`, ...extraArgs];
   } else {
     throw new Error('No Electron build found.');
   }
