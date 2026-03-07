@@ -14,6 +14,7 @@ import {
   type NodeKey,
 } from "lexical"
 import { $isAutoLinkNode, $isLinkNode } from "@lexical/link"
+import { $findCellNode } from "@lexical/table"
 import { ExternalLink, Bookmark, Code } from "lucide-react"
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
@@ -129,6 +130,8 @@ export function LinkClickPlugin(): JSX.Element | null {
         if (!link) return
         const parent = link.getParent()
         if (!parent) return
+        // Don't allow embed/bookmark conversion inside table cells
+        if ($findCellNode(link)) return
         canConvert = parent.getChildren().every(
           (child) => child.is(link) || ($isTextNode(child) && child.getTextContent().trim() === ""),
         )
