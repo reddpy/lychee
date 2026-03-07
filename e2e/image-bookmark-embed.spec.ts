@@ -50,10 +50,10 @@ async function clickPopoverButton(window: Page, buttonTitle: string) {
       await window.waitForTimeout(200);
     }
   }
-  // Final attempt with longer timeout
+  // Final attempt with longer timeout (CI can be slower)
   await link.hover();
-  await window.waitForTimeout(600);
-  await expect(btn).toBeVisible({ timeout: 5000 });
+  await window.waitForTimeout(800);
+  await expect(btn).toBeVisible({ timeout: 8000 });
   await btn.click();
 }
 

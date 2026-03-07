@@ -782,7 +782,7 @@ test.describe('Editor — Edge Cases', () => {
   });
 
   test('code block: markdown shortcut creates code block', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
+    const title = window.locator('main').first().locator('h1.editor-title');
     await title.click();
     await window.keyboard.press('Enter');
     // ``` creates Lexical CodeNode (pre/code), slash creates same
@@ -791,17 +791,21 @@ test.describe('Editor — Edge Cases', () => {
     await window.keyboard.type('const x = 1');
     await window.keyboard.press('Enter');
     await window.keyboard.type('```');
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(500);
 
     const editorRoot = window.locator('.ContentEditable__root');
     await expect(editorRoot).toContainText('const x = 1');
 
-    await window.waitForTimeout(1000);
+    await window.waitForTimeout(1500);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
     const content = JSON.parse(doc!.content);
     const hasCode = content.root.children.some(
-      (c: any) => c.type === 'code' || c.type === 'code-block',
+      (c: any) =>
+        c.type === 'code' ||
+        c.type === 'code-block' ||
+        c.type === 'code-snippet' ||
+        c.type === 'executable-code-block',
     );
     expect(hasCode).toBe(true);
     expect(JSON.stringify(content)).toContain('const x = 1');

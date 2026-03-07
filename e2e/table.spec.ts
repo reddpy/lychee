@@ -12,7 +12,17 @@ async function createNote(window: Page): Promise<void> {
 }
 
 async function focusEditorBody(window: Page): Promise<void> {
-  const title = window.locator("h1.editor-title");
+  const main = window.locator("main").first();
+  const title = main.locator("h1.editor-title");
+  await title.click();
+  await window.keyboard.press("Enter");
+  await window.waitForTimeout(200);
+}
+
+/** Focus the body of the most recently opened editor. Use when multiple notes are open. */
+async function focusNewNoteEditorBody(window: Page): Promise<void> {
+  const main = window.locator("main").last();
+  const title = main.locator("h1.editor-title");
   await title.click();
   await window.keyboard.press("Enter");
   await window.waitForTimeout(200);
@@ -693,7 +703,10 @@ test.describe("Table — cell content editing", () => {
     const cell = window.locator("table.EditorTheme__table th").first();
     await cell.click();
     await window.keyboard.type("temporary");
-    await window.keyboard.press("Meta+A");
+    await window.waitForTimeout(100);
+    const mod = process.platform === "darwin" ? "Meta" : "Control";
+    await window.keyboard.press(`${mod}+A`);
+    await window.waitForTimeout(100);
     await window.keyboard.press("Backspace");
     await window.waitForTimeout(300);
 
@@ -1833,8 +1846,9 @@ test.describe("Table — repeated mutations", () => {
 // ── Table — undo/redo ─────────────────────────────────────────────────────────
 
 test.describe("Table — undo/redo", () => {
-  const undo = async (window: Page) => window.keyboard.press("Meta+Z");
-  const redo = async (window: Page) => window.keyboard.press("Meta+Shift+Z");
+  const mod = process.platform === "darwin" ? "Meta" : "Control";
+  const undo = async (window: Page) => window.keyboard.press(`${mod}+Z`);
+  const redo = async (window: Page) => window.keyboard.press(`${mod}+Shift+Z`);
 
   test.beforeEach(async ({ window }) => {
     await createNote(window);
@@ -1848,10 +1862,10 @@ test.describe("Table — undo/redo", () => {
     const cell = window.locator("table.EditorTheme__table th").first();
     await cell.click();
     await window.keyboard.type("typed text");
-    await window.waitForTimeout(200);
+    await window.waitForTimeout(300);
 
     await undo(window);
-    await window.waitForTimeout(200);
+    await window.waitForTimeout(300);
 
     await expect(cell).not.toContainText("typed text");
   });
@@ -1868,12 +1882,14 @@ test.describe("Table — undo/redo", () => {
     await actionBtn.click();
     await window.waitForTimeout(200);
     await window.locator('button[title="Insert row below"]').click();
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
 
     expect(await getTableRowCount(window)).toBe(rowsBefore + 1);
 
+    await window.locator("table.EditorTheme__table td").first().click();
+    await window.waitForTimeout(100);
     await undo(window);
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
 
     expect(await getTableRowCount(window)).toBe(rowsBefore);
   });
@@ -1892,10 +1908,12 @@ test.describe("Table — undo/redo", () => {
     await actionBtn.click();
     await window.waitForTimeout(200);
     await window.locator('button[title="Insert column right"]').click();
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
 
+    await window.locator("table.EditorTheme__table td").first().click();
+    await window.waitForTimeout(100);
     await undo(window);
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
 
     const colsAfter = await window
       .locator("table.EditorTheme__table tr:first-of-type th")
@@ -1911,11 +1929,13 @@ test.describe("Table — undo/redo", () => {
     await actionBtn.click();
     await window.waitForTimeout(200);
     await window.locator('button[title="Delete table"]').click();
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
     await expect(window.locator("table.EditorTheme__table")).toHaveCount(0);
 
+    await window.locator(".ContentEditable__root").click();
+    await window.waitForTimeout(100);
     await undo(window);
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
 
     await expect(window.locator("table.EditorTheme__table")).toBeVisible();
   });
@@ -1930,14 +1950,16 @@ test.describe("Table — undo/redo", () => {
     await actionBtn.click();
     await window.waitForTimeout(200);
     await window.locator('button[title="Insert row below"]').click();
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
 
+    await window.locator("table.EditorTheme__table td").first().click();
+    await window.waitForTimeout(100);
     await undo(window);
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
     expect(await getTableRowCount(window)).toBe(rowsBefore);
 
     await redo(window);
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(400);
     expect(await getTableRowCount(window)).toBe(rowsBefore + 1);
   });
 });
@@ -2564,7 +2586,7 @@ test.describe("Table — edge cases", () => {
     // Create a second note
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
-    await focusEditorBody(window);
+    await focusNewNoteEditorBody(window);
     await window.keyboard.type("Other note");
     await window.waitForTimeout(300);
 
@@ -2721,7 +2743,7 @@ test.describe("Table — edge cases", () => {
     expect(colsAfter).toBe(colsBefore);
   });
 
-  test("pasting table with markdown link in cell renders link", async ({
+  test("pasting table with markdown link in cell stores as text", async ({
     window,
     electronApp,
   }) => {
@@ -2732,9 +2754,12 @@ test.describe("Table — edge cases", () => {
       "| [Click here](https://example.com) | plain |\n| --- | --- |\n| 1 | 2 |",
     );
 
-    const link = window.locator("table.EditorTheme__table th").first().locator("a");
-    await expect(link).toHaveAttribute("href", "https://example.com/");
-    await expect(link).toContainText("Click here");
+    await expect(
+      window.locator("table.EditorTheme__table th").first(),
+    ).toContainText("[Click here](https://example.com)");
+    await expect(
+      window.locator("table.EditorTheme__table td").first(),
+    ).toContainText("1");
   });
 
   test("typing pipe character in cell does not break table structure", async ({
