@@ -28,7 +28,7 @@ function getCellText(cell: TableCellNode): string {
     .trim()
 }
 
-function parseCells(row: string): string[] {
+export function parseCells(row: string): string[] {
   // Remove leading/trailing pipes and split by pipes
   return row
     .replace(/^\||\|\s?$/g, "")

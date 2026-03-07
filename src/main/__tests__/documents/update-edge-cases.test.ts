@@ -96,6 +96,58 @@ describe('Document Repository — Update Edge Cases', () => {
       expect(updated.emoji).toBe('📝');
     });
 
+    // Lexical table: same shape as editor serialization when user saves a table.
+    it('update with Lexical table content round-trips unchanged', () => {
+      const doc = createDocument({ title: 'Note', content: '{}' });
+      const tableContent = JSON.stringify({
+        root: {
+          children: [
+            {
+              type: 'table',
+              children: [
+                {
+                  type: 'tablerow',
+                  children: [
+                    {
+                      type: 'tablecell',
+                      headerState: 1,
+                      colSpan: 1,
+                      rowSpan: 1,
+                      children: [
+                        { type: 'paragraph', children: [{ type: 'text', text: 'H1' }] },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: 'tablerow',
+                  children: [
+                    {
+                      type: 'tablecell',
+                      headerState: 0,
+                      colSpan: 1,
+                      rowSpan: 1,
+                      children: [
+                        { type: 'paragraph', children: [{ type: 'text', text: 'cell' }] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          type: 'root',
+          version: 1,
+        },
+      });
+      const updated = updateDocument(doc.id, { content: tableContent });
+      expect(updated.content).toBe(tableContent);
+      const retrieved = getDocumentById(doc.id)!;
+      expect(retrieved.content).toBe(tableContent);
+      const parsed = JSON.parse(retrieved.content) as { root: { children: { type: string }[] } };
+      expect(parsed.root.children[0].type).toBe('table');
+    });
+
     // Setting emoji to null (removing the emoji) should work.
     it('can set emoji to null (remove emoji)', () => {
       const doc = createDocument({ emoji: '📝' });

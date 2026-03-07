@@ -54,6 +54,86 @@ describe('Document Repository — Create Edge Cases', () => {
       expect(retrieved.content).toBe(testContent);
     });
 
+    // Lexical table: same shape as editor.getEditorState().toJSON() when user creates/edits a table.
+    it('content with Lexical table node round-trips unchanged', () => {
+      const tableContent = JSON.stringify({
+        root: {
+          children: [
+            {
+              type: 'table',
+              children: [
+                {
+                  type: 'tablerow',
+                  children: [
+                    {
+                      type: 'tablecell',
+                      headerState: 1,
+                      colSpan: 1,
+                      rowSpan: 1,
+                      children: [
+                        {
+                          type: 'paragraph',
+                          children: [{ type: 'text', text: 'A' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'tablecell',
+                      headerState: 1,
+                      colSpan: 1,
+                      rowSpan: 1,
+                      children: [
+                        {
+                          type: 'paragraph',
+                          children: [{ type: 'text', text: 'B' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: 'tablerow',
+                  children: [
+                    {
+                      type: 'tablecell',
+                      headerState: 0,
+                      colSpan: 1,
+                      rowSpan: 1,
+                      children: [
+                        {
+                          type: 'paragraph',
+                          children: [{ type: 'text', text: '1' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'tablecell',
+                      headerState: 0,
+                      colSpan: 1,
+                      rowSpan: 1,
+                      children: [
+                        {
+                          type: 'paragraph',
+                          children: [{ type: 'text', text: '2' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          type: 'root',
+          version: 1,
+        },
+      });
+      const doc = createDocument({ content: tableContent });
+      const retrieved = getDocumentById(doc.id)!;
+      expect(retrieved.content).toBe(tableContent);
+      const parsed = JSON.parse(retrieved.content) as { root: { children: { type: string }[] } };
+      expect(parsed.root.children[0].type).toBe('table');
+    });
+
     // Creating a doc with a parentId that doesn't exist in the DB.
     // The code has no FK validation — it just inserts. This is by design
     // (performance, simplicity) but we should verify the behavior.

@@ -152,6 +152,42 @@ describe('IPC Payload Edge Cases', () => {
     expect(callArgs).toEqual([{ parentId: null }]);
   });
 
+  // Table content on create: same shape as editor serialization; user can paste or init with table.
+  it('documents.create with Lexical table content is accepted', async () => {
+    const handler = handlers.get('documents.create')!;
+    const content = JSON.stringify({
+      root: {
+        children: [
+          {
+            type: 'table',
+            children: [
+              {
+                type: 'tablerow',
+                children: [
+                  {
+                    type: 'tablecell',
+                    headerState: 1,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    children: [
+                      { type: 'paragraph', children: [{ type: 'text', text: 'Col' }] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        type: 'root',
+        version: 1,
+      },
+    });
+    await handler(null, { parentId: null, content });
+    expect(docs.createDocument).toHaveBeenCalledWith(expect.objectContaining({ content }));
+    const callArgs = (docs.createDocument as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(JSON.parse(callArgs.content).root.children[0].type).toBe('table');
+  });
+
   // Emoji field — can be a string, null, or undefined. Not sent from the
   // current frontend but the IPC contract allows it.
   it('documents.create with emoji', async () => {
@@ -288,6 +324,157 @@ describe('IPC Payload Edge Cases', () => {
     await handler(null, { id: '1', content });
     const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
     expect(received).toBe(content);
+  });
+
+  // Table content: same shape as renderer sends on save (editor state → JSON). User-behavior aligned.
+  it('documents.update with Lexical table node content', async () => {
+    const handler = handlers.get('documents.update')!;
+    const content = JSON.stringify({
+      root: {
+        children: [
+          {
+            type: 'table',
+            children: [
+              {
+                type: 'tablerow',
+                children: [
+                  {
+                    type: 'tablecell',
+                    headerState: 1,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    children: [
+                      { type: 'paragraph', children: [{ type: 'text', text: 'A' }] },
+                    ],
+                  },
+                  {
+                    type: 'tablecell',
+                    headerState: 1,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    children: [
+                      { type: 'paragraph', children: [{ type: 'text', text: 'B' }] },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'tablerow',
+                children: [
+                  {
+                    type: 'tablecell',
+                    headerState: 0,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    children: [
+                      { type: 'paragraph', children: [{ type: 'text', text: '1' }] },
+                    ],
+                  },
+                  {
+                    type: 'tablecell',
+                    headerState: 0,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    children: [
+                      { type: 'paragraph', children: [{ type: 'text', text: '2' }] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        type: 'root',
+        version: 1,
+      },
+    });
+    await handler(null, { id: 'doc-table', content });
+    expect(docs.updateDocument).toHaveBeenCalledWith('doc-table', { id: 'doc-table', content });
+    const receivedContent = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
+    expect(JSON.parse(receivedContent).root.children[0].type).toBe('table');
+  });
+
+  // Table with export-sensitive special characters (pipes, newlines, quotes) — IPC passes through.
+  it('documents.update with table content containing special characters in cells', async () => {
+    const handler = handlers.get('documents.update')!;
+    const content = JSON.stringify({
+      root: {
+        children: [
+          {
+            type: 'table',
+            children: [
+              {
+                type: 'tablerow',
+                children: [
+                  {
+                    type: 'tablecell',
+                    headerState: 1,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    children: [
+                      {
+                        type: 'paragraph',
+                        children: [{ type: 'text', text: '| pipe | \\ "quoted"' }],
+                      },
+                    ],
+                  },
+                  {
+                    type: 'tablecell',
+                    headerState: 1,
+                    colSpan: 1,
+                    rowSpan: 1,
+                    children: [
+                      {
+                        type: 'paragraph',
+                        children: [{ type: 'text', text: 'Line1\nLine2' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        type: 'root',
+        version: 1,
+      },
+    });
+    await handler(null, { id: 'doc-table-special', content });
+    const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
+    expect(received).toBe(content);
+    const parsed = JSON.parse(received);
+    const cell0 = parsed.root.children[0].children[0].children[0].children[0].children[0];
+    expect(cell0.text).toBe('| pipe | \\ "quoted"');
+    const cell1 = parsed.root.children[0].children[0].children[1].children[0].children[0];
+    expect(cell1.text).toBe('Line1\nLine2');
+  });
+
+  // Large table payload (stress) — validation accepts and handler passes through for export/interop.
+  it('documents.update with large table content (many rows) passes through unchanged', async () => {
+    const handler = handlers.get('documents.update')!;
+    const rowCount = 80;
+    const rows: unknown[] = [];
+    rows.push({
+      type: 'tablerow',
+      children: [
+        { type: 'tablecell', headerState: 1, colSpan: 1, rowSpan: 1, children: [{ type: 'paragraph', children: [{ type: 'text', text: 'H' }] }] },
+      ],
+    });
+    for (let r = 0; r < rowCount - 1; r++) {
+      rows.push({
+        type: 'tablerow',
+        children: [
+          { type: 'tablecell', headerState: 0, colSpan: 1, rowSpan: 1, children: [{ type: 'paragraph', children: [{ type: 'text', text: `row${r}` }] }] },
+        ],
+      });
+    }
+    const content = JSON.stringify({
+      root: { children: [{ type: 'table', children: rows }], type: 'root', version: 1 },
+    });
+    await handler(null, { id: 'doc-large-table', content });
+    const received = (docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
+    expect(received).toBe(content);
+    expect(JSON.parse(received).root.children[0].children).toHaveLength(rowCount);
   });
 
   // The loading-placeholder filter in lexical-editor.tsx removes loading nodes
