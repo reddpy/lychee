@@ -5,6 +5,7 @@ import {
   $createNodeSelection,
   $getNodeByKey,
   $getSelection,
+  $insertNodes,
   $isNodeSelection,
   $setSelection,
   COMMAND_PRIORITY_HIGH,
@@ -16,10 +17,12 @@ import {
   PASTE_COMMAND,
   type LexicalCommand,
 } from "lexical"
+import { $createCodeHighlightNode, $createCodeNode } from "@lexical/code"
 import { $insertNodeToNearestRoot } from "@lexical/utils"
 import { $createImageNode, ImageNode, $isImageNode, type CreateImageNodeParams } from "@/components/editor/nodes/image-node"
 
 const IMAGE_MARKDOWN_RE = /^!\[([^\]]*)\]\(([^)]+)\)$/
+const CODE_BLOCK_MARKDOWN_RE = /^```([\w-]*)\s*\n([\s\S]+?)\n?\s*```\s*$/
 
 export const INSERT_IMAGE_COMMAND: LexicalCommand<CreateImageNodeParams> = createCommand("INSERT_IMAGE")
 
@@ -202,6 +205,27 @@ export function ImagePlugin(): null {
       COMMAND_PRIORITY_LOW,
     )
 
+    // PASTE_COMMAND: handle pasted markdown code block (e.g. ```\ncode\n```)
+    const removeCodeBlockPasteCommand = editor.registerCommand(
+      PASTE_COMMAND,
+      (event) => {
+        const clipboardData = event instanceof ClipboardEvent ? event.clipboardData : null
+        if (!clipboardData) return false
+
+        const text = clipboardData.getData("text/plain").trim()
+        const match = text.match(CODE_BLOCK_MARKDOWN_RE)
+        if (!match) return false
+
+        event.preventDefault()
+        const [, lang, code] = match
+        const codeNode = $createCodeNode(lang || undefined)
+        codeNode.append($createCodeHighlightNode(code || ""))
+        $insertNodes([codeNode])
+        return true
+      },
+      COMMAND_PRIORITY_HIGH,
+    )
+
     // Download external URL images locally + clean up stale loading nodes.
     const removeMutationListener = editor.registerMutationListener(
       ImageNode,
@@ -237,6 +261,7 @@ export function ImagePlugin(): null {
       removeDragOverCommand()
       removePasteCommand()
       removeMarkdownPasteCommand()
+      removeCodeBlockPasteCommand()
       removeMutationListener()
     }
   }, [editor])

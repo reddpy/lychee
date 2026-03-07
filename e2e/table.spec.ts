@@ -12,8 +12,7 @@ async function createNote(window: Page): Promise<void> {
 }
 
 async function focusEditorBody(window: Page): Promise<void> {
-  const main = window.locator("main").first();
-  const title = main.locator("h1.editor-title");
+  const title = window.locator("h1.editor-title");
   await title.click();
   await window.keyboard.press("Enter");
   await window.waitForTimeout(200);
@@ -21,8 +20,7 @@ async function focusEditorBody(window: Page): Promise<void> {
 
 /** Focus the body of the most recently opened editor. Use when multiple notes are open. */
 async function focusNewNoteEditorBody(window: Page): Promise<void> {
-  const main = window.locator("main").last();
-  const title = main.locator("h1.editor-title");
+  const title = window.locator("main").last().locator("h1.editor-title");
   await title.click();
   await window.keyboard.press("Enter");
   await window.waitForTimeout(200);
@@ -703,10 +701,8 @@ test.describe("Table — cell content editing", () => {
     const cell = window.locator("table.EditorTheme__table th").first();
     await cell.click();
     await window.keyboard.type("temporary");
-    await window.waitForTimeout(100);
     const mod = process.platform === "darwin" ? "Meta" : "Control";
     await window.keyboard.press(`${mod}+A`);
-    await window.waitForTimeout(100);
     await window.keyboard.press("Backspace");
     await window.waitForTimeout(300);
 
@@ -1862,10 +1858,10 @@ test.describe("Table — undo/redo", () => {
     const cell = window.locator("table.EditorTheme__table th").first();
     await cell.click();
     await window.keyboard.type("typed text");
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(200);
 
     await undo(window);
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(200);
 
     await expect(cell).not.toContainText("typed text");
   });
@@ -1882,14 +1878,12 @@ test.describe("Table — undo/redo", () => {
     await actionBtn.click();
     await window.waitForTimeout(200);
     await window.locator('button[title="Insert row below"]').click();
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
 
     expect(await getTableRowCount(window)).toBe(rowsBefore + 1);
 
-    await window.locator("table.EditorTheme__table td").first().click();
-    await window.waitForTimeout(100);
     await undo(window);
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
 
     expect(await getTableRowCount(window)).toBe(rowsBefore);
   });
@@ -1908,12 +1902,10 @@ test.describe("Table — undo/redo", () => {
     await actionBtn.click();
     await window.waitForTimeout(200);
     await window.locator('button[title="Insert column right"]').click();
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
 
-    await window.locator("table.EditorTheme__table td").first().click();
-    await window.waitForTimeout(100);
     await undo(window);
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
 
     const colsAfter = await window
       .locator("table.EditorTheme__table tr:first-of-type th")
@@ -1929,13 +1921,11 @@ test.describe("Table — undo/redo", () => {
     await actionBtn.click();
     await window.waitForTimeout(200);
     await window.locator('button[title="Delete table"]').click();
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
     await expect(window.locator("table.EditorTheme__table")).toHaveCount(0);
 
-    await window.locator(".ContentEditable__root").click();
-    await window.waitForTimeout(100);
     await undo(window);
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
 
     await expect(window.locator("table.EditorTheme__table")).toBeVisible();
   });
@@ -1950,16 +1940,14 @@ test.describe("Table — undo/redo", () => {
     await actionBtn.click();
     await window.waitForTimeout(200);
     await window.locator('button[title="Insert row below"]').click();
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
 
-    await window.locator("table.EditorTheme__table td").first().click();
-    await window.waitForTimeout(100);
     await undo(window);
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
     expect(await getTableRowCount(window)).toBe(rowsBefore);
 
     await redo(window);
-    await window.waitForTimeout(400);
+    await window.waitForTimeout(300);
     expect(await getTableRowCount(window)).toBe(rowsBefore + 1);
   });
 });
@@ -2754,6 +2742,7 @@ test.describe("Table — edge cases", () => {
       "| [Click here](https://example.com) | plain |\n| --- | --- |\n| 1 | 2 |",
     );
 
+    // Table transformer stores raw text; it does not parse markdown links in cells
     await expect(
       window.locator("table.EditorTheme__table th").first(),
     ).toContainText("[Click here](https://example.com)");
