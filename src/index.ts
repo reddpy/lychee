@@ -39,6 +39,8 @@ const createWindow = (): BrowserWindow => {
   const mainWindow = new BrowserWindow({
     height: 600,
     width: 800,
+    minHeight: 480,
+    minWidth: 680,
     icon: iconPath,
     show: false,
     backgroundColor: resolveBackgroundColor(),
