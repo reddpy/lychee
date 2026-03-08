@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { AppSidebar } from '../components/app-sidebar';
+import { BreadcrumbPill } from '../components/breadcrumb-pill';
 import { CollapsedSidebarWidget } from '../components/collapsed-sidebar-widget';
 import { LexicalEditor } from '../components/lexical-editor';
 import { MediaPlaybackPill } from '../components/media-playback-pill';
@@ -150,6 +151,7 @@ export function App() {
           <SidebarInset>
             <div className="relative flex min-h-0 flex-1 flex-col">
               <EditorArea />
+              <BreadcrumbPill />
               <MediaPlaybackPill />
             </div>
           </SidebarInset>
