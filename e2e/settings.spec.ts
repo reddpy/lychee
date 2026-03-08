@@ -174,16 +174,34 @@ test.describe('Settings Modal — responsive sizing', () => {
     return dialog;
   }
 
+  async function resizeWindow(
+    electronApp: import('@playwright/test').ElectronApplication,
+    window: import('@playwright/test').Page,
+    width: number,
+    height: number,
+  ) {
+    await electronApp.evaluate(({ BrowserWindow }, { w, h }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(w, h);
+    }, { w: width, h: height });
+    // Wait until the renderer reports dimensions close to the requested size.
+    // On CI (Xvfb) there are no window decorations, so inner ≈ outer.
+    await window.waitForFunction(
+      ({ w }) => globalThis.innerWidth <= w,
+      { w: width },
+      { timeout: 5_000 },
+    );
+  }
+
+  function getViewport(window: import('@playwright/test').Page) {
+    return window.evaluate(() => ({ width: globalThis.innerWidth, height: globalThis.innerHeight }));
+  }
+
   test('dialog stays within viewport at minimum window size', async ({ electronApp, window }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      const win = BrowserWindow.getAllWindows()[0];
-      win?.setSize(680, 480);
-    });
-    await window.waitForTimeout(400);
+    await resizeWindow(electronApp, window, 680, 480);
 
     const dialog = await openSettingsDialog(window);
     const dialogBox = await dialog.boundingBox();
-    const viewport = window.viewportSize();
+    const viewport = await getViewport(window);
 
     expect(dialogBox).toBeTruthy();
     expect(viewport).toBeTruthy();
@@ -195,14 +213,11 @@ test.describe('Settings Modal — responsive sizing', () => {
   });
 
   test('dialog height shrinks with a small viewport', async ({ electronApp, window }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setSize(800, 500);
-    });
-    await window.waitForTimeout(400);
+    await resizeWindow(electronApp, window, 800, 500);
 
     const dialog = await openSettingsDialog(window);
     const dialogBox = await dialog.boundingBox();
-    const viewport = window.viewportSize();
+    const viewport = await getViewport(window);
 
     expect(dialogBox).toBeTruthy();
     expect(viewport).toBeTruthy();
@@ -214,10 +229,7 @@ test.describe('Settings Modal — responsive sizing', () => {
   });
 
   test('dialog uses full height (32rem) when viewport is large', async ({ electronApp, window }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setSize(1200, 900);
-    });
-    await window.waitForTimeout(400);
+    await resizeWindow(electronApp, window, 1200, 900);
 
     const dialog = await openSettingsDialog(window);
     const dialogBox = await dialog.boundingBox();
@@ -230,10 +242,7 @@ test.describe('Settings Modal — responsive sizing', () => {
   });
 
   test('nav and content remain visible at small viewport', async ({ electronApp, window }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setSize(680, 480);
-    });
-    await window.waitForTimeout(400);
+    await resizeWindow(electronApp, window, 680, 480);
 
     const dialog = await openSettingsDialog(window);
 
@@ -247,10 +256,7 @@ test.describe('Settings Modal — responsive sizing', () => {
   });
 
   test('section switching works at small viewport', async ({ electronApp, window }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setSize(680, 480);
-    });
-    await window.waitForTimeout(400);
+    await resizeWindow(electronApp, window, 680, 480);
 
     const dialog = await openSettingsDialog(window);
 
@@ -262,14 +268,11 @@ test.describe('Settings Modal — responsive sizing', () => {
   });
 
   test('dialog width respects viewport margins', async ({ electronApp, window }) => {
-    await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setSize(680, 480);
-    });
-    await window.waitForTimeout(400);
+    await resizeWindow(electronApp, window, 680, 480);
 
     const dialog = await openSettingsDialog(window);
     const dialogBox = await dialog.boundingBox();
-    const viewport = window.viewportSize();
+    const viewport = await getViewport(window);
 
     expect(dialogBox).toBeTruthy();
     expect(viewport).toBeTruthy();
