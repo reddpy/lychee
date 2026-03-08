@@ -81,7 +81,7 @@ export function SettingsDialog() {
       }}
     >
       <DialogContent
-        className="sm:max-w-2xl h-[32rem] p-0 flex flex-col"
+        className="sm:max-w-[min(42rem,calc(100vw-10rem))] h-[min(32rem,calc(100vh-6rem))] p-0 flex flex-col"
         showCloseButton={false}
       >
         {/* Header */}

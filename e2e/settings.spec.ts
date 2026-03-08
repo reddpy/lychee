@@ -159,3 +159,125 @@ test.describe('Settings Modal', () => {
     await expect(nav.getByText('Editor', { exact: true })).toBeVisible();
   });
 });
+
+test.describe('Settings Modal — responsive sizing', () => {
+  async function openSettingsDialog(window: import('@playwright/test').Page) {
+    const settingsBtn = window.locator('aside[data-state="expanded"]').getByText('Settings');
+    if (await settingsBtn.isVisible()) {
+      await settingsBtn.click();
+    } else {
+      const collapsedBtn = window.locator('button[aria-label="Settings"]');
+      await collapsedBtn.click();
+    }
+    const dialog = window.locator('[data-slot="dialog-content"]');
+    await expect(dialog).toBeVisible();
+    return dialog;
+  }
+
+  test('dialog stays within viewport at minimum window size', async ({ electronApp, window }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      win?.setSize(680, 480);
+    });
+    await window.waitForTimeout(400);
+
+    const dialog = await openSettingsDialog(window);
+    const dialogBox = await dialog.boundingBox();
+    const viewport = window.viewportSize();
+
+    expect(dialogBox).toBeTruthy();
+    expect(viewport).toBeTruthy();
+
+    expect(dialogBox!.x).toBeGreaterThanOrEqual(0);
+    expect(dialogBox!.y).toBeGreaterThanOrEqual(0);
+    expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(viewport!.width);
+    expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(viewport!.height);
+  });
+
+  test('dialog height shrinks with a small viewport', async ({ electronApp, window }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(800, 500);
+    });
+    await window.waitForTimeout(400);
+
+    const dialog = await openSettingsDialog(window);
+    const dialogBox = await dialog.boundingBox();
+    const viewport = window.viewportSize();
+
+    expect(dialogBox).toBeTruthy();
+    expect(viewport).toBeTruthy();
+
+    // Dialog height should be less than the viewport height (capped by 100vh - 6rem)
+    expect(dialogBox!.height).toBeLessThan(viewport!.height);
+    // And it must not overflow the bottom
+    expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(viewport!.height);
+  });
+
+  test('dialog uses full height (32rem) when viewport is large', async ({ electronApp, window }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1200, 900);
+    });
+    await window.waitForTimeout(400);
+
+    const dialog = await openSettingsDialog(window);
+    const dialogBox = await dialog.boundingBox();
+
+    expect(dialogBox).toBeTruthy();
+
+    // 32rem = 512px at default 16px root font size
+    expect(dialogBox!.height).toBeGreaterThanOrEqual(500);
+    expect(dialogBox!.height).toBeLessThanOrEqual(520);
+  });
+
+  test('nav and content remain visible at small viewport', async ({ electronApp, window }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(680, 480);
+    });
+    await window.waitForTimeout(400);
+
+    const dialog = await openSettingsDialog(window);
+
+    const nav = dialog.locator('nav');
+    await expect(nav).toBeVisible();
+    await expect(nav.getByText('General', { exact: true })).toBeVisible();
+    await expect(nav.getByText('Appearance', { exact: true })).toBeVisible();
+    await expect(nav.getByText('Editor', { exact: true })).toBeVisible();
+
+    await expect(dialog.getByText('General settings will appear here.')).toBeVisible();
+  });
+
+  test('section switching works at small viewport', async ({ electronApp, window }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(680, 480);
+    });
+    await window.waitForTimeout(400);
+
+    const dialog = await openSettingsDialog(window);
+
+    await dialog.getByText('Appearance', { exact: true }).click();
+    await expect(dialog.getByText('Choose how Lychee looks.')).toBeVisible();
+
+    await dialog.getByText('Editor', { exact: true }).click();
+    await expect(dialog.getByText('Editor settings will appear here.')).toBeVisible();
+  });
+
+  test('dialog width respects viewport margins', async ({ electronApp, window }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(680, 480);
+    });
+    await window.waitForTimeout(400);
+
+    const dialog = await openSettingsDialog(window);
+    const dialogBox = await dialog.boundingBox();
+    const viewport = window.viewportSize();
+
+    expect(dialogBox).toBeTruthy();
+    expect(viewport).toBeTruthy();
+
+    // Should have at least 1rem (16px) margin on each side
+    const leftMargin = dialogBox!.x;
+    const rightMargin = viewport!.width - (dialogBox!.x + dialogBox!.width);
+    expect(leftMargin).toBeGreaterThanOrEqual(12);
+    expect(rightMargin).toBeGreaterThanOrEqual(12);
+  });
+});
