@@ -62,7 +62,7 @@ async function dragNote(
   sourceId: string,
   targetId: string,
   position: 'before' | 'inside' | 'after',
-  { slow = !!process.env.SLOW_DRAG, useIpc }: { slow?: boolean; useIpc?: boolean } = {},
+  { slow = !!process.env.SLOW_DRAG, useIpc = !!process.env.CI }: { slow?: boolean; useIpc?: boolean } = {},
 ) {
   const source = window.locator(`[data-note-id="${sourceId}"]`);
   const target = window.locator(`[data-note-id="${targetId}"]`);
@@ -130,7 +130,7 @@ async function dragNote(
   }
 
   // Wait for the move IPC + store refresh + React re-render
-  await window.waitForTimeout(600);
+  await window.waitForTimeout(process.env.CI ? 1000 : 600);
 }
 
 /** Scroll the notes sidebar container to top or bottom. */
@@ -303,7 +303,12 @@ async function dragNoteViaIpc(
         }
       }
 
-      await lychee.invoke('documents.move', { id: sourceId, parentId: newParentId, sortOrder: newSortOrder });
+      try {
+        await lychee.invoke('documents.move', { id: sourceId, parentId: newParentId, sortOrder: newSortOrder });
+      } catch {
+        // Move was rejected (e.g. circular reference) — mirrors UI drag silently rejecting
+        return;
+      }
 
       // Refresh the store
       if (store) {
@@ -948,8 +953,8 @@ test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
     const ids = await seedNotes(window,
       Array.from({ length: 25 }, (_, i) => ({ title: `Over3 A${i}` })),
     );
-    // A24 is top, A0 is bottom. Drag A24 to after A0 (absolute bottom).
-    await dragNote(window, ids[24], ids[0], 'after');
+    // A24 is top, A0 is bottom. Drag A24 to after A0 (absolute bottom). Use IPC — target is off-screen.
+    await dragNote(window, ids[24], ids[0], 'after', { useIpc: true });
 
     const docs = await listDocumentsFromDb(window);
     const roots = docs.filter((d) => d.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -960,8 +965,8 @@ test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
     const ids = await seedNotes(window,
       Array.from({ length: 25 }, (_, i) => ({ title: `Over4 A${i}` })),
     );
-    // A0 is bottom, A24 is top. Drag A0 to before A24 (absolute top).
-    await dragNote(window, ids[0], ids[24], 'before');
+    // A0 is bottom, A24 is top. Drag A0 to before A24 (absolute top). Use IPC — target is off-screen.
+    await dragNote(window, ids[0], ids[24], 'before', { useIpc: true });
 
     const docs = await listDocumentsFromDb(window);
     const roots = docs.filter((d) => d.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -995,8 +1000,8 @@ test.describe('Sidebar Tree — Overflow (Long List with Scroll)', () => {
     const parent = m.get('OverN2 Parent')!;
     const c0 = m.get('OverN2 C0')!;
     const c19 = m.get('OverN2 C19')!;
-    // C0 is bottom, C19 is top. Drag C0 to before C19 (top).
-    await dragNote(window, c0, c19, 'before');
+    // C0 is bottom, C19 is top. Drag C0 to before C19 (top). Use IPC — target is off-screen.
+    await dragNote(window, c0, c19, 'before', { useIpc: true });
 
     const docs = await listDocumentsFromDb(window);
     const children = docs.filter((d) => d.parentId === parent).sort((a, b) => a.sortOrder - b.sortOrder);

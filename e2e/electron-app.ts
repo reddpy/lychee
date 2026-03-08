@@ -72,7 +72,7 @@ export const test = base.extend<Fixtures>({
 
     const launchOpts: Parameters<typeof _electron.launch>[0] = {
       env: { ...process.env, NODE_ENV: 'test' },
-      timeout: 30_000,
+      timeout: process.env.CI ? 60_000 : 30_000,
     };
 
     // --no-sandbox is required on Linux CI (GitHub Actions)

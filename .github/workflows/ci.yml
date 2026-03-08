@@ -24,7 +24,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       # pretest hook automatically runs pnpm rebuild:sqlite before vitest
       - name: Run backend tests
@@ -46,17 +46,19 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Package Electron app
-        run: pnpm run package
+        run: E2E=1 pnpm run package
+
+      - name: Archive packaged app (preserves file permissions)
+        run: tar -cf electron-app.tar -C out .
 
       - name: Upload packaged app
         uses: actions/upload-artifact@v4
         with:
           name: electron-app
-          path: out/
-          compression-level: 6
+          path: electron-app.tar
           retention-days: 1
 
   e2e-test:
@@ -77,8 +79,10 @@ jobs:
             specs: e2e/editor.spec.ts e2e/title-typing.spec.ts
           - name: media
             specs: e2e/image-bookmark-embed.spec.ts e2e/trash.spec.ts e2e/persistence.spec.ts
+            workers: 1
           - name: misc
             specs: e2e/youtube-embed.spec.ts e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts
+            workers: 1
     steps:
       - uses: actions/checkout@v4
 
@@ -91,11 +95,12 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Install dependencies and system packages
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install system dependencies for Electron
         run: |
-          sudo apt-get update &
-          pnpm install --frozen-lockfile
-          wait
+          sudo apt-get update
           sudo apt-get install -y \
             xvfb \
             libgtk-3-0 \
@@ -118,13 +123,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: electron-app
-          path: out/
 
-      - name: Fix binary permissions
-        run: chmod +x out/lychee-linux-*/lychee
+      - name: Extract packaged app (preserves file permissions)
+        run: mkdir -p out && tar -xf electron-app.tar -C out
 
       - name: Run E2E tests
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" pnpm exec playwright test ${{ matrix.specs }}
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" pnpm exec playwright test ${{ matrix.specs }}${{ matrix.workers && format(' --workers={0}', matrix.workers) || '' }}
 
       - name: Upload blob report
         if: always()
@@ -152,7 +156,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Download all blob reports
         uses: actions/download-artifact@v4

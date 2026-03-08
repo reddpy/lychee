@@ -88,7 +88,9 @@ test.describe('Settings Modal', () => {
     const dialog = window.locator('[data-slot="dialog-content"]');
     await expect(dialog).toBeVisible();
 
-    await clickOutsideDialog(window);
+    // Click the overlay (backdrop) — more reliable than coordinate click when sidebar is collapsed
+    await window.locator('[data-slot="dialog-overlay"]').click({ position: { x: 1, y: 1 } });
+    await window.waitForTimeout(300);
 
     await expect(dialog).not.toBeVisible();
   });
