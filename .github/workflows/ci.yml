@@ -3,6 +3,10 @@ name: CI
 on:
   push:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-tests:
     name: Backend Tests
@@ -20,14 +24,14 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       # pretest hook automatically runs pnpm rebuild:sqlite before vitest
       - name: Run backend tests
         run: pnpm test
 
-  e2e-tests:
-    name: E2E Tests
+  e2e-build:
+    name: E2E Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,11 +46,56 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Install system dependencies for Electron
+      - name: Package Electron app
+        run: pnpm run package
+
+      - name: Upload packaged app
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-app
+          path: out/
+          compression-level: 6
+          retention-days: 1
+
+  e2e-test:
+    name: E2E (${{ matrix.name }})
+    needs: e2e-build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: breadcrumb-pill
+            specs: e2e/breadcrumb-pill.spec.ts
+          - name: table
+            specs: e2e/table.spec.ts
+          - name: sidebar-tree
+            specs: e2e/sidebar-tree.spec.ts e2e/dark-mode.spec.ts
+          - name: editor
+            specs: e2e/editor.spec.ts e2e/title-typing.spec.ts
+          - name: media
+            specs: e2e/image-bookmark-embed.spec.ts e2e/trash.spec.ts e2e/persistence.spec.ts
+          - name: misc
+            specs: e2e/youtube-embed.spec.ts e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies and system packages
         run: |
-          sudo apt-get update
+          sudo apt-get update &
+          pnpm install --frozen-lockfile
+          wait
           sudo apt-get install -y \
             xvfb \
             libgtk-3-0 \
@@ -65,13 +114,57 @@ jobs:
             libxrandr2 \
             libxkbcommon0
 
-      # Packages the Electron app (electron-forge rebuilds native modules for
-      # Electron automatically), then runs Playwright against the packaged binary.
-      - name: Build and run E2E tests
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" pnpm test:e2e:build
+      - name: Download packaged app
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-app
+          path: out/
 
-      - name: Upload Playwright report
+      - name: Fix binary permissions
+        run: chmod +x out/lychee-linux-*/lychee
+
+      - name: Run E2E tests
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" pnpm exec playwright test ${{ matrix.specs }}
+
+      - name: Upload blob report
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.name }}
+          path: blob-report/
+          retention-days: 1
+
+  e2e-report:
+    name: E2E Report
+    if: always()
+    needs: e2e-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download all blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-report-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      - name: Merge reports
+        run: pnpm exec playwright merge-reports --reporter=html ./all-blob-reports
+
+      - name: Upload merged report
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
