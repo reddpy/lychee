@@ -74,7 +74,7 @@ export function BreadcrumbPill() {
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-64 p-1"
+        className="w-64 max-h-80 overflow-y-auto p-1"
         align="start"
         side="right"
         sideOffset={6}
