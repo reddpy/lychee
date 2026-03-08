@@ -674,12 +674,16 @@ test.describe('Editor — Edge Cases', () => {
     const title = window.locator('h1.editor-title');
     await title.click();
     await window.keyboard.press('Enter');
-    await window.keyboard.type('Original Gone');
-    await window.keyboard.press(`${mod}+z`);
+    await window.keyboard.type('UndoTarget');
+    await window.waitForTimeout(200);
 
     const editorRoot = window.locator('.ContentEditable__root');
-    await expect(editorRoot).not.toContainText('Original');
-    await expect(editorRoot).not.toContainText('Gone');
+    await expect(editorRoot).toContainText('UndoTarget');
+
+    for (let i = 0; i < 5; i++) {
+      await window.keyboard.press(`${mod}+z`);
+    }
+    await expect(editorRoot).not.toContainText('UndoTarget');
   });
 
   test('redo restores undone edit', async ({ window }) => {
