@@ -42,8 +42,8 @@ async function pasteText(
   electronApp: ElectronApplication,
   text: string,
 ): Promise<void> {
-  await window.evaluate(async (t) => {
-    await navigator.clipboard.writeText(t);
+  await electronApp.evaluate(({ clipboard }, t) => {
+    clipboard.writeText(t);
   }, text);
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
   await window.keyboard.press(`${modifier}+V`);

@@ -58,7 +58,7 @@ test.describe('Settings Modal', () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setSize(1200, 900);
     });
-    await window.waitForTimeout(300);
+    await window.waitForFunction(() => globalThis.innerWidth >= 1100, null, { timeout: 5_000 });
 
     const settingsBtn = window.locator('aside[data-state="expanded"]').getByText('Settings');
     await settingsBtn.click();
@@ -75,7 +75,7 @@ test.describe('Settings Modal', () => {
     await electronApp.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setSize(1200, 900);
     });
-    await window.waitForTimeout(300);
+    await window.waitForFunction(() => globalThis.innerWidth >= 1100, null, { timeout: 5_000 });
 
     // Collapse sidebar
     await window.locator('[aria-label="Toggle sidebar"]').click();
@@ -88,7 +88,9 @@ test.describe('Settings Modal', () => {
     const dialog = window.locator('[data-slot="dialog-content"]');
     await expect(dialog).toBeVisible();
 
-    await clickOutsideDialog(window);
+    // Click the overlay (backdrop) — more reliable than coordinate click when sidebar is collapsed
+    await window.locator('[data-slot="dialog-overlay"]').click({ position: { x: 1, y: 1 } });
+    await window.waitForTimeout(300);
 
     await expect(dialog).not.toBeVisible();
   });

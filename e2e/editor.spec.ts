@@ -694,10 +694,11 @@ test.describe('Editor — Edge Cases', () => {
     await expect(editorRoot).toContainText('Text');
   });
 
-  test('paste plain text inserts at cursor', async ({ window }) => {
-    await window.evaluate(async () => {
-      await navigator.clipboard.writeText('Pasted content');
-    });
+  test('paste plain text inserts at cursor', async ({ electronApp, window }) => {
+    await electronApp.evaluate(({ clipboard }, text) => {
+      clipboard.writeText(text);
+    }, 'Pasted content');
+
     const title = window.locator('h1.editor-title');
     await title.click();
     await window.keyboard.press('Enter');
