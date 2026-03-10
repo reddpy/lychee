@@ -27,7 +27,7 @@ export function SectionIndicatorPlugin(): ReactElement | null {
   const [isOpen, setIsOpen] = useState(false)
   const [pillTop, setPillTop] = useState(0)
   const [pillRight, setPillRight] = useState(0)
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
 
   // Rebuild heading list on heading structural changes AND text edits inside headings
   useEffect(() => {
@@ -99,24 +99,27 @@ export function SectionIndicatorPlugin(): ReactElement | null {
     }
   }, [editor])
 
-  // Cleanup
+  // Close on outside click / Escape
   useEffect(() => {
+    if (!isOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (containerRef.current && target && !containerRef.current.contains(target)) {
+        setIsOpen(false)
+      }
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false)
+      }
+    }
+    window.addEventListener("mousedown", onPointerDown)
+    window.addEventListener("keydown", onKeyDown)
     return () => {
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+      window.removeEventListener("mousedown", onPointerDown)
+      window.removeEventListener("keydown", onKeyDown)
     }
-  }, [])
-
-  const handleEnter = useCallback(() => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
-    }
-    setIsOpen(true)
-  }, [])
-
-  const handleLeave = useCallback(() => {
-    closeTimerRef.current = setTimeout(() => setIsOpen(false), 250)
-  }, [])
+  }, [isOpen])
 
   const handleClick = useCallback(
     (key: NodeKey) => {
@@ -133,19 +136,35 @@ export function SectionIndicatorPlugin(): ReactElement | null {
 
   return createPortal(
     <div
+      ref={containerRef}
       className="fixed z-40"
       style={{ top: pillTop, right: pillRight }}
       onMouseDown={() => {
         editor.getRootElement()?.blur()
         editor.update(() => { $setSelection(null) })
       }}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
     >
-      {isOpen ? (
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-label="Navigate sections"
+        aria-expanded={isOpen}
+        className={`flex h-8 w-8 items-center justify-center cursor-pointer rounded-full border transition-all duration-200 group select-none ${
+          isOpen
+            ? "border-[#C14B55]/30 bg-[#C14B55]/15 text-[#C14B55]"
+            : "border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 hover:bg-[#C14B55]/15 hover:text-[#C14B55] hover:border-[#C14B55]/30"
+        }`}
+      >
+        <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+          <rect width="14" height="2" rx="1" className={`${isOpen ? "fill-[#C14B55]" : "fill-muted-foreground/60 group-hover:fill-[#C14B55]"} transition-colors duration-200`} />
+          <rect y="4" width="9" height="2" rx="1" className={`${isOpen ? "fill-[#C14B55]" : "fill-muted-foreground/60 group-hover:fill-[#C14B55]"} transition-colors duration-200`} />
+          <rect y="8" width="12" height="2" rx="1" className={`${isOpen ? "fill-[#C14B55]" : "fill-muted-foreground/60 group-hover:fill-[#C14B55]"} transition-colors duration-200`} />
+        </svg>
+      </button>
+      {isOpen && (
         <div
-          className="rounded-lg border border-[hsl(var(--border))] bg-popover py-2 px-2 shadow-md min-w-[220px] max-w-[300px] animate-in fade-in-0 zoom-in-95 duration-150"
-          style={{ position: "absolute", right: 0, top: 0 }}
+          className="rounded-lg border border-[hsl(var(--border))] bg-popover py-2 px-2 shadow-md min-w-[220px] max-w-[300px] animate-in fade-in-0 duration-75"
+          style={{ position: "absolute", right: 0, top: 36 }}
         >
           {headings.map((heading) => {
             const paddingLeft =
@@ -162,21 +181,6 @@ export function SectionIndicatorPlugin(): ReactElement | null {
               </button>
             )
           })}
-        </div>
-      ) : (
-        <div
-          className="flex items-center justify-center cursor-pointer border border-r-0 border-[hsl(var(--border))] bg-popover hover:bg-primary shadow-md transition-all duration-200 group"
-          style={{
-            width: 36,
-            height: 28,
-            borderRadius: "8px 0 0 8px",
-          }}
-        >
-          <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-            <rect width="14" height="2" rx="1" className="fill-muted-foreground/60 group-hover:fill-primary-foreground transition-colors duration-200" />
-            <rect y="4" width="9" height="2" rx="1" className="fill-muted-foreground/60 group-hover:fill-primary-foreground transition-colors duration-200" />
-            <rect y="8" width="12" height="2" rx="1" className="fill-muted-foreground/60 group-hover:fill-primary-foreground transition-colors duration-200" />
-          </svg>
         </div>
       )}
     </div>,
