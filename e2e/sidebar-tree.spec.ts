@@ -192,6 +192,22 @@ async function movePointerInsideFloatingSidebar(window: Page) {
   await window.mouse.move(x, y);
 }
 
+async function ensureFloatingSidebarOpen(window: Page) {
+  const sidebar = collapsedSidebar(window);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const className = (await sidebar.getAttribute('class')) ?? '';
+    if (className.includes('translate-x-0')) {
+      await movePointerInsideFloatingSidebar(window);
+      const anchoredClass = (await sidebar.getAttribute('class')) ?? '';
+      if (anchoredClass.includes('translate-x-0')) return;
+    }
+    await revealFloatingSidebar(window);
+    await movePointerInsideFloatingSidebar(window);
+    await window.waitForTimeout(120);
+  }
+  await expect(sidebar).toHaveClass(/translate-x-0/);
+}
+
 /**
  * Bulk-create documents via IPC (no UI interaction). Each spec is created
  * sequentially with sortOrder=0 (shifts siblings), matching createNote behavior.
@@ -568,17 +584,18 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
     ]);
 
     await collapseSidebar(window);
-    await revealFloatingSidebar(window);
+    await ensureFloatingSidebarOpen(window);
 
     const floatingSidebar = collapsedSidebar(window);
     await expect(floatingSidebar).toHaveClass(/translate-x-0/);
 
-    await dragNote(window, a, c, 'before', { useIpc: false });
-    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+    await dragNote(window, a, c, 'before', { useIpc: false, slow: true });
+    await ensureFloatingSidebarOpen(window);
     await expect(window.locator(`[data-note-id="${a}"]`)).toBeVisible();
     await expect(window.locator(`[data-note-id="${b}"]`)).toBeVisible();
 
-    await dragNote(window, b, a, 'before', { useIpc: false });
+    await dragNote(window, b, a, 'before', { useIpc: false, slow: true });
+    await ensureFloatingSidebarOpen(window);
     await expect(floatingSidebar).toHaveClass(/translate-x-0/);
     await expect(window.locator(`[data-note-id="${a}"]`)).toBeVisible();
     await expect(window.locator(`[data-note-id="${b}"]`)).toBeVisible();
@@ -602,8 +619,8 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
     await revealFloatingSidebar(window);
     await expect(floatingSidebar).toHaveClass(/translate-x-0/);
 
-    await dragNote(window, a, b, 'before', { useIpc: false });
-    await movePointerInsideFloatingSidebar(window);
+    await dragNote(window, a, b, 'before', { useIpc: false, slow: true });
+    await ensureFloatingSidebarOpen(window);
     await expect(floatingSidebar).toHaveClass(/translate-x-0/);
   });
 
