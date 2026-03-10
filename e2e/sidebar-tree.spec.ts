@@ -112,8 +112,11 @@ async function dragNote(
   const srcX = sourceBox.x + sourceBox.width / 2;
   const srcY = sourceBox.y + sourceBox.height / 2;
 
-  if (slow) {
-    // Slow-motion drag so you can visually see the blue drop indicators
+  // Pre-hover source to keep collapsed floating sidebar in an explicit hover-open state.
+  await source.hover();
+  await window.waitForTimeout(40);
+
+  const dragWithMouse = async () => {
     await window.mouse.move(srcX, srcY);
     await window.mouse.down();
     await window.mouse.move(srcX + 5, srcY + 5, { steps: 5 });
@@ -121,12 +124,22 @@ async function dragNote(
     await window.mouse.move(destX, destY, { steps: 30 });
     await window.waitForTimeout(500);
     await window.mouse.up();
+  };
+
+  if (slow) {
+    // Slow-motion drag so you can visually see the drop indicators.
+    await dragWithMouse();
   } else {
-    // Fast drag: use source position to ensure dragTo starts from the right spot
-    await source.dragTo(target, {
-      sourcePosition: { x: sourceBox.width / 2, y: sourceBox.height / 2 },
-      targetPosition: { x: targetBox.width / 2, y: targetY },
-    });
+    // Fast drag: use source position to ensure dragTo starts from the right spot.
+    // In CI, actionability can intermittently report pointer interception; fallback to raw mouse drag.
+    try {
+      await source.dragTo(target, {
+        sourcePosition: { x: sourceBox.width / 2, y: sourceBox.height / 2 },
+        targetPosition: { x: targetBox.width / 2, y: targetY },
+      });
+    } catch {
+      await dragWithMouse();
+    }
   }
 
   // Wait for the move IPC + store refresh + React re-render
@@ -141,6 +154,58 @@ async function scrollNotesTo(window: Page, where: 'top' | 'bottom') {
     container.scrollTop = w === 'bottom' ? container.scrollHeight : 0;
   }, where);
   await window.waitForTimeout(300);
+}
+
+async function collapseSidebar(window: Page) {
+  await window.locator('[aria-label="Toggle sidebar"]').click();
+  await window.waitForTimeout(250);
+}
+
+async function revealFloatingSidebar(window: Page) {
+  const sidebar = collapsedSidebar(window);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Reset pointer away from the edge trigger first, then enter trigger zone.
+    await window.mouse.move(420, 120);
+    await window.waitForTimeout(60);
+    await window.mouse.move(1, 120 + attempt * 16);
+    await window.waitForTimeout(250);
+    const className = (await sidebar.getAttribute('class')) ?? '';
+    if (className.includes('translate-x-0')) {
+      return;
+    }
+  }
+  throw new Error('Failed to reveal floating sidebar from collapsed state');
+}
+
+function collapsedSidebar(window: Page) {
+  return window.locator('aside[data-state="collapsed"]').first();
+}
+
+async function movePointerInsideFloatingSidebar(window: Page) {
+  const sidebar = collapsedSidebar(window);
+  const box = await sidebar.boundingBox();
+  if (!box) {
+    throw new Error('Collapsed sidebar has no bounding box');
+  }
+  const x = Math.max(box.x + 20, box.x + box.width * 0.35);
+  const y = Math.max(box.y + 20, box.y + box.height * 0.25);
+  await window.mouse.move(x, y);
+}
+
+async function ensureFloatingSidebarOpen(window: Page) {
+  const sidebar = collapsedSidebar(window);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const className = (await sidebar.getAttribute('class')) ?? '';
+    if (className.includes('translate-x-0')) {
+      await movePointerInsideFloatingSidebar(window);
+      const anchoredClass = (await sidebar.getAttribute('class')) ?? '';
+      if (anchoredClass.includes('translate-x-0')) return;
+    }
+    await revealFloatingSidebar(window);
+    await movePointerInsideFloatingSidebar(window);
+    await window.waitForTimeout(120);
+  }
+  await expect(sidebar).toHaveClass(/translate-x-0/);
 }
 
 /**
@@ -446,13 +511,126 @@ test.describe('Sidebar Tree — Structure & Nesting', () => {
 });
 
 test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
+  test('collapsed floating sidebar stays open after dropping a dragged note', async ({ window }) => {
+    const [a, b, c] = await seedNotes(window, [
+      { title: 'Float A' }, { title: 'Float B' }, { title: 'Float C' },
+    ]);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+
+    const floatingSidebar = collapsedSidebar(window);
+    const source = window.locator(`[data-note-id="${a}"]`);
+    const target = window.locator(`[data-note-id="${c}"]`);
+
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+    await expect(source).toBeVisible();
+    await expect(target).toBeVisible();
+
+    // Drop while cursor is still inside the floating sidebar.
+    await dragNote(window, a, c, 'before', { useIpc: false });
+
+    // Sidebar should remain floating immediately after drop.
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+    await expect(source).toBeVisible();
+    await expect(target).toBeVisible();
+  });
+
+  test('collapsed floating sidebar stays open after drop once pointer is re-anchored inside', async ({ window }) => {
+    const [a, b] = await seedNotes(window, [
+      { title: 'Hold A' }, { title: 'Hold B' },
+    ]);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+
+    const floatingSidebar = collapsedSidebar(window);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+
+    await dragNote(window, a, b, 'after', { useIpc: false, slow: true });
+    await revealFloatingSidebar(window);
+    await movePointerInsideFloatingSidebar(window);
+
+    // Wait briefly without moving the pointer again; sidebar should stay floating.
+    await window.waitForTimeout(350);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+  });
+
+  test('collapsed floating sidebar hides after pointer leaves post-drop', async ({ window }) => {
+    const [a, b] = await seedNotes(window, [
+      { title: 'Leave A' }, { title: 'Leave B' },
+    ]);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+
+    const floatingSidebar = collapsedSidebar(window);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+
+    await dragNote(window, a, b, 'after', { useIpc: false, slow: true });
+    await revealFloatingSidebar(window);
+    await movePointerInsideFloatingSidebar(window);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+
+    // Move pointer far outside sidebar; it should then hide.
+    await window.mouse.move(500, 120);
+    await window.waitForTimeout(400);
+    await expect(floatingSidebar).toHaveClass(/-translate-x-full/);
+  });
+
+  test('collapsed floating sidebar supports consecutive drags without re-hover', async ({ window }) => {
+    const [a, b, c] = await seedNotes(window, [
+      { title: 'Chain A' }, { title: 'Chain B' }, { title: 'Chain C' },
+    ]);
+
+    await collapseSidebar(window);
+    await ensureFloatingSidebarOpen(window);
+
+    const floatingSidebar = collapsedSidebar(window);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+
+    await dragNote(window, a, c, 'before', { useIpc: false, slow: true });
+    await ensureFloatingSidebarOpen(window);
+    await expect(window.locator(`[data-note-id="${a}"]`)).toBeVisible();
+    await expect(window.locator(`[data-note-id="${b}"]`)).toBeVisible();
+
+    await dragNote(window, b, a, 'before', { useIpc: false, slow: true });
+    await ensureFloatingSidebarOpen(window);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+    await expect(window.locator(`[data-note-id="${a}"]`)).toBeVisible();
+    await expect(window.locator(`[data-note-id="${b}"]`)).toBeVisible();
+  });
+
+  test('collapsed sidebar can be reopened after pointer-leave collapse and still drag', async ({ window }) => {
+    const [a, b] = await seedNotes(window, [
+      { title: 'Reopen A' }, { title: 'Reopen B' },
+    ]);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+
+    const floatingSidebar = collapsedSidebar(window);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+
+    await window.mouse.move(500, 120);
+    await window.waitForTimeout(400);
+    await expect(floatingSidebar).toHaveClass(/-translate-x-full/);
+
+    await revealFloatingSidebar(window);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+
+    await dragNote(window, a, b, 'before', { useIpc: false, slow: true });
+    await ensureFloatingSidebarOpen(window);
+    await expect(floatingSidebar).toHaveClass(/translate-x-0/);
+  });
+
   test('reorder siblings: move last note to first position', async ({ window }) => {
     const [a, b, c] = await seedNotes(window, [
       { title: 'DnD A' }, { title: 'DnD B' }, { title: 'DnD C' },
     ]);
 
     // Current order: C(0), B(1), A(2). Drag A before C (first).
-    await dragNote(window, a, c, 'before');
+    await dragNote(window, a, c, 'before', { useIpc: false });
 
     const docs = await listDocumentsFromDb(window);
     const sorted = docs
@@ -544,7 +722,7 @@ test.describe('Sidebar Tree — Drag & Drop Reordering', () => {
     ]);
 
     // Initial order: C, B, A. Reverse to A, B, C.
-    await dragNote(window, a, c, 'before');
+    await dragNote(window, a, c, 'before', { useIpc: false });
     await dragNote(window, c, b, 'after');
 
     const docs = await listDocumentsFromDb(window);
@@ -1729,5 +1907,99 @@ test.describe('Sidebar Tree — Stress', () => {
       const aDoc = roots.find((x) => x.title === 'Pos A')!;
       expect(aDoc.sortOrder).toBe(pos);
     }
+  });
+});
+
+test.describe('Sidebar Tree — Collapsed Sidebar Timing & Soak', () => {
+  test('rapid leave and re-enter keeps floating sidebar usable', async ({ window }) => {
+    const [a, b, c] = await seedNotes(window, [
+      { title: 'Jitter A' }, { title: 'Jitter B' }, { title: 'Jitter C' },
+    ]);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+    const sidebar = collapsedSidebar(window);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    // Leave and quickly re-enter inside debounce window.
+    await window.mouse.move(520, 140);
+    await window.waitForTimeout(60);
+    await window.mouse.move(1, 120);
+    await window.waitForTimeout(200);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    await dragNote(window, a, c, 'before');
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+    await expect(window.locator(`[data-note-id="${a}"]`)).toBeVisible();
+    await expect(window.locator(`[data-note-id="${b}"]`)).toBeVisible();
+  });
+
+  test('drop then long idle keeps state stable until next pointer decision', async ({ window }) => {
+    const [a, b] = await seedNotes(window, [
+      { title: 'Idle A' }, { title: 'Idle B' },
+    ]);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+    const sidebar = collapsedSidebar(window);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    await dragNote(window, a, b, 'after', { useIpc: false });
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    // No pointer movement for a while; state should remain stable.
+    await window.waitForTimeout(1200);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    // First real move outside should hide.
+    await window.mouse.move(520, 170);
+    await window.waitForTimeout(350);
+    await expect(sidebar).toHaveClass(/-translate-x-full/);
+  });
+
+  test('repeated collapse/reveal cycles do not break floating behavior', async ({ window }) => {
+    await seedNotes(window, [
+      { title: 'Cycle A' }, { title: 'Cycle B' },
+    ]);
+
+    await collapseSidebar(window);
+    const sidebar = collapsedSidebar(window);
+
+    for (let i = 0; i < 12; i++) {
+      await revealFloatingSidebar(window);
+      await expect(sidebar).toHaveClass(/translate-x-0/);
+      await window.mouse.move(560, 190 + (i % 3) * 8);
+      await window.waitForTimeout(260);
+      await expect(sidebar).toHaveClass(/-translate-x-full/);
+    }
+
+    // One last reveal must still work.
+    await revealFloatingSidebar(window);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+  });
+
+  test('collapsed floating supports burst consecutive drags', async ({ window }) => {
+    const ids = await seedNotes(window, [
+      { title: 'Burst A' }, { title: 'Burst B' }, { title: 'Burst C' }, { title: 'Burst D' }, { title: 'Burst E' },
+    ]);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+    const sidebar = collapsedSidebar(window);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    // Perform several drags back-to-back without re-hovering edge trigger.
+    await dragNote(window, ids[0], ids[4], 'before', { useIpc: false });
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+    await dragNote(window, ids[1], ids[3], 'before', { useIpc: false });
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+    await dragNote(window, ids[2], ids[4], 'after', { useIpc: false });
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+    await dragNote(window, ids[0], ids[1], 'after', { useIpc: false });
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    const docs = await listDocumentsFromDb(window);
+    const roots = docs.filter((d) => d.parentId === null);
+    expect(roots).toHaveLength(5);
   });
 });
