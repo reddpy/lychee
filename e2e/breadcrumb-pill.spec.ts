@@ -111,11 +111,42 @@ async function openBreadcrumb(window: Page) {
   await popover.waitFor({ state: 'visible', timeout: 5000 });
 }
 
+/** Click a breadcrumb row while simulating a modifier key. */
+async function clickBreadcrumbWithModifier(
+  window: Page,
+  label: string,
+  modifier: 'meta' | 'ctrl',
+) {
+  await window.evaluate(
+    ({ rowLabel, rowModifier }) => {
+      const button = Array.from(
+        document.querySelectorAll('[data-radix-popper-content-wrapper] button'),
+      ).find((el) => el.textContent?.includes(rowLabel)) as HTMLButtonElement | undefined;
+      if (!button) throw new Error(`Breadcrumb button not found: ${rowLabel}`);
+      const flags =
+        rowModifier === 'meta'
+          ? { metaKey: true, ctrlKey: false }
+          : { metaKey: false, ctrlKey: true };
+      button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, ...flags }));
+      button.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, ...flags }));
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, ...flags }));
+    },
+    { rowLabel: label, rowModifier: modifier },
+  );
+}
+
 /** Get the currently selected document ID from the store. */
 async function getSelectedId(window: Page): Promise<string | null> {
   return window.evaluate(() => {
     const store = (window as any).__documentStore;
     return store.getState().selectedId;
+  });
+}
+
+async function getOpenTabs(window: Page): Promise<string[]> {
+  return window.evaluate(() => {
+    const store = (window as any).__documentStore;
+    return store.getState().openTabs;
   });
 }
 
@@ -979,6 +1010,283 @@ test.describe('Breadcrumb Pill — Tab Integration', () => {
 
     // Should end up at Rapid 0
     expect(await getSelectedId(window)).toBe(m.get('Rapid 0')!);
+  });
+
+  test('cmd-click opens breadcrumb target in a new tab without changing selection', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Cmd Parent' },
+      { title: 'Cmd Child', parentTitle: 'Cmd Parent' },
+    ]);
+    const parentId = m.get('Cmd Parent')!;
+    const childId = m.get('Cmd Child')!;
+
+    await selectDocumentById(window, childId);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+
+    const beforeTabs = await getOpenTabs(window);
+    expect(beforeTabs).toEqual([childId]);
+
+    await clickBreadcrumbWithModifier(window, 'Cmd Parent', 'meta');
+    await window.waitForTimeout(300);
+
+    const afterTabs = await getOpenTabs(window);
+    expect(await getSelectedId(window)).toBe(childId);
+    expect(afterTabs).toContain(childId);
+    expect(afterTabs).toContain(parentId);
+    expect(afterTabs.filter((id) => id === parentId)).toHaveLength(1);
+    expect(afterTabs).toHaveLength(beforeTabs.length + 1);
+  });
+
+  test('cmd-click on already-open breadcrumb target does not duplicate tabs', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'NoDup Parent' },
+      { title: 'NoDup Child', parentTitle: 'NoDup Parent' },
+    ]);
+    const parentId = m.get('NoDup Parent')!;
+    const childId = m.get('NoDup Child')!;
+
+    await selectDocumentById(window, parentId);
+    await window.evaluate((id) => {
+      (window as any).__documentStore.getState().openTab(id);
+    }, childId);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+
+    const beforeTabs = await getOpenTabs(window);
+    await clickBreadcrumbWithModifier(window, 'NoDup Child', 'meta');
+    await window.waitForTimeout(300);
+    const afterTabs = await getOpenTabs(window);
+
+    expect(await getSelectedId(window)).toBe(parentId);
+    expect(afterTabs).toEqual(beforeTabs);
+    expect(afterTabs.filter((id) => id === childId)).toHaveLength(1);
+  });
+
+  test('repeated cmd-click on same breadcrumb target is idempotent', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Repeat Parent' },
+      { title: 'Repeat Child', parentTitle: 'Repeat Parent' },
+    ]);
+    const parentId = m.get('Repeat Parent')!;
+    const childId = m.get('Repeat Child')!;
+
+    await selectDocumentById(window, parentId);
+    await closeSidebar(window);
+
+    for (let i = 0; i < 5; i++) {
+      await openBreadcrumb(window);
+      await clickBreadcrumbWithModifier(window, 'Repeat Child', 'meta');
+      await window.waitForTimeout(120);
+    }
+
+    const tabs = await getOpenTabs(window);
+    expect(await getSelectedId(window)).toBe(parentId);
+    expect(tabs).toContain(parentId);
+    expect(tabs).toContain(childId);
+    expect(tabs.filter((id) => id === childId)).toHaveLength(1);
+  });
+
+  test('rapid cmd-click across ancestors opens each once and keeps current note selected', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Stress A' },
+      { title: 'Stress B', parentTitle: 'Stress A' },
+      { title: 'Stress C', parentTitle: 'Stress B' },
+      { title: 'Stress D', parentTitle: 'Stress C' },
+    ]);
+    const aId = m.get('Stress A')!;
+    const bId = m.get('Stress B')!;
+    const cId = m.get('Stress C')!;
+    const dId = m.get('Stress D')!;
+
+    await selectDocumentById(window, dId);
+    await closeSidebar(window);
+
+    for (const target of ['Stress C', 'Stress B', 'Stress A', 'Stress B', 'Stress C']) {
+      await openBreadcrumb(window);
+      await clickBreadcrumbWithModifier(window, target, 'meta');
+      await window.waitForTimeout(100);
+    }
+
+    const tabs = await getOpenTabs(window);
+    expect(await getSelectedId(window)).toBe(dId);
+    expect(tabs).toContain(aId);
+    expect(tabs).toContain(bId);
+    expect(tabs).toContain(cId);
+    expect(tabs).toContain(dId);
+    expect(tabs.filter((id) => id === aId)).toHaveLength(1);
+    expect(tabs.filter((id) => id === bId)).toHaveLength(1);
+    expect(tabs.filter((id) => id === cId)).toHaveLength(1);
+  });
+
+  test('cmd-click does not close breadcrumb popover', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Popover Parent' },
+      { title: 'Popover Child', parentTitle: 'Popover Parent' },
+    ]);
+    await selectDocumentById(window, m.get('Popover Child')!);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+
+    const popover = window.locator('[data-radix-popper-content-wrapper]');
+    await expect(popover).toBeVisible();
+
+    await clickBreadcrumbWithModifier(window, 'Popover Parent', 'meta');
+    await window.waitForTimeout(200);
+
+    await expect(popover).toBeVisible();
+  });
+
+  test('middle-click opens breadcrumb target in a new tab without changing selection', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Middle Parent' },
+      { title: 'Middle Child', parentTitle: 'Middle Parent' },
+    ]);
+    const parentId = m.get('Middle Parent')!;
+    const childId = m.get('Middle Child')!;
+
+    await selectDocumentById(window, childId);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+    const beforeTabs = await getOpenTabs(window);
+
+    await window
+      .locator('[data-radix-popper-content-wrapper]')
+      .locator('button', { hasText: 'Middle Parent' })
+      .click({ button: 'middle' });
+    await window.waitForTimeout(250);
+
+    const afterTabs = await getOpenTabs(window);
+    expect(await getSelectedId(window)).toBe(childId);
+    expect(afterTabs).toContain(childId);
+    expect(afterTabs).toContain(parentId);
+    expect(afterTabs.filter((id) => id === parentId)).toHaveLength(1);
+    expect(afterTabs).toHaveLength(beforeTabs.length + 1);
+  });
+
+  test('cmd+enter on focused breadcrumb row opens new tab and keeps selection', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Key Parent' },
+      { title: 'Key Child', parentTitle: 'Key Parent' },
+    ]);
+    const parentId = m.get('Key Parent')!;
+    const childId = m.get('Key Child')!;
+
+    await selectDocumentById(window, childId);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+    const row = window
+      .locator('[data-radix-popper-content-wrapper]')
+      .locator('button', { hasText: 'Key Parent' });
+    await row.focus();
+    await window.keyboard.down('Meta');
+    await window.keyboard.press('Enter');
+    await window.keyboard.up('Meta');
+    await window.waitForTimeout(250);
+
+    const tabs = await getOpenTabs(window);
+    expect(await getSelectedId(window)).toBe(childId);
+    expect(tabs).toContain(parentId);
+    expect(tabs).toContain(childId);
+  });
+
+  test('close-active-tab race after cmd-click keeps tab state consistent', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Race Parent' },
+      { title: 'Race Child', parentTitle: 'Race Parent' },
+    ]);
+    const parentId = m.get('Race Parent')!;
+    const childId = m.get('Race Child')!;
+
+    await selectDocumentById(window, childId);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+    await clickBreadcrumbWithModifier(window, 'Race Parent', 'meta');
+    await window.waitForTimeout(150);
+
+    await window.evaluate((id) => {
+      (window as any).__documentStore.getState().closeTab(id);
+    }, childId);
+    await window.waitForTimeout(200);
+
+    const tabs = await getOpenTabs(window);
+    const selectedId = await getSelectedId(window);
+    expect(tabs).toContain(parentId);
+    expect(selectedId).toBe(parentId);
+  });
+
+  test('renaming breadcrumb target while popover is open still allows cmd-click on updated row', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Rename Parent' },
+      { title: 'Rename Child', parentTitle: 'Rename Parent' },
+    ]);
+    const parentId = m.get('Rename Parent')!;
+    const childId = m.get('Rename Child')!;
+
+    await selectDocumentById(window, childId);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+    await window.evaluate(async (id) => {
+      await (window as any).lychee.invoke('documents.update', { id, title: 'Renamed Parent' });
+      const store = (window as any).__documentStore;
+      await store.getState().loadDocuments(true);
+    }, parentId);
+    await window.waitForTimeout(250);
+
+    await clickBreadcrumbWithModifier(window, 'Renamed Parent', 'meta');
+    await window.waitForTimeout(200);
+    const tabs = await getOpenTabs(window);
+    expect(await getSelectedId(window)).toBe(childId);
+    expect(tabs).toContain(parentId);
+  });
+
+  test('deleting a breadcrumb target while popover is open removes stale row and keeps selection stable', async ({ window }) => {
+    const m = await seedTree(window, [
+      { title: 'Delete Parent' },
+      { title: 'Delete Child', parentTitle: 'Delete Parent' },
+      { title: 'Delete Sibling', parentTitle: 'Delete Parent' },
+    ]);
+    const childId = m.get('Delete Child')!;
+    const siblingId = m.get('Delete Sibling')!;
+
+    await selectDocumentById(window, childId);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+    await window.evaluate(async (id) => {
+      await (window as any).lychee.invoke('documents.trash', { id });
+      const store = (window as any).__documentStore;
+      await store.getState().loadDocuments(true);
+    }, siblingId);
+    await window.waitForTimeout(250);
+
+    const popover = window.locator('[data-radix-popper-content-wrapper]');
+    await expect(popover.locator('button', { hasText: 'Delete Sibling' })).toHaveCount(0);
+    expect(await getSelectedId(window)).toBe(childId);
+  });
+
+  test('cmd-click on deep, scrollable breadcrumb list works for off-screen target', async ({ window }) => {
+    const specs: Array<{ title: string; parentTitle?: string }> = [{ title: 'Scroll Root' }];
+    for (let i = 1; i <= 14; i++) {
+      specs.push({ title: `Scroll ${i}`, parentTitle: i === 1 ? 'Scroll Root' : `Scroll ${i - 1}` });
+    }
+    const m = await seedTree(window, specs);
+    const deepestId = m.get('Scroll 14')!;
+    const rootId = m.get('Scroll Root')!;
+
+    await selectDocumentById(window, deepestId);
+    await closeSidebar(window);
+    await openBreadcrumb(window);
+    await window.evaluate(() => {
+      const el = document.querySelector('[data-radix-popper-content-wrapper] [data-radix-popover-content]');
+      if (el) (el as HTMLElement).scrollTop = 0;
+    });
+
+    await clickBreadcrumbWithModifier(window, 'Scroll Root', 'meta');
+    await window.waitForTimeout(250);
+
+    const tabs = await getOpenTabs(window);
+    expect(await getSelectedId(window)).toBe(deepestId);
+    expect(tabs).toContain(rootId);
   });
 });
 

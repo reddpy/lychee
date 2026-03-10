@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, type KeyboardEvent, type MouseEvent } from "react";
 import { FileText, Layers2 } from "lucide-react";
 import { useDocumentStore } from "@/renderer/document-store";
 import { DocumentRow } from "@/shared/documents";
@@ -33,6 +33,7 @@ export function BreadcrumbPill() {
   const { open: sidebarOpen } = useSidebar();
   const selectedId = useDocumentStore((s) => s.selectedId);
   const documents = useDocumentStore((s) => s.documents);
+  const openTab = useDocumentStore((s) => s.openTab);
   const openOrSelectTab = useDocumentStore((s) => s.openOrSelectTab);
 
   const ancestors = useMemo(
@@ -51,10 +52,39 @@ export function BreadcrumbPill() {
   );
 
   const handleNavigate = useCallback(
-    (id: string) => {
+    (id: string, openInNewTab = false) => {
+      if (openInNewTab) {
+        openTab(id);
+        return;
+      }
       openOrSelectTab(id);
     },
-    [openOrSelectTab],
+    [openOrSelectTab, openTab],
+  );
+
+  const handleRowClick = useCallback(
+    (id: string, event: MouseEvent<HTMLButtonElement>) => {
+      handleNavigate(id, event.metaKey || event.ctrlKey);
+    },
+    [handleNavigate],
+  );
+
+  const handleRowAuxClick = useCallback(
+    (id: string, event: MouseEvent<HTMLButtonElement>) => {
+      if (event.button !== 1) return;
+      event.preventDefault();
+      handleNavigate(id, true);
+    },
+    [handleNavigate],
+  );
+
+  const handleRowKeyDown = useCallback(
+    (id: string, event: KeyboardEvent<HTMLButtonElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      handleNavigate(id, event.metaKey || event.ctrlKey);
+    },
+    [handleNavigate],
   );
 
   if (sidebarOpen || !currentDoc || (!ancestors.length && !children.length))
@@ -65,11 +95,10 @@ export function BreadcrumbPill() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="absolute left-0 top-6 z-50 flex items-center justify-center border border-l-0 border-[hsl(var(--border))] bg-popover shadow-md transition-all duration-200 group cursor-pointer select-none hover:bg-primary data-[state=open]:bg-primary data-[state=open]:border-primary/30"
-          style={{ width: 44, height: 36, borderRadius: "0 10px 10px 0" }}
+          className="absolute left-2 top-6 z-50 flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 transition-all duration-200 group cursor-pointer select-none hover:bg-[#C14B55]/15 hover:text-[#C14B55] hover:border-[#C14B55]/30 data-[state=open]:bg-[#C14B55]/15 data-[state=open]:text-[#C14B55] data-[state=open]:border-[#C14B55]/30"
           aria-label="Navigate note hierarchy"
         >
-          <Layers2 className="h-4 w-4 text-muted-foreground/60 group-hover:text-primary-foreground group-data-[state=open]:text-primary-foreground transition-colors duration-200" />
+          <Layers2 className="h-4 w-4 transition-colors duration-200" />
         </button>
       </PopoverTrigger>
 
@@ -86,7 +115,9 @@ export function BreadcrumbPill() {
           <button
             key={ancestor.id}
             type="button"
-            onClick={() => handleNavigate(ancestor.id)}
+            onClick={(event) => handleRowClick(ancestor.id, event)}
+            onAuxClick={(event) => handleRowAuxClick(ancestor.id, event)}
+            onKeyDown={(event) => handleRowKeyDown(ancestor.id, event)}
             className="flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-sm text-left hover:bg-[hsl(var(--accent))] transition-colors"
             style={{ paddingLeft: `${8 + i * 12}px` }}
           >
@@ -121,7 +152,9 @@ export function BreadcrumbPill() {
           <button
             key={child.id}
             type="button"
-            onClick={() => handleNavigate(child.id)}
+            onClick={(event) => handleRowClick(child.id, event)}
+            onAuxClick={(event) => handleRowAuxClick(child.id, event)}
+            onKeyDown={(event) => handleRowKeyDown(child.id, event)}
             className="flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-sm text-left hover:bg-[hsl(var(--accent))] transition-colors"
             style={{ paddingLeft: `${8 + (ancestors.length + 1) * 12}px` }}
           >
