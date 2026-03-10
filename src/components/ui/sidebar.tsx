@@ -51,33 +51,99 @@ export function SidebarProvider({
     [onOpenChange, openProp],
   );
 
-  const [hoverOpenInternal, setHoverOpenInternal] = React.useState(false);
-  const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [hoverIntent, setHoverIntent] = React.useState(false);
+  const hoverIntentRef = React.useRef(false);
+  const [hoverLockCount, setHoverLockCount] = React.useState(0);
   const hoverLockRef = React.useRef(0);
+  const [awaitingPointerDecision, setAwaitingPointerDecision] = React.useState(false);
+  const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pointerDecisionHandlerRef = React.useRef<((event: PointerEvent) => void) | null>(null);
+
+  React.useEffect(() => {
+    hoverIntentRef.current = hoverIntent;
+  }, [hoverIntent]);
+
+  const clearPointerDecisionListener = React.useCallback(() => {
+    if (pointerDecisionHandlerRef.current) {
+      window.removeEventListener('pointermove', pointerDecisionHandlerRef.current, true);
+      pointerDecisionHandlerRef.current = null;
+    }
+  }, []);
+
+  const beginPointerDecision = React.useCallback(() => {
+    clearPointerDecisionListener();
+    setAwaitingPointerDecision(true);
+    const onPointerMove = (event: PointerEvent) => {
+      clearPointerDecisionListener();
+      const sidebarEl = document.querySelector('aside[data-sidebar="app"][data-state="collapsed"]');
+      if (!sidebarEl) {
+        setAwaitingPointerDecision(false);
+        return;
+      }
+      const rect = sidebarEl.getBoundingClientRect();
+      const isInsideSidebar =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      if (isInsideSidebar) {
+        setHoverIntent(true);
+      }
+      setAwaitingPointerDecision(false);
+    };
+    pointerDecisionHandlerRef.current = onPointerMove;
+    window.addEventListener('pointermove', onPointerMove, true);
+  }, [clearPointerDecisionListener]);
 
   const lockHover = React.useCallback(() => {
-    hoverLockRef.current++;
+    hoverLockRef.current += 1;
+    setHoverLockCount(hoverLockRef.current);
   }, []);
 
   const unlockHover = React.useCallback(() => {
     hoverLockRef.current = Math.max(0, hoverLockRef.current - 1);
-  }, []);
+    setHoverLockCount(hoverLockRef.current);
+    if (!open && hoverLockRef.current === 0 && !hoverIntentRef.current) {
+      beginPointerDecision();
+    }
+  }, [open, beginPointerDecision]);
 
   const isHoverLocked = React.useCallback(() => hoverLockRef.current > 0, []);
 
   const setHoverOpen = React.useCallback((next: boolean) => {
     clearTimeout(hoverTimeoutRef.current);
     if (next) {
-      setHoverOpenInternal(true);
+      clearPointerDecisionListener();
+      setAwaitingPointerDecision(false);
+      setHoverIntent(true);
     } else {
       // Small delay so cursor can move between collapsed strip and sidebar
-      hoverTimeoutRef.current = setTimeout(() => setHoverOpenInternal(false), 150);
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHoverIntent(false);
+        if (hoverLockRef.current === 0) {
+          setAwaitingPointerDecision(false);
+        }
+      }, 150);
     }
-  }, []);
+  }, [clearPointerDecisionListener]);
 
   React.useEffect(() => {
-    return () => clearTimeout(hoverTimeoutRef.current);
-  }, []);
+    if (open) {
+      clearTimeout(hoverTimeoutRef.current);
+      clearPointerDecisionListener();
+      setAwaitingPointerDecision(false);
+      setHoverIntent(false);
+    }
+  }, [open, clearPointerDecisionListener]);
+
+  React.useEffect(() => {
+    return () => {
+      clearTimeout(hoverTimeoutRef.current);
+      clearPointerDecisionListener();
+    };
+  }, [clearPointerDecisionListener]);
+
+  const hoverOpen = !open && (hoverIntent || hoverLockCount > 0 || awaitingPointerDecision);
 
   const value = React.useMemo<SidebarContextValue>(
     () => ({
@@ -85,13 +151,13 @@ export function SidebarProvider({
       open,
       setOpen,
       toggleSidebar: () => setOpen(!open),
-      hoverOpen: hoverOpenInternal,
+      hoverOpen,
       setHoverOpen,
       lockHover,
       unlockHover,
       isHoverLocked,
     }),
-    [open, setOpen, hoverOpenInternal, setHoverOpen, lockHover, unlockHover, isHoverLocked],
+    [open, setOpen, hoverOpen, setHoverOpen, lockHover, unlockHover, isHoverLocked],
   );
 
   return (
@@ -115,7 +181,7 @@ export function Sidebar({
   className,
   children,
 }: React.PropsWithChildren<{ className?: string }>) {
-  const { open, hoverOpen, setHoverOpen, isHoverLocked } = useSidebar();
+  const { open, hoverOpen, setHoverOpen } = useSidebar();
   const isFloating = !open && hoverOpen;
 
   // When expanded: in-flow flex child that pushes content over
@@ -123,8 +189,9 @@ export function Sidebar({
   // When hidden (collapsed, no hover): absolute + off-screen
   return (
     <aside
+      data-sidebar="app"
       onMouseEnter={() => { if (!open) setHoverOpen(true); }}
-      onMouseLeave={() => { if (!open && !isHoverLocked()) setHoverOpen(false); }}
+      onMouseLeave={() => { if (!open) setHoverOpen(false); }}
       className={cn(
         'z-30 flex w-[var(--sidebar-width)] flex-col bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
         // Expanded: in-flow flex child
@@ -299,22 +366,14 @@ export function SidebarTrigger({
 }
 
 export function useHoverLock() {
-  const { open, setHoverOpen, lockHover, unlockHover } = useSidebar();
+  const { lockHover, unlockHover } = useSidebar();
   return React.useCallback((isOpen: boolean) => {
     if (isOpen) {
       lockHover();
     } else {
       unlockHover();
-      if (!open) {
-        requestAnimationFrame(() => {
-          const sidebarEl = document.querySelector('aside[data-state]');
-          if (sidebarEl && !sidebarEl.matches(':hover')) {
-            setHoverOpen(false);
-          }
-        });
-      }
     }
-  }, [open, setHoverOpen, lockHover, unlockHover]);
+  }, [lockHover, unlockHover]);
 }
 
 export function SidebarRail() {
