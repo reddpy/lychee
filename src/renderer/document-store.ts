@@ -22,6 +22,8 @@ type DocumentActions = {
   openTab: (id: string) => void;
   /** Like openTab but for normal click: if doc is already open, just select that tab; else navigate current tab to it (no duplicate). */
   openOrSelectTab: (id: string) => void;
+  /** If doc tab exists, select it; otherwise append a new tab and select it. */
+  openOrCreateTab: (id: string) => void;
   /** Navigate the current tab to document id (replaces content). If no tabs open, opens first tab. */
   navigateCurrentTab: (id: string) => void;
   closeTab: (id: string) => void;
@@ -104,6 +106,14 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       const nextTabs = [...state.openTabs];
       nextTabs[activeIndex] = id;
       return { openTabs: nextTabs, selectedId: id };
+    });
+  },
+
+  openOrCreateTab(id) {
+    set((state) => {
+      const exists = state.openTabs.includes(id);
+      if (exists) return { selectedId: id };
+      return { openTabs: [...state.openTabs, id], selectedId: id };
     });
   },
 

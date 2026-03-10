@@ -121,7 +121,7 @@ function migrateChildren(children: any[]): any[] {
 }
 
 // Sanitize the serialized state to handle empty states and legacy nodes
-function sanitizeSerializedState(
+export function sanitizeSerializedState(
   state: SerializedEditorState
 ): SerializedEditorState | null {
   // Clone to avoid mutating the original
@@ -141,11 +141,15 @@ function sanitizeSerializedState(
 }
 
 export function Editor({
+  documentId,
+  isActive,
   editorSerializedState,
   onEditorStateChange,
   initialTitle,
   onTitleChange,
 }: {
+  documentId: string
+  isActive: boolean
   editorSerializedState?: SerializedEditorState
   onEditorStateChange?: (editorState: EditorState) => void
   initialTitle?: string
@@ -166,7 +170,12 @@ export function Editor({
           ...(initialState != null ? { editorState: initialState } : {}),
         }}
       >
-        <Plugins initialTitle={initialTitle} onTitleChange={onTitleChange} />
+        <Plugins
+          documentId={documentId}
+          isActive={isActive}
+          initialTitle={initialTitle}
+          onTitleChange={onTitleChange}
+        />
 
         <OnChangePlugin
           ignoreSelectionChange={true}

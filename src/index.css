@@ -197,4 +197,24 @@ body {
   opacity: 1;
 }
 
+/* In-editor find highlights (Custom Highlight API). */
+body:has([data-testid="note-find-panel"]) .ContentEditable__root::highlight(lychee-find-all) {
+  background: rgba(193, 75, 85, 0.14);
+}
+
+body:has([data-testid="note-find-panel"]) .ContentEditable__root::highlight(lychee-find-active) {
+  background: #b7424d;
+  color: #fff;
+}
+
+/* Transient jump highlight when opening from search palette preview. */
+.ContentEditable__root::highlight(lychee-find-transient-all) {
+  background: rgba(193, 75, 85, 0.16);
+}
+
+.ContentEditable__root::highlight(lychee-find-transient-active) {
+  background: #b7424d;
+  color: #fff;
+}
+
 /* Note tree: delete exit, section expand/collapse, chevron rotation (Framer Motion in NotesSection / NoteTreeItem). */

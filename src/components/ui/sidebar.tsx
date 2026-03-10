@@ -183,6 +183,10 @@ export function Sidebar({
 }: React.PropsWithChildren<{ className?: string }>) {
   const { open, hoverOpen, setHoverOpen } = useSidebar();
   const isFloating = !open && hoverOpen;
+  const isPaletteOpen = React.useCallback(() => {
+    if (typeof document === 'undefined') return false;
+    return document.body.dataset.lycheeCommandPaletteOpen === 'true';
+  }, []);
 
   // When expanded: in-flow flex child that pushes content over
   // When floating (collapsed + hover): absolute overlay
@@ -190,8 +194,12 @@ export function Sidebar({
   return (
     <aside
       data-sidebar="app"
-      onMouseEnter={() => { if (!open) setHoverOpen(true); }}
-      onMouseLeave={() => { if (!open) setHoverOpen(false); }}
+      onMouseEnter={() => {
+        if (!open && !isPaletteOpen()) setHoverOpen(true);
+      }}
+      onMouseLeave={() => {
+        if (!open && !isPaletteOpen()) setHoverOpen(false);
+      }}
       className={cn(
         'z-30 flex w-[var(--sidebar-width)] flex-col bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
         // Expanded: in-flow flex child

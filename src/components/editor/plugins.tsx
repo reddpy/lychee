@@ -50,6 +50,7 @@ import { YouTubePlugin } from "@/components/editor/plugins/youtube-plugin"
 import { ClickToAppendPlugin } from "@/components/editor/plugins/click-to-append-plugin"
 import { TableActionMenuPlugin } from "@/components/editor/plugins/table-action-menu-plugin"
 import { TableColumnResizerPlugin } from "@/components/editor/plugins/table-column-resizer-plugin"
+import { SearchHighlightPlugin } from "@/components/editor/plugins/search-highlight-plugin"
 import { IMAGE, IMAGE_EXPORT } from "@/components/editor/plugins/image-markdown-transformer"
 import { TABLE, TABLE_EXPORT } from "@/components/editor/plugins/table-markdown-transformer"
 
@@ -93,11 +94,18 @@ const MATCHERS: LinkMatcher[] = [
 ]
 
 interface PluginsProps {
+  documentId: string
+  isActive: boolean
   initialTitle?: string
   onTitleChange?: (title: string) => void
 }
 
-export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
+export function Plugins({
+  documentId,
+  isActive,
+  initialTitle,
+  onTitleChange,
+}: PluginsProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null)
 
   return (
@@ -158,6 +166,9 @@ export function Plugins({ initialTitle, onTitleChange }: PluginsProps) {
 
       {/* Section position indicator */}
       <SectionIndicatorPlugin />
+
+      {/* In-editor find + highlights (Cmd/Ctrl+F) */}
+      <SearchHighlightPlugin documentId={documentId} isActive={isActive} />
     </div>
   )
 }

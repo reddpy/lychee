@@ -241,6 +241,8 @@ export function LexicalEditor({
         {/* Editor with title as first block */}
         <NoteContext.Provider value={noteContextValue}>
           <Editor
+            documentId={documentId}
+            isActive={!hidden}
             editorSerializedState={editorSerializedState}
             onEditorStateChange={handleEditorStateChange}
             initialTitle={initialTitle}

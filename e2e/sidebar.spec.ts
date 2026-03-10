@@ -10,6 +10,10 @@ function collapsedSidebar(window: Page) {
   return window.locator('aside[data-state="collapsed"]').first();
 }
 
+function notesSectionToggle(window: Page) {
+  return window.getByRole('button', { name: /^Notes New note$/ });
+}
+
 async function revealFloatingSidebar(window: Page) {
   const sidebar = collapsedSidebar(window);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -102,7 +106,7 @@ test.describe('Sidebar — Note Management', () => {
     await expect(window.locator('[data-note-id]').first()).toBeVisible();
 
     // Click the Notes section header to collapse
-    const notesHeader = window.getByText('Notes').first();
+    const notesHeader = notesSectionToggle(window);
     await notesHeader.click();
     await window.waitForTimeout(400);
 

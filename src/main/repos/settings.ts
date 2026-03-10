@@ -3,6 +3,7 @@ import { getDb } from '../db';
 /** Default values for well-known settings. getSetting() falls back here when the key is missing from the DB. */
 const SETTING_DEFAULTS: Record<string, string> = {
   theme: 'light',
+  searchPalettePreviewOpen: 'true',
 };
 
 export function getSetting(key: string): string | null {
