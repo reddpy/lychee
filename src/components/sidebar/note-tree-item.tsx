@@ -67,6 +67,7 @@ export function NoteTreeItem({
   const [menuOpen, setMenuOpen] = React.useState(false);
   // Track when drag just ended to prevent click-after-drag
   const justDraggedRef = React.useRef(false);
+  const dragHoverLockActiveRef = React.useRef(false);
 
   // Register as draggable and drop target
   React.useEffect(() => {
@@ -97,10 +98,16 @@ export function NoteTreeItem({
           });
         },
         onDragStart() {
+          hoverLock(true);
+          dragHoverLockActiveRef.current = true;
           setIsDragging(true);
           setDraggingId(doc.id);
         },
         onDrop() {
+          if (dragHoverLockActiveRef.current) {
+            hoverLock(false);
+            dragHoverLockActiveRef.current = false;
+          }
           setIsDragging(false);
           // Prevent click-after-drag for a short window
           justDraggedRef.current = true;
@@ -177,7 +184,16 @@ export function NoteTreeItem({
         },
       })
     );
-  }, [doc, canNestInside, isExpanded, allDescendantsMap, setDraggingId, setDropTarget]);
+  }, [doc, canNestInside, isExpanded, allDescendantsMap, setDraggingId, setDropTarget, hoverLock]);
+
+  React.useEffect(() => {
+    return () => {
+      if (dragHoverLockActiveRef.current) {
+        hoverLock(false);
+        dragHoverLockActiveRef.current = false;
+      }
+    };
+  }, [hoverLock]);
 
   const handleAddPageInside = React.useCallback(() => {
     onToggleExpanded(doc.id);

@@ -1,4 +1,27 @@
 import { test, expect, listDocumentsFromDb, getDocumentFromDb } from './electron-app';
+import type { Page } from '@playwright/test';
+
+async function collapseSidebar(window: Page) {
+  await window.locator('[aria-label="Toggle sidebar"]').click();
+  await window.waitForTimeout(250);
+}
+
+function collapsedSidebar(window: Page) {
+  return window.locator('aside[data-state="collapsed"]').first();
+}
+
+async function revealFloatingSidebar(window: Page) {
+  const sidebar = collapsedSidebar(window);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await window.mouse.move(420, 120);
+    await window.waitForTimeout(60);
+    await window.mouse.move(1, 120 + attempt * 16);
+    await window.waitForTimeout(250);
+    const className = (await sidebar.getAttribute('class')) ?? '';
+    if (className.includes('translate-x-0')) return;
+  }
+  throw new Error('Failed to reveal floating sidebar from collapsed state');
+}
 
 test.describe('Sidebar — Note Management', () => {
   test('create a new note via New Note button', async ({ window }) => {
@@ -151,5 +174,80 @@ test.describe('Sidebar — Note Management', () => {
     const tabs = window.locator('[data-tab-id]');
     const count = await tabs.count();
     expect(count).toBeGreaterThanOrEqual(2);
+  });
+});
+
+test.describe('Sidebar — Collapsed Floating Regressions', () => {
+  test('collapsed sidebar supports edge reveal and pointer-leave hide', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(300);
+
+    await collapseSidebar(window);
+    const sidebar = collapsedSidebar(window);
+
+    await revealFloatingSidebar(window);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    await window.mouse.move(520, 160);
+    await window.waitForTimeout(400);
+    await expect(sidebar).toHaveClass(/-translate-x-full/);
+  });
+
+  test('collapsed floating sidebar stays open through drag and drop', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(200);
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(200);
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(300);
+
+    const notes = window.locator('[data-note-id]');
+    const source = notes.nth(2);
+    const target = notes.nth(0);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+
+    const sidebar = collapsedSidebar(window);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+    await source.dragTo(target, {
+      sourcePosition: { x: 20, y: 12 },
+      targetPosition: { x: 20, y: 2 },
+    });
+    await window.waitForTimeout(350);
+
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+    await expect(window.locator('[data-note-id]')).toHaveCount(3);
+  });
+
+  test('collapsed floating sidebar can collapse and reopen after drag', async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(200);
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(300);
+
+    const notes = window.locator('[data-note-id]');
+    const source = notes.nth(1);
+    const target = notes.nth(0);
+
+    await collapseSidebar(window);
+    await revealFloatingSidebar(window);
+
+    const sidebar = collapsedSidebar(window);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+    await source.dragTo(target, {
+      sourcePosition: { x: 20, y: 12 },
+      targetPosition: { x: 20, y: 2 },
+    });
+    await window.waitForTimeout(250);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    await window.mouse.move(520, 180);
+    await window.waitForTimeout(450);
+    await expect(sidebar).toHaveClass(/-translate-x-full/);
+
+    await revealFloatingSidebar(window);
+    await expect(sidebar).toHaveClass(/translate-x-0/);
+    await expect(window.locator('[data-note-id]')).toHaveCount(2);
   });
 });
