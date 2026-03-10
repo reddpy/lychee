@@ -12,6 +12,10 @@ export function CollapsedSidebarWidget() {
 
   return (
     <>
+      {/* Stable left-edge backdrop to prevent window background bleed-through in collapsed mode. */}
+      <div
+        className="pointer-events-none absolute left-0 top-0 bottom-0 z-10 w-1.5 bg-[hsl(var(--background))]"
+      />
       {/* Thin edge trigger — hover the left edge to reveal the floating sidebar.
           Excludes the bottom 128px where the settings/logo icons live. */}
       <div
