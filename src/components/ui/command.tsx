@@ -32,6 +32,7 @@ function CommandDialog({
   description = "Search for a command to run...",
   children,
   className,
+  commandClassName,
   showCloseButton = true,
   commandKey,
   ...props
@@ -39,6 +40,7 @@ function CommandDialog({
   title?: string
   description?: string
   className?: string
+  commandClassName?: string
   showCloseButton?: boolean
   commandKey?: string
 }) {
@@ -54,7 +56,10 @@ function CommandDialog({
       >
         <Command
           key={commandKey}
-          className="[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
+          className={cn(
+            "[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5",
+            commandClassName
+          )}
         >
           {children}
         </Command>
@@ -65,8 +70,11 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  endAdornment,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & {
+  endAdornment?: React.ReactNode
+}) {
   return (
     <div
       data-slot="command-input-wrapper"
@@ -81,6 +89,11 @@ function CommandInput({
         )}
         {...props}
       />
+      {endAdornment ? (
+        <div className="ml-1 shrink-0" data-slot="command-input-adornment">
+          {endAdornment}
+        </div>
+      ) : null}
     </div>
   )
 }

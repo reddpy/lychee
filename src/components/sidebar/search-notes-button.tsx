@@ -9,6 +9,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Search,
+  X,
 } from "lucide-react";
 
 import { useDocumentStore } from "../../renderer/document-store";
@@ -32,7 +33,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandShortcut,
 } from "../ui/command";
 import {
   SidebarGroup,
@@ -48,17 +48,22 @@ type PreparedPreview = {
 
 const SEARCH_PREVIEW_OPEN_SETTING_KEY = "searchPalettePreviewOpen";
 const PREVIEW_MIN_WINDOW_WIDTH = 1140;
+const PREVIEW_CACHE_MAX_ENTRIES = 300;
+const PREVIEW_PREP_BATCH_SIZE = 8;
 
 export function SearchNotesButton() {
   const { open: isSidebarExpanded, setHoverOpen } = useSidebar();
   const documents = useDocumentStore((s) => s.documents);
   const selectedId = useDocumentStore((s) => s.selectedId);
+  const openTabs = useDocumentStore((s) => s.openTabs);
   const openTab = useDocumentStore((s) => s.openTab);
   const openOrCreateTab = useDocumentStore((s) => s.openOrCreateTab);
   const setTransientJump = useSearchHighlightStore((s) => s.setTransientJump);
+  const openTabSet = React.useMemo(() => new Set(openTabs), [openTabs]);
 
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const deferredQuery = React.useDeferredValue(query);
   const [isSearching, setIsSearching] = React.useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(true);
   const [isPaletteInitializing, setIsPaletteInitializing] =
@@ -89,6 +94,39 @@ export function SearchNotesButton() {
   const dialogContentRef = React.useRef<HTMLDivElement>(null);
   const lastPointerPosRef = React.useRef<{ x: number; y: number } | null>(null);
   const openInNewTabRef = React.useRef(false);
+  const closeRequestedByShortcutRef = React.useRef(false);
+  const getPreviewCacheEntry = React.useCallback((key: string) => {
+    const cache = previewCacheRef.current;
+    if (!cache.has(key)) return undefined;
+    const value = cache.get(key);
+    cache.delete(key);
+    cache.set(key, value);
+    return value;
+  }, []);
+
+  const setPreviewCacheEntry = React.useCallback(
+    (key: string, value: string | undefined) => {
+      const cache = previewCacheRef.current;
+      cache.delete(key);
+      cache.set(key, value);
+      if (cache.size <= PREVIEW_CACHE_MAX_ENTRIES) return;
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        cache.delete(oldestKey);
+      }
+    },
+    [],
+  );
+  const closePalette = React.useCallback(() => {
+    setOpen(false);
+    setIsSearching(false);
+    setIsPaletteInitializing(false);
+  }, []);
+  const closePaletteAfterSelection = React.useCallback(() => {
+    setOpen(false);
+    setQuery("");
+    setIsSearching(false);
+  }, []);
 
   const indexedDocuments = React.useMemo(() => {
     const nextActiveKeys = new Set<string>();
@@ -96,12 +134,23 @@ export function SearchNotesButton() {
       const key = `${doc.id}|${doc.updatedAt}|${doc.content.length}`;
       nextActiveKeys.add(key);
       const cached = bodyTextCacheRef.current.get(key);
+      const normalizedDocTitle = normalizedTitle(doc.title);
       if (cached !== undefined) {
-        return { doc, bodyText: cached };
+        return {
+          doc,
+          bodyText: cached,
+          bodyTextLower: cached.toLowerCase(),
+          normalizedDocTitle,
+        };
       }
       const extracted = extractPlainText(doc.content);
       bodyTextCacheRef.current.set(key, extracted);
-      return { doc, bodyText: extracted };
+      return {
+        doc,
+        bodyText: extracted,
+        bodyTextLower: extracted.toLowerCase(),
+        normalizedDocTitle,
+      };
     });
 
     // Prevent cache growth as docs update over time.
@@ -119,12 +168,19 @@ export function SearchNotesButton() {
       if (!isModifier || event.shiftKey) return;
       if (event.key.toLowerCase() !== "p") return;
       event.preventDefault();
+      if (open) {
+        closeRequestedByShortcutRef.current = true;
+        setOpen(false);
+        return;
+      }
+      closeRequestedByShortcutRef.current = false;
+      setIsPaletteInitializing(true);
       setOpen(true);
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isSidebarExpanded, setHoverOpen]);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [open]);
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;
@@ -173,7 +229,7 @@ export function SearchNotesButton() {
   }, []);
 
   const visibleDocuments = React.useMemo(() => {
-    const q = query.trim();
+    const q = deferredQuery.trim();
     if (!q) {
       return indexedDocuments
         .slice()
@@ -191,8 +247,8 @@ export function SearchNotesButton() {
     return indexedDocuments
       .map((entry) => {
         const titleScore = scoreDocument(entry.doc.title, q);
-        const bodyMatchIndex = entry.bodyText.toLowerCase().indexOf(lowerQ);
-        const titleMatchCount = countOccurrences(normalizedTitle(entry.doc.title), q);
+        const bodyMatchIndex = entry.bodyTextLower.indexOf(lowerQ);
+        const titleMatchCount = countOccurrences(entry.normalizedDocTitle, q);
         const bodyMatchCount = countOccurrences(entry.bodyText, q);
         const bodyScore = bodyMatchIndex >= 0 ? 40 : -1;
         return {
@@ -213,7 +269,7 @@ export function SearchNotesButton() {
         return +new Date(b.doc.updatedAt) - +new Date(a.doc.updatedAt);
       })
       .slice(0, 50);
-  }, [indexedDocuments, query]);
+  }, [indexedDocuments, deferredQuery]);
 
   const [resolvedDocuments, setResolvedDocuments] =
     React.useState(visibleDocuments);
@@ -243,10 +299,10 @@ export function SearchNotesButton() {
   React.useEffect(() => {
     if (!open || isPaletteInitializing || isSearching) return;
     const firstId = renderedDocuments[0]?.doc.id ?? "none";
-    setCommandResetKey(`${query.trim().toLowerCase()}|${firstId}`);
+    setCommandResetKey(`${deferredQuery.trim().toLowerCase()}|${firstId}`);
   }, [
     open,
-    query,
+    deferredQuery,
     renderedDocuments,
     isPaletteInitializing,
     isSearching,
@@ -254,7 +310,7 @@ export function SearchNotesButton() {
 
   React.useEffect(() => {
     if (!open) return;
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
     const cacheKeyFor = (entry: (typeof resolvedDocuments)[number]) =>
       `${entry.doc.id}|${entry.doc.updatedAt}|${normalizedQuery}`;
 
@@ -262,9 +318,10 @@ export function SearchNotesButton() {
     const cachedByDocId: Record<string, PreparedPreview> = {};
     for (const entry of resolvedDocuments) {
       const key = cacheKeyFor(entry);
-      if (previewCacheRef.current.has(key)) {
+      const cachedState = getPreviewCacheEntry(key);
+      if (cachedState !== undefined || previewCacheRef.current.has(key)) {
         cachedByDocId[entry.doc.id] = {
-          state: previewCacheRef.current.get(key),
+          state: cachedState,
         };
       }
     }
@@ -283,20 +340,37 @@ export function SearchNotesButton() {
     }
 
     setIsPreparingPreviews(true);
-    const timer = window.setTimeout(() => {
+    let isCancelled = false;
+    let offset = 0;
+    let timer: number | undefined;
+
+    const computeBatch = () => {
+      if (isCancelled) return;
+      const batch = missing.slice(offset, offset + PREVIEW_PREP_BATCH_SIZE);
+      if (batch.length === 0) {
+        setIsPreparingPreviews(false);
+        setIsPaletteInitializing(false);
+        return;
+      }
+
       const computedByDocId: Record<string, PreparedPreview> = {};
-      for (const entry of missing) {
+      for (const entry of batch) {
         const key = cacheKeyFor(entry);
-        const state = buildHighlightedPreviewState(entry.doc.content, query);
-        previewCacheRef.current.set(key, state);
+        const state = buildHighlightedPreviewState(entry.doc.content, deferredQuery);
+        setPreviewCacheEntry(key, state);
         computedByDocId[entry.doc.id] = { state };
       }
       setPreparedPreviewStates((prev) => ({ ...prev, ...computedByDocId }));
-      setIsPreparingPreviews(false);
-      setIsPaletteInitializing(false);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [open, query, resolvedDocuments]);
+      offset += PREVIEW_PREP_BATCH_SIZE;
+      timer = window.setTimeout(computeBatch, 0);
+    };
+
+    timer = window.setTimeout(computeBatch, 0);
+    return () => {
+      isCancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [open, deferredQuery, resolvedDocuments, getPreviewCacheEntry, setPreviewCacheEntry]);
 
   React.useEffect(() => {
     setPreviewDocId((current) => {
@@ -343,7 +417,6 @@ export function SearchNotesButton() {
       setTransientJump(id, q, index, 3000);
     },
     [
-      previewActiveMatchIndex,
       previewDocId,
       query,
       renderedDocuments,
@@ -363,12 +436,14 @@ export function SearchNotesButton() {
         openOrCreateTab(id);
       }
       openInNewTabRef.current = false;
-      setOpen(false);
-      setQuery("");
-      setIsSearching(false);
+      closePaletteAfterSelection();
     },
-    [maybeTransferPreviewJump, openOrCreateTab, openTab],
+    [closePaletteAfterSelection, maybeTransferPreviewJump, openOrCreateTab, openTab],
   );
+
+  const clearSearchQuery = React.useCallback(() => {
+    setQuery("");
+  }, []);
 
   const handlePreviewTarget = React.useCallback((id: string) => {
     setPreviewDocId((current) => (current === id ? current : id));
@@ -393,6 +468,19 @@ export function SearchNotesButton() {
     input?.focus();
   }, []);
 
+  React.useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const root = dialogContentRef.current;
+      if (!root) return;
+      const input = root.querySelector<HTMLInputElement>("[cmdk-input]");
+      if (!input) return;
+      input.focus();
+      input.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+
   const openPreviewNote = React.useCallback(
     (id: string, openInBackgroundTab = false) => {
       if (openInBackgroundTab) {
@@ -401,11 +489,9 @@ export function SearchNotesButton() {
       }
       maybeTransferPreviewJump(id);
       openOrCreateTab(id);
-      setOpen(false);
-      setQuery("");
-      setIsSearching(false);
+      closePaletteAfterSelection();
     },
-    [maybeTransferPreviewJump, openOrCreateTab, openTab],
+    [closePaletteAfterSelection, maybeTransferPreviewJump, openOrCreateTab, openTab],
   );
 
   const syncPreviewWithKeyboardSelection = React.useCallback(() => {
@@ -444,6 +530,12 @@ export function SearchNotesButton() {
     navigator.platform.toLowerCase().includes("mac")
       ? "⌘P"
       : "Ctrl+P";
+  const openInNewTabShortcutLabel =
+    typeof navigator !== "undefined" &&
+    navigator.platform.toLowerCase().includes("mac")
+      ? "⌘↵"
+      : "Ctrl↵";
+  const hasQuery = query.trim().length > 0;
 
   const previewEntry =
     (previewDocId
@@ -491,14 +583,17 @@ export function SearchNotesButton() {
         open={open}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
+            if (closeRequestedByShortcutRef.current) {
+              closeRequestedByShortcutRef.current = false;
+              closePalette();
+              return;
+            }
             if (query.trim().length > 0) {
               setQuery("");
               setIsSearching(false);
               return;
             }
-            setOpen(false);
-            setIsSearching(false);
-            setIsPaletteInitializing(false);
+            closePalette();
             return;
           }
           setIsPaletteInitializing(true);
@@ -508,82 +603,124 @@ export function SearchNotesButton() {
         description="Search and open notes by title or content."
         className={
           shouldShowPreview
-            ? "w-[calc(100vw-1.5rem)] max-w-[980px] lg:max-w-[1040px]"
-            : "w-[calc(100vw-1.5rem)] max-w-[640px] md:max-w-[700px]"
+            ? "w-[calc(100vw-1.5rem)] max-w-[980px] border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))]/55 p-0 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)] backdrop-blur-sm lg:max-w-[1040px] [&_[data-slot=command-input-wrapper]]:mt-3 [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:rounded-full [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-[hsl(var(--border))] [&_[data-slot=command-input-wrapper]]:border-b [&_[data-slot=command-input-wrapper]]:bg-[hsl(var(--background))]/95 [&_[data-slot=command-input-wrapper]]:px-4 [&_[data-slot=command-input-wrapper]]:shadow-sm [&_[data-slot=command-input-wrapper]]:ring-1 [&_[data-slot=command-input-wrapper]]:ring-black/5 [&_[data-slot=command-input-wrapper]_svg]:size-4"
+            : "w-[calc(100vw-1.5rem)] max-w-[640px] border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))]/55 p-0 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)] backdrop-blur-sm md:max-w-[700px] [&_[data-slot=command-input-wrapper]]:mt-3 [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:rounded-full [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-[hsl(var(--border))] [&_[data-slot=command-input-wrapper]]:border-b [&_[data-slot=command-input-wrapper]]:bg-[hsl(var(--background))]/95 [&_[data-slot=command-input-wrapper]]:px-4 [&_[data-slot=command-input-wrapper]]:shadow-sm [&_[data-slot=command-input-wrapper]]:ring-1 [&_[data-slot=command-input-wrapper]]:ring-black/5 [&_[data-slot=command-input-wrapper]_svg]:size-4"
         }
+        showCloseButton={false}
+        commandClassName="bg-transparent shadow-none"
         commandKey={commandResetKey}
       >
-        <CommandInput
-          value={query}
-          onValueChange={setQuery}
-          placeholder="Search notes..."
-          autoFocus
-          onKeyDown={(event) => {
-            if (
-              event.key === "ArrowDown" ||
-              event.key === "ArrowUp" ||
-              event.key === "Home" ||
-              event.key === "End"
-            ) {
-              requestAnimationFrame(() =>
-                requestAnimationFrame(syncPreviewWithKeyboardSelection),
-              );
-            }
-          }}
-        />
         <div
           ref={dialogContentRef}
-          className="flex items-center justify-end border-b border-[hsl(var(--border))] px-2 py-1"
+          className="animate-in fade-in-0 slide-in-from-top-1 flex min-h-0 flex-1 flex-col px-2 duration-200"
         >
-          {!isCompactLayout ? (
-            <button
-              type="button"
-              onMouseDown={(event) => {
-                // Keep keyboard navigation on the command input/results.
-                event.preventDefault();
-              }}
-              onClick={() => {
-                setIsPreviewOpen((prev) => {
-                  const next = !prev;
-                  window.lychee
-                    .invoke("settings.set", {
-                      key: SEARCH_PREVIEW_OPEN_SETTING_KEY,
-                      value: String(next),
-                    })
-                    .catch(() => {
-                      // Ignore persistence failures for non-critical UI preference.
-                    });
-                  return next;
-                });
-                requestAnimationFrame(focusSearchInput);
-              }}
-              className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-              aria-label={
-                isPreviewOpen ? "Hide preview pane" : "Show preview pane"
-              }
-            >
-              {isPreviewOpen ? (
-                <>
-                  <PanelRightClose className="h-3.5 w-3.5" />
-                  Hide Preview
-                </>
+          <CommandInput
+            value={query}
+            onValueChange={setQuery}
+            placeholder="Search notes..."
+            autoFocus
+            className="h-full py-0 text-sm"
+            endAdornment={
+              hasQuery ? (
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={clearSearchQuery}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               ) : (
-                <>
-                  <PanelRightOpen className="h-3.5 w-3.5" />
-                  Show Preview
-                </>
-              )}
-            </button>
-          ) : null}
-        </div>
-        <div ref={resultsContainerRef} className="flex h-[min(560px,68vh)] min-h-0">
-          <CommandList
+                <span className="inline-flex h-6 items-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 text-[10px] font-medium text-[hsl(var(--muted-foreground))]">
+                  Esc
+                </span>
+              )
+            }
+            onKeyDown={(event) => {
+              if (
+                event.key === "ArrowDown" ||
+                event.key === "ArrowUp" ||
+                event.key === "Home" ||
+                event.key === "End"
+              ) {
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(syncPreviewWithKeyboardSelection),
+                );
+              }
+            }}
+          />
+          <div
             className={
-              shouldShowPreview
-                ? "h-full max-h-none w-[52%]"
-                : "h-full max-h-none w-full"
+              "mt-1.5 mb-2 flex min-h-0 w-[calc(100%-0.5rem)] flex-1 self-center flex-col overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--popover))] shadow-[0_18px_38px_-30px_rgba(0,0,0,0.65)] transition-all duration-150 ease-out delay-75 " +
+              (open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0")
             }
           >
+            <div className="flex items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/60 px-2 py-1">
+              <div className="hidden items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))] sm:flex">
+                <span className="inline-flex items-center rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))]/85 px-1.5 py-0.5 font-medium">
+                  Enter
+                </span>
+                <span>Open</span>
+                <span className="inline-flex items-center rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))]/85 px-1.5 py-0.5 font-medium">
+                  {openInNewTabShortcutLabel}
+                </span>
+                <span>New tab</span>
+              </div>
+              {!isCompactLayout ? (
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    // Keep keyboard navigation on the command input/results.
+                    event.preventDefault();
+                  }}
+                  onClick={() => {
+                    setIsPreviewOpen((prev) => {
+                      const next = !prev;
+                      window.lychee
+                        .invoke("settings.set", {
+                          key: SEARCH_PREVIEW_OPEN_SETTING_KEY,
+                          value: String(next),
+                        })
+                        .catch(() => {
+                          // Ignore persistence failures for non-critical UI preference.
+                        });
+                      return next;
+                    });
+                    requestAnimationFrame(focusSearchInput);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:border-[hsl(var(--primary)/0.35)] hover:bg-[hsl(var(--primary)/0.12)] hover:text-[hsl(var(--primary))] focus-visible:border-[hsl(var(--primary)/0.35)] focus-visible:bg-[hsl(var(--primary)/0.12)] focus-visible:text-[hsl(var(--primary))]"
+                  aria-label={
+                    isPreviewOpen ? "Hide preview pane" : "Show preview pane"
+                  }
+                >
+                  {isPreviewOpen ? (
+                    <>
+                      <PanelRightClose className="h-3.5 w-3.5" />
+                      Hide Preview
+                    </>
+                  ) : (
+                    <>
+                      <PanelRightOpen className="h-3.5 w-3.5" />
+                      Show Preview
+                    </>
+                  )}
+                </button>
+              ) : null}
+            </div>
+            <div
+              ref={resultsContainerRef}
+              className="flex h-[min(560px,68vh)] min-h-0"
+            >
+              <CommandList
+                className={
+                  shouldShowPreview
+                    ? "h-full max-h-none w-[52%]"
+                    : "h-full max-h-none w-full"
+                }
+              >
             {isSearching || isPaletteInitializing ? (
               <div className="flex items-center gap-2 px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -592,25 +729,43 @@ export function SearchNotesButton() {
             ) : null}
             {isPaletteInitializing || isSearching ? (
               <div className="space-y-2 px-2 py-2">
-                <div className="h-9 animate-pulse rounded-md bg-[hsl(var(--muted))]/70" />
-                <div className="h-9 animate-pulse rounded-md bg-[hsl(var(--muted))]/70" />
-                <div className="h-9 animate-pulse rounded-md bg-[hsl(var(--muted))]/70" />
-                <div className="h-9 animate-pulse rounded-md bg-[hsl(var(--muted))]/70" />
-                <div className="h-9 animate-pulse rounded-md bg-[hsl(var(--muted))]/70" />
+                {Array.from({ length: 5 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 rounded-md border border-[hsl(var(--border))]/55 bg-[hsl(var(--background))]/55 px-2 py-2"
+                  >
+                    <div className="h-4 w-4 animate-pulse rounded-sm bg-[hsl(var(--muted))]/70" />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="h-3 w-1/3 animate-pulse rounded bg-[hsl(var(--muted))]/70" />
+                      <div className="h-2.5 w-5/6 animate-pulse rounded bg-[hsl(var(--muted))]/60" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : null}
             <CommandEmpty>No matching notes.</CommandEmpty>
-            <CommandGroup heading={query.trim() ? "Matches" : "Recent"}>
+            <CommandGroup heading={deferredQuery.trim() ? "Matches" : "Recent"}>
               {!isPaletteInitializing &&
                 !isSearching &&
                 renderedDocuments.map((entry) => {
-                  const { doc, bodyText, matchCount } = entry;
-                  const title = normalizedTitle(doc.title);
-                  const bodySnippet = buildHighlightedSnippet(bodyText, query, shouldShowPreview ? 20 : 44);
+                  const { doc, bodyText, matchCount, normalizedDocTitle } = entry;
+                  const title = normalizedDocTitle;
+                  const isActiveTab = selectedId === doc.id;
+                  const tabStatusLabel = isActiveTab
+                    ? "Current"
+                    : openTabSet.has(doc.id)
+                      ? "Active"
+                      : null;
+                  const bodySnippet = buildHighlightedSnippet(
+                    bodyText,
+                    deferredQuery,
+                    shouldShowPreview ? 20 : 44,
+                  );
                   return (
                     <CommandItem
                       key={doc.id}
                       value={`${title} ${bodyText} ${doc.id}`}
+                      className="rounded-md transition-[transform,background-color,color] duration-100 ease-out hover:scale-[1.01] data-[selected=true]:bg-[hsl(var(--primary)/0.1)]"
                       data-doc-id={doc.id}
                       onMouseDown={(event) => {
                         openInNewTabRef.current =
@@ -654,22 +809,42 @@ export function SearchNotesButton() {
                           </div>
                         ) : null}
                       </div>
-                      {query.trim() && matchCount > 0 ? (
-                        <span className="shrink-0 rounded-md border border-[hsl(var(--border))] px-1.5 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))]">
-                          {matchCount}
-                        </span>
-                      ) : null}
-                      {selectedId === doc.id ? (
-                        <CommandShortcut>Open</CommandShortcut>
+                      {tabStatusLabel || (deferredQuery.trim() && matchCount > 0) ? (
+                        <div
+                          data-slot="search-result-meta"
+                          className="ml-auto flex shrink-0 items-center gap-1.5"
+                        >
+                          {tabStatusLabel ? (
+                            <span
+                              data-slot="search-result-tab-status"
+                              className={
+                                "text-xs tracking-widest " +
+                                (tabStatusLabel === "Current"
+                                  ? "font-semibold text-[hsl(var(--primary))]"
+                                  : "text-[hsl(var(--muted-foreground))]")
+                              }
+                            >
+                              {tabStatusLabel}
+                            </span>
+                          ) : null}
+                          {deferredQuery.trim() && matchCount > 0 ? (
+                            <span
+                              data-slot="search-result-match-count"
+                              className="rounded-md border border-[hsl(var(--border))] px-1.5 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))]"
+                            >
+                              {matchCount}
+                            </span>
+                          ) : null}
+                        </div>
                       ) : null}
                     </CommandItem>
                   );
                 })}
             </CommandGroup>
-          </CommandList>
+              </CommandList>
 
-          {shouldShowPreview ? (
-            <div className="h-full w-[48%] border-l border-[hsl(var(--border))] bg-[hsl(var(--background))]/45 p-3">
+              {shouldShowPreview ? (
+                <div className="h-full w-[48%] border-l border-[hsl(var(--border))] bg-[hsl(var(--background))]/45 p-3">
               {previewEntry ? (
                 <div className="flex h-full flex-col gap-2">
                   <div className="flex items-center justify-between">
@@ -686,7 +861,7 @@ export function SearchNotesButton() {
                               event.metaKey || event.ctrlKey,
                             )
                           }
-                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] transition-colors hover:border-[hsl(var(--primary)/0.45)] hover:bg-[hsl(var(--primary)/0.12)] hover:text-[hsl(var(--primary))] focus-visible:border-[hsl(var(--primary)/0.45)] focus-visible:bg-[hsl(var(--primary)/0.12)] focus-visible:text-[hsl(var(--primary))]"
                           aria-label="Open note"
                         >
                           <SquareArrowUpRight className="h-3.5 w-3.5" />
@@ -781,8 +956,10 @@ export function SearchNotesButton() {
                   Select a note to preview.
                 </div>
               )}
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
       </CommandDialog>
     </>
