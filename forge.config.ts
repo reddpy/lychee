@@ -15,6 +15,7 @@ import { rendererConfig } from './webpack.renderer.config';
 
 // When building for E2E tests, relax fuses so Playwright can connect
 const isE2E = process.env.E2E === '1';
+const devServerPort = Number.parseInt(process.env.LYCHEE_DEV_SERVER_PORT ?? '3001', 10);
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -31,6 +32,7 @@ const config: ForgeConfig = {
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
+      port: Number.isNaN(devServerPort) ? 3001 : devServerPort,
       devContentSecurityPolicy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com; img-src 'self' data: https: http: lychee-image:; connect-src 'self' ws:; frame-src https://www.youtube-nocookie.com https://www.youtube.com",
       mainConfig,
       renderer: {

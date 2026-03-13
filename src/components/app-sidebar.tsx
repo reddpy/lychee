@@ -6,6 +6,7 @@ import {
   SidebarContent,
 } from './ui/sidebar';
 import { NotesSection } from './sidebar/notes-section';
+import { SearchNotesButton } from './sidebar/search-notes-button';
 import { SidebarFooterContent } from './sidebar/sidebar-footer-content';
 
 export function AppSidebar() {
@@ -37,6 +38,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarContent>
+        <SearchNotesButton />
         <NotesSection
           documents={documents}
           selectedId={selectedId}

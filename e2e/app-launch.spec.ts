@@ -13,7 +13,7 @@ test.describe('App Launch', () => {
   });
 
   test('shows Notes section header', async ({ window }) => {
-    await expect(window.getByText('Notes')).toBeVisible();
+    await expect(window.getByRole('button', { name: /^Notes New note$/ })).toBeVisible();
   });
 
   test('shows New Note button', async ({ window }) => {

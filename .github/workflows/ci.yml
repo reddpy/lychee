@@ -81,6 +81,12 @@ jobs:
           - name: media
             specs: e2e/image-bookmark-embed.spec.ts e2e/trash.spec.ts e2e/persistence.spec.ts
             workers: 1
+          - name: search-palette
+            specs: e2e/search-palette.spec.ts
+            workers: 1
+          - name: in-note-search
+            specs: e2e/in-note-search.spec.ts
+            workers: 1
           - name: misc
             specs: e2e/youtube-embed.spec.ts e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts
             workers: 1
