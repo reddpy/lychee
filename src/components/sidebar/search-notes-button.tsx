@@ -95,6 +95,7 @@ export function SearchNotesButton() {
   const lastPointerPosRef = React.useRef<{ x: number; y: number } | null>(null);
   const openInNewTabRef = React.useRef(false);
   const closeRequestedByShortcutRef = React.useRef(false);
+  const lastResolvedIdsRef = React.useRef<string[]>([]);
   const getPreviewCacheEntry = React.useCallback((key: string) => {
     const cache = previewCacheRef.current;
     if (!cache.has(key)) return undefined;
@@ -121,11 +122,14 @@ export function SearchNotesButton() {
     setOpen(false);
     setIsSearching(false);
     setIsPaletteInitializing(false);
+    lastResolvedIdsRef.current = [];
   }, []);
   const closePaletteAfterSelection = React.useCallback(() => {
     setOpen(false);
-    setQuery("");
     setIsSearching(false);
+    setRenderedDocuments([]);
+    setResolvedDocuments([]);
+    lastResolvedIdsRef.current = [];
   }, []);
 
   const indexedDocuments = React.useMemo(() => {
@@ -174,13 +178,13 @@ export function SearchNotesButton() {
         return;
       }
       closeRequestedByShortcutRef.current = false;
-      setIsPaletteInitializing(true);
+      if (!query.trim()) setIsPaletteInitializing(true);
       setOpen(true);
     };
 
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [open]);
+  }, [open, query]);
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;
@@ -233,7 +237,7 @@ export function SearchNotesButton() {
     if (!q) {
       return indexedDocuments
         .slice()
-        .sort((a, b) => +new Date(b.doc.updatedAt) - +new Date(a.doc.updatedAt))
+        .sort((a, b) => (b.doc.updatedAt > a.doc.updatedAt ? 1 : b.doc.updatedAt < a.doc.updatedAt ? -1 : 0))
         .map((entry) => ({
           ...entry,
           score: 0,
@@ -266,7 +270,7 @@ export function SearchNotesButton() {
         if (a.bodyMatchIndex >= 0 !== b.bodyMatchIndex >= 0) {
           return a.bodyMatchIndex >= 0 ? 1 : -1;
         }
-        return +new Date(b.doc.updatedAt) - +new Date(a.doc.updatedAt);
+        return b.doc.updatedAt > a.doc.updatedAt ? 1 : b.doc.updatedAt < a.doc.updatedAt ? -1 : 0;
       })
       .slice(0, 50);
   }, [indexedDocuments, deferredQuery]);
@@ -278,8 +282,24 @@ export function SearchNotesButton() {
   >([]);
   React.useEffect(() => {
     if (!open) return;
+    const nextIds = visibleDocuments.map((e) => e.doc.id);
+    const prevIds = lastResolvedIdsRef.current;
+    const idsUnchanged =
+      nextIds.length === prevIds.length &&
+      nextIds.every((id, i) => id === prevIds[i]);
+    if (idsUnchanged) {
+      // Same result set — no skeleton flash needed.
+      // Propagate fresh data so downstream effects (preview computation,
+      // renderedDocuments) reflect updated entries (matchCount, ordering).
+      // Cost is minimal: preview cache short-circuits, renderedDocuments is
+      // debounced at 120ms, and autosaves only fire every ~600ms.
+      setIsSearching(false);
+      setResolvedDocuments(visibleDocuments);
+      return;
+    }
     setIsSearching(true);
     const timer = window.setTimeout(() => {
+      lastResolvedIdsRef.current = nextIds;
       setResolvedDocuments(visibleDocuments);
       setIsSearching(false);
     }, 90);
@@ -325,7 +345,9 @@ export function SearchNotesButton() {
         };
       }
     }
-    if (Object.keys(cachedByDocId).length > 0) {
+    let hasCached = false;
+    for (const _ in cachedByDocId) { hasCached = true; break; }
+    if (hasCached) {
       setPreparedPreviewStates((prev) => ({ ...prev, ...cachedByDocId }));
     }
 
@@ -431,11 +453,9 @@ export function SearchNotesButton() {
         openTab(id);
         openInNewTabRef.current = false;
         return;
-      } else {
-        maybeTransferPreviewJump(id);
-        openOrCreateTab(id);
       }
-      openInNewTabRef.current = false;
+      maybeTransferPreviewJump(id);
+      openOrCreateTab(id);
       closePaletteAfterSelection();
     },
     [closePaletteAfterSelection, maybeTransferPreviewJump, openOrCreateTab, openTab],
@@ -525,16 +545,11 @@ export function SearchNotesButton() {
     return () => observer.disconnect();
   }, [open, query, resolvedDocuments, syncPreviewWithKeyboardSelection]);
 
-  const shortcutLabel =
+  const isMac =
     typeof navigator !== "undefined" &&
-    navigator.platform.toLowerCase().includes("mac")
-      ? "⌘P"
-      : "Ctrl+P";
-  const openInNewTabShortcutLabel =
-    typeof navigator !== "undefined" &&
-    navigator.platform.toLowerCase().includes("mac")
-      ? "⌘↵"
-      : "Ctrl↵";
+    /mac/i.test(navigator.userAgent);
+  const shortcutLabel = isMac ? "⌘P" : "Ctrl+P";
+  const openInNewTabShortcutLabel = isMac ? "⌘↵" : "Ctrl↵";
   const hasQuery = query.trim().length > 0;
 
   const previewEntry =
@@ -568,7 +583,7 @@ export function SearchNotesButton() {
       <SidebarGroup>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => setOpen(true)}>
+            <SidebarMenuButton onClick={() => { if (!query.trim()) setIsPaletteInitializing(true); setOpen(true); }}>
               <Search className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
               <span className="truncate text-sm font-semibold">Search</span>
               <span className="ml-auto rounded border border-[hsl(var(--sidebar-border))] px-1.5 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))]">
@@ -596,23 +611,25 @@ export function SearchNotesButton() {
             closePalette();
             return;
           }
-          setIsPaletteInitializing(true);
+          if (!query.trim()) setIsPaletteInitializing(true);
           setOpen(true);
         }}
         title="Search notes"
         description="Search and open notes by title or content."
         className={
-          shouldShowPreview
-            ? "w-[calc(100vw-1.5rem)] max-w-[980px] border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))]/55 p-0 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)] backdrop-blur-sm lg:max-w-[1040px] [&_[data-slot=command-input-wrapper]]:mt-3 [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:rounded-full [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-[hsl(var(--border))] [&_[data-slot=command-input-wrapper]]:border-b [&_[data-slot=command-input-wrapper]]:bg-[hsl(var(--background))]/95 [&_[data-slot=command-input-wrapper]]:px-4 [&_[data-slot=command-input-wrapper]]:shadow-sm [&_[data-slot=command-input-wrapper]]:ring-1 [&_[data-slot=command-input-wrapper]]:ring-black/5 [&_[data-slot=command-input-wrapper]_svg]:size-4"
-            : "w-[calc(100vw-1.5rem)] max-w-[640px] border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))]/55 p-0 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)] backdrop-blur-sm md:max-w-[700px] [&_[data-slot=command-input-wrapper]]:mt-3 [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:rounded-full [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-[hsl(var(--border))] [&_[data-slot=command-input-wrapper]]:border-b [&_[data-slot=command-input-wrapper]]:bg-[hsl(var(--background))]/95 [&_[data-slot=command-input-wrapper]]:px-4 [&_[data-slot=command-input-wrapper]]:shadow-sm [&_[data-slot=command-input-wrapper]]:ring-1 [&_[data-slot=command-input-wrapper]]:ring-black/5 [&_[data-slot=command-input-wrapper]_svg]:size-4"
+          "w-[calc(100vw-1.5rem)] border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))]/55 p-0 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)] backdrop-blur-sm [&_[data-slot=command-input-wrapper]]:mt-3 [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:rounded-full [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-[hsl(var(--border))] [&_[data-slot=command-input-wrapper]]:border-b [&_[data-slot=command-input-wrapper]]:bg-[hsl(var(--background))]/95 [&_[data-slot=command-input-wrapper]]:px-4 [&_[data-slot=command-input-wrapper]]:shadow-sm [&_[data-slot=command-input-wrapper]]:ring-1 [&_[data-slot=command-input-wrapper]]:ring-black/5 [&_[data-slot=command-input-wrapper]_svg]:size-4 " +
+          (shouldShowPreview
+            ? "max-w-[980px] lg:max-w-[1040px]"
+            : "max-w-[640px] md:max-w-[700px]")
         }
         showCloseButton={false}
+        shouldFilter={false}
         commandClassName="bg-transparent shadow-none"
         commandKey={commandResetKey}
       >
         <div
           ref={dialogContentRef}
-          className="animate-in fade-in-0 slide-in-from-top-1 flex min-h-0 flex-1 flex-col px-2 duration-200"
+          className="flex min-h-0 flex-1 flex-col px-2"
         >
           <CommandInput
             value={query}
@@ -743,8 +760,12 @@ export function SearchNotesButton() {
                 ))}
               </div>
             ) : null}
-            <CommandEmpty>No matching notes.</CommandEmpty>
-            <CommandGroup heading={deferredQuery.trim() ? "Matches" : "Recent"}>
+            <CommandEmpty>
+              {!isPaletteInitializing && !isSearching
+                ? "No matching notes."
+                : null}
+            </CommandEmpty>
+            <CommandGroup heading={!isPaletteInitializing && !isSearching && renderedDocuments.length > 0 && deferredQuery.trim() ? "Matches" : undefined}>
               {!isPaletteInitializing &&
                 !isSearching &&
                 renderedDocuments.map((entry) => {
@@ -781,12 +802,6 @@ export function SearchNotesButton() {
                         handlePreviewPointerMove(doc.id, event)
                       }
                       onPointerMove={(event) =>
-                        handlePreviewPointerMove(doc.id, event)
-                      }
-                      onMouseEnter={(event) =>
-                        handlePreviewPointerMove(doc.id, event)
-                      }
-                      onMouseMove={(event) =>
                         handlePreviewPointerMove(doc.id, event)
                       }
                       onFocus={() => handlePreviewTarget(doc.id)}
@@ -944,7 +959,7 @@ export function SearchNotesButton() {
                         ref={previewNavRef}
                         key={previewEntry.doc.id}
                         editorState={previewEditorState}
-                        query={query}
+                        query={deferredQuery}
                         onMatchStateChange={handlePreviewMatchStateChange}
                       />
                     ) : null}

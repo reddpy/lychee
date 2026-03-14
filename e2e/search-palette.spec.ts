@@ -1069,6 +1069,27 @@ test.describe("Search palette e2e", () => {
     await expect(resultItems(window)).toHaveCount(0);
   });
 
+  test("group heading shows 'Matches' only when query has results, hidden otherwise", async ({ window }) => {
+    await createNoteWithBody(window, "Heading test note", ["heading body content"]);
+
+    // Empty query — no heading visible
+    await openPalette(window);
+    await waitForResultRows(window, 1);
+    const heading = palette(window).locator("[cmdk-group-heading]");
+    await expect(heading).toBeHidden();
+
+    // Query with results — "Matches" heading visible
+    await paletteInput(window).fill("heading");
+    await waitForResultRows(window, 1);
+    await expect(heading).toBeVisible();
+    await expect(heading).toHaveText("Matches");
+
+    // Query with no results — heading hidden again
+    await paletteInput(window).fill("zzz-no-match-ever");
+    await expect(palette(window).getByText("No matching notes.")).toBeVisible();
+    await expect(heading).toBeHidden();
+  });
+
   test("search button works while sidebar is collapsed and floating", async ({ window }) => {
     await createNoteWithBody(window, "Collapsed sidebar palette", ["visible content"]);
 
