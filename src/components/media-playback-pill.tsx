@@ -58,7 +58,7 @@ export function MediaPlaybackPill() {
   return (
     <div
       data-testid="media-pill"
-      className="group absolute top-3 right-2 z-50 flex items-center rounded-full border border-[hsl(var(--border))] bg-popover p-1 shadow-md cursor-pointer select-none animate-in fade-in-0 slide-in-from-top-2 duration-200 hover:shadow-lg transition-all"
+      className="group absolute top-11 right-2 z-50 flex items-center rounded-full border border-[hsl(var(--border))] bg-popover p-1 shadow-md cursor-pointer select-none animate-in fade-in-0 slide-in-from-top-2 duration-200 hover:shadow-lg transition-all"
       onClick={handleToggle}
       title={`Playing in: ${noteTitle}`}
     >

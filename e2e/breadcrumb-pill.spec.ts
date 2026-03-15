@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-const BREADCRUMB_TRIGGER = '[aria-label="Navigate note hierarchy"]';
+const BREADCRUMB_TRIGGER = '[aria-label="Navigate note hierarchy"]:visible';
 const SIDEBAR_TOGGLE = '[aria-label="Toggle sidebar"]';
 
 /** Close the sidebar so the breadcrumb pill can appear. */
