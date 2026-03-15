@@ -198,11 +198,11 @@ body {
 }
 
 /* In-editor find highlights (Custom Highlight API). */
-body:has([data-testid="note-find-panel"]) .ContentEditable__root::highlight(lychee-find-all) {
+.ContentEditable__root::highlight(lychee-find-all) {
   background: rgba(193, 75, 85, 0.14);
 }
 
-body:has([data-testid="note-find-panel"]) .ContentEditable__root::highlight(lychee-find-active) {
+.ContentEditable__root::highlight(lychee-find-active) {
   background: #b7424d;
   color: #fff;
 }

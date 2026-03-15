@@ -5,6 +5,7 @@ import { $getNodeByKey, $getRoot, $setSelection, type NodeKey, TextNode } from "
 import { $isHeadingNode, HeadingNode, type HeadingTagType } from "@lexical/rich-text"
 import { $isTitleNode } from "../nodes/title-node"
 import { HIGHLIGHT_BLOCK_COMMAND } from "./block-highlight-plugin"
+import { emitToolbarExclusive, onToolbarExclusive } from "@/components/lexical-editor"
 
 interface HeadingInfo {
   key: NodeKey
@@ -12,22 +13,20 @@ interface HeadingInfo {
   text: string
 }
 
-function getScrollContainer(element: HTMLElement | null): HTMLElement | null {
-  let el = element
-  while (el) {
-    if (el.tagName === "MAIN") return el
-    el = el.parentElement
-  }
-  return null
-}
-
-export function SectionIndicatorPlugin(): ReactElement | null {
+export function SectionIndicatorPlugin({ documentId }: { documentId: string }): ReactElement | null {
   const [editor] = useLexicalComposerContext()
   const [headings, setHeadings] = useState<HeadingInfo[]>([])
   const [isOpen, setIsOpen] = useState(false)
-  const [pillTop, setPillTop] = useState(0)
-  const [pillRight, setPillRight] = useState(0)
+  const [toolbarEl, setToolbarEl] = useState<Element | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setToolbarEl(document.querySelector(`[data-toolbar-id="${documentId}"]`))
+  }, [documentId])
+
+  useEffect(() => {
+    return onToolbarExclusive("sections", () => setIsOpen(false))
+  }, [])
 
   // Rebuild heading list on heading structural changes AND text edits inside headings
   useEffect(() => {
@@ -77,28 +76,6 @@ export function SectionIndicatorPlugin(): ReactElement | null {
     }
   }, [editor])
 
-  // Position the pill based on the scroll container — only on resize/layout
-  useEffect(() => {
-    const root = editor.getRootElement()
-    const scrollContainer = getScrollContainer(root)
-    if (!scrollContainer) return
-
-    const updatePosition = () => {
-      const rect = scrollContainer.getBoundingClientRect()
-      setPillRight(window.innerWidth - rect.right + 14)
-      setPillTop(rect.top + rect.height * 0.3)
-    }
-
-    updatePosition()
-    const observer = new ResizeObserver(updatePosition)
-    observer.observe(scrollContainer)
-    window.addEventListener("resize", updatePosition)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener("resize", updatePosition)
-    }
-  }, [editor])
-
   // Close on outside click / Escape
   useEffect(() => {
     if (!isOpen) return
@@ -132,13 +109,12 @@ export function SectionIndicatorPlugin(): ReactElement | null {
     [editor]
   )
 
-  if (headings.length < 2) return null
+  if (headings.length < 2 || !toolbarEl) return null
 
   return createPortal(
     <div
       ref={containerRef}
-      className="fixed z-40"
-      style={{ top: pillTop, right: pillRight }}
+      className="relative"
       onMouseDown={() => {
         editor.getRootElement()?.blur()
         editor.update(() => { $setSelection(null) })
@@ -146,7 +122,12 @@ export function SectionIndicatorPlugin(): ReactElement | null {
     >
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={() => {
+          setIsOpen((prev) => {
+            if (!prev) emitToolbarExclusive("sections")
+            return !prev
+          })
+        }}
         aria-label="Navigate sections"
         aria-expanded={isOpen}
         className={`flex h-8 w-8 items-center justify-center cursor-pointer rounded-full border transition-all duration-200 group select-none ${
@@ -184,6 +165,6 @@ export function SectionIndicatorPlugin(): ReactElement | null {
         </div>
       )}
     </div>,
-    document.body
+    toolbarEl
   )
 }

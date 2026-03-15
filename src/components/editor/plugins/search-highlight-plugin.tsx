@@ -1,7 +1,5 @@
 import * as React from "react";
-import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { createPortal } from "react-dom";
 
 import { useSearchHighlightStore } from "@/renderer/search-highlight-store";
 
@@ -33,10 +31,6 @@ function supportsCustomHighlightApi() {
 
 function normalizeSearchTerm(value: string) {
   return value.normalize("NFC").toLowerCase();
-}
-
-function normalizeQueryInput(value: string) {
-  return value.normalize("NFC");
 }
 
 function isFindShortcut(event: {
@@ -75,21 +69,19 @@ function createTextRanges(
 
   let current: Node | null = walker.nextNode();
   while (current) {
-    if (current.nodeType === Node.TEXT_NODE) {
-      const text = current.textContent ?? "";
-      const textLower = getCachedNormalizedText(current, text, cache);
-      let offset = 0;
-      const lastStart = textLower.length - needle.length;
+    const text = current.textContent ?? "";
+    const textLower = getCachedNormalizedText(current, text, cache);
+    let offset = 0;
+    const lastStart = textLower.length - needle.length;
 
-      while (offset <= lastStart) {
-        const foundAt = textLower.indexOf(needle, offset);
-        if (foundAt < 0) break;
-        const range = document.createRange();
-        range.setStart(current, foundAt);
-        range.setEnd(current, foundAt + needle.length);
-        ranges.push({ range, anchorNode: current });
-        offset = foundAt + needle.length;
-      }
+    while (offset <= lastStart) {
+      const foundAt = textLower.indexOf(needle, offset);
+      if (foundAt < 0) break;
+      const range = document.createRange();
+      range.setStart(current, foundAt);
+      range.setEnd(current, foundAt + needle.length);
+      ranges.push({ range, anchorNode: current });
+      offset = foundAt + needle.length;
     }
     current = walker.nextNode();
   }
@@ -167,7 +159,7 @@ export function SearchHighlightPlugin({
 }: {
   documentId: string;
   isActive: boolean;
-}) {
+}): null {
   const [editor] = useLexicalComposerContext();
   const query = useSearchHighlightStore(
     (s) => s.states[documentId]?.query ?? "",
@@ -186,19 +178,16 @@ export function SearchHighlightPlugin({
   const setActiveIndex = useSearchHighlightStore((s) => s.setActiveIndex);
   const clearHighlight = useSearchHighlightStore((s) => s.clearHighlight);
   const clearTransientJump = useSearchHighlightStore((s) => s.clearTransientJump);
-  const inputRef = React.useRef<HTMLInputElement>(null);
+  const storeSetMatchCount = useSearchHighlightStore((s) => s.setMatchCount);
+  const scrollRequest = useSearchHighlightStore(
+    (s) => s.states[documentId]?.scrollRequest ?? 0,
+  );
   const allRangesRef = React.useRef<TextRange[]>([]);
   const textSearchCacheRef = React.useRef<WeakMap<Node, TextNodeSearchCache>>(
     new WeakMap(),
   );
-  const [activeMatchIndex, setActiveMatchIndex] = React.useState(0);
   const activeMatchIndexRef = React.useRef(0);
-  const [matchCount, setMatchCount] = React.useState(0);
   const wasVisibleRef = React.useRef(false);
-  const [pillTop, setPillTop] = React.useState(0);
-  const [pillRight, setPillRight] = React.useState(0);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const didAutoFocusRef = React.useRef(false);
   const highlightNames = React.useMemo(
     () => ({
       all: "lychee-find-all",
@@ -239,9 +228,8 @@ export function SearchHighlightPlugin({
   ]);
 
   const closeFind = React.useCallback(() => {
-    clearAllHighlights();
     clearHighlight(documentId);
-  }, [clearAllHighlights, clearHighlight, documentId]);
+  }, [clearHighlight, documentId]);
 
   const toggleFind = React.useCallback(() => {
     if (isOpenForDoc) {
@@ -325,8 +313,8 @@ export function SearchHighlightPlugin({
       const activeQuery = effectiveQuery;
       if (!modeIsVisible || !activeQuery.trim()) {
         allRangesRef.current = [];
-        setMatchCount(0);
-        setActiveMatchIndex(0);
+        storeSetMatchCount(documentId, 0);
+        activeMatchIndexRef.current = 0;
         clearAllHighlights();
         return;
       }
@@ -336,10 +324,10 @@ export function SearchHighlightPlugin({
 
       const ranges = createTextRanges(root, activeQuery, textSearchCacheRef.current);
       allRangesRef.current = ranges;
-      setMatchCount(ranges.length);
+      storeSetMatchCount(documentId, ranges.length);
 
       if (!supportsCustomHighlightApi()) {
-        setActiveMatchIndex(0);
+        activeMatchIndexRef.current = 0;
         return;
       }
 
@@ -366,20 +354,17 @@ export function SearchHighlightPlugin({
       highlights.delete(oppositeActiveName);
       if (ranges.length === 0) {
         highlights.delete(allName);
-      } else {
-        highlights.set(
-          allName,
-          new (window as unknown as {
-            Highlight: new (...args: Range[]) => unknown;
-          }).Highlight(...ranges.map((item) => item.range)),
-        );
-      }
-
-      if (ranges.length === 0) {
-        setActiveMatchIndex(0);
+        activeMatchIndexRef.current = 0;
         applyActiveHighlight(0, false, false, activeName);
         return;
       }
+
+      highlights.set(
+        allName,
+        new (window as unknown as {
+          Highlight: new (...args: Range[]) => unknown;
+        }).Highlight(...ranges.map((item) => item.range)),
+      );
 
       const nextIndex = resetToFirst
         ? 0
@@ -387,7 +372,7 @@ export function SearchHighlightPlugin({
             isTransientActive ? effectiveActiveIndex : activeMatchIndexRef.current,
             ranges.length,
           );
-      setActiveMatchIndex(nextIndex);
+      activeMatchIndexRef.current = nextIndex;
       if (!isTransientActive) setActiveIndex(documentId, nextIndex);
       applyActiveHighlight(nextIndex, shouldScroll, false, activeName);
     },
@@ -405,6 +390,7 @@ export function SearchHighlightPlugin({
       isTransientActive,
       documentId,
       setActiveIndex,
+      storeSetMatchCount,
     ],
   );
 
@@ -414,30 +400,35 @@ export function SearchHighlightPlugin({
     };
   }, [clearAllHighlights]);
 
-  React.useEffect(() => {
-    activeMatchIndexRef.current = activeMatchIndex;
-  }, [activeMatchIndex]);
-
-  React.useEffect(() => {
-    if (!isOpenForDoc) {
-      didAutoFocusRef.current = false;
-      return;
-    }
-    if (!didAutoFocusRef.current) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-      didAutoFocusRef.current = true;
-    }
-  }, [isOpenForDoc]);
+  const prevQueryRef = React.useRef(effectiveQuery);
+  const prevIndexRef = React.useRef(effectiveActiveIndex);
 
   React.useEffect(() => {
     if (!isOpenForDoc) return;
+    const queryChanged = prevQueryRef.current !== effectiveQuery;
+    const indexChanged = prevIndexRef.current !== effectiveActiveIndex;
+    prevQueryRef.current = effectiveQuery;
+    prevIndexRef.current = effectiveActiveIndex;
+
     const requestedIndex = Math.max(0, effectiveActiveIndex);
-    setActiveMatchIndex(requestedIndex);
     activeMatchIndexRef.current = requestedIndex;
-    // Typing should keep focus in the find input; do not move selection.
-    refreshHighlights(false, false);
+
+    // Only scroll on explicit navigation (chevrons/Enter), not on typing
+    refreshHighlights(queryChanged, indexChanged);
   }, [effectiveActiveIndex, isOpenForDoc, effectiveQuery, refreshHighlights]);
+
+  // Scroll to current match when requested (e.g. single-match navigation)
+  const prevScrollReqRef = React.useRef(scrollRequest);
+  React.useEffect(() => {
+    if (prevScrollReqRef.current === scrollRequest) return;
+    prevScrollReqRef.current = scrollRequest;
+    if (!isOpenForDoc) return;
+    const ranges = allRangesRef.current;
+    if (ranges.length === 0) return;
+    const idx = clampIndex(activeMatchIndexRef.current, ranges.length);
+    const activeName = highlightNames.active;
+    applyActiveHighlight(idx, true, false, activeName);
+  }, [scrollRequest, isOpenForDoc, applyActiveHighlight, highlightNames.active]);
 
   React.useEffect(() => {
     const wasVisible = wasVisibleRef.current;
@@ -445,7 +436,7 @@ export function SearchHighlightPlugin({
       clearAllHighlights();
     }
     if (!wasVisible && isHighlightVisible) {
-      requestAnimationFrame(() => refreshHighlights(false, true));
+      requestAnimationFrame(() => refreshHighlights(false, false));
     }
     wasVisibleRef.current = isHighlightVisible;
   }, [clearAllHighlights, isHighlightVisible, refreshHighlights]);
@@ -525,166 +516,5 @@ export function SearchHighlightPlugin({
     toggleFind,
   ]);
 
-  React.useEffect(() => {
-    if (!isActive) return;
-    const root = editor.getRootElement();
-    const scrollContainer = getScrollContainer(root);
-    if (!scrollContainer) return;
-
-    const updatePosition = () => {
-      const rect = scrollContainer.getBoundingClientRect();
-      setPillRight(window.innerWidth - rect.right + 14);
-      setPillTop(rect.top + 12);
-    };
-
-    updatePosition();
-    const observer = new ResizeObserver(updatePosition);
-    observer.observe(scrollContainer);
-    window.addEventListener("resize", updatePosition);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", updatePosition);
-    };
-  }, [editor, isActive]);
-
-  const navigateMatch = React.useCallback((direction: -1 | 1) => {
-    if (allRangesRef.current.length === 0) {
-      refreshHighlights(false, false);
-    }
-    const count = allRangesRef.current.length;
-    if (count <= 0) return;
-    const next = clampIndex(activeMatchIndex + direction, count);
-    activeMatchIndexRef.current = next;
-    setActiveMatchIndex(next);
-    setActiveIndex(documentId, next);
-    applyActiveHighlight(next, true, true, highlightNames.active);
-    inputRef.current?.focus();
-  }, [
-    activeMatchIndex,
-    applyActiveHighlight,
-    documentId,
-    highlightNames.active,
-    refreshHighlights,
-    setActiveIndex,
-  ]);
-
-  const handlePrev = React.useCallback(() => navigateMatch(-1), [navigateMatch]);
-  const handleNext = React.useCallback(() => navigateMatch(1), [navigateMatch]);
-
-  if (!isActive) return null;
-
-  return createPortal(
-    <div
-      ref={containerRef}
-      className="fixed z-40"
-      style={{ top: pillTop, right: pillRight }}
-    >
-      <button
-        type="button"
-        data-testid="note-find-trigger"
-        onClick={toggleFind}
-        aria-label="Find in note"
-        aria-expanded={isOpenForDoc}
-        className={
-          "flex h-8 w-8 items-center justify-center rounded-full border transition-all duration-200 " +
-          (isOpenForDoc
-            ? "border-[#C14B55]/30 bg-[#C14B55]/15 text-[#C14B55]"
-            : "border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 hover:bg-[#C14B55]/15 hover:text-[#C14B55] hover:border-[#C14B55]/30")
-        }
-      >
-        <Search className="h-4 w-4" />
-      </button>
-
-      {isOpenForDoc ? (
-        <div
-          data-testid="note-find-panel"
-          className="absolute right-0 top-10 flex items-center gap-1 rounded-lg border border-[hsl(var(--border))] bg-popover px-1 py-1 shadow-md"
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <input
-            ref={inputRef}
-            data-testid="note-find-input"
-            value={query}
-            onChange={(event) => {
-              setQuery(documentId, normalizeQueryInput(event.target.value));
-              setActiveIndex(documentId, 0);
-            }}
-            onKeyDown={(event) => {
-              if (isFindShortcut(event)) {
-                event.preventDefault();
-                event.stopPropagation();
-                closeFind();
-                return;
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                closeFind();
-                return;
-              }
-              if (event.key === "Enter") {
-                event.preventDefault();
-                if (event.shiftKey) {
-                  handlePrev();
-                } else {
-                  handleNext();
-                }
-              }
-            }}
-            className="h-7 w-48 bg-transparent px-2 text-xs text-[hsl(var(--foreground))] outline-none"
-            placeholder="Find in note..."
-            aria-label="Find in note"
-          />
-          <span
-            data-testid="note-find-counter"
-            className="w-12 text-center text-xs text-[hsl(var(--muted-foreground))]"
-          >
-            {matchCount > 0 ? `${activeMatchIndex + 1}/${matchCount}` : "0/0"}
-          </span>
-          <button
-            type="button"
-            data-testid="note-find-prev"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={handlePrev}
-            disabled={matchCount === 0}
-            className={
-              "inline-flex h-6 w-6 items-center justify-center rounded " +
-              (matchCount > 0
-                ? "hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-                : "opacity-40")
-            }
-            aria-label="Previous match"
-          >
-            <ChevronUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            data-testid="note-find-next"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={handleNext}
-            disabled={matchCount === 0}
-            className={
-              "inline-flex h-6 w-6 items-center justify-center rounded " +
-              (matchCount > 0
-                ? "hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-                : "opacity-40")
-            }
-            aria-label="Next match"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            data-testid="note-find-close"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={closeFind}
-            className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-            aria-label="Close find"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ) : null}
-    </div>,
-    document.body,
-  );
+  return null;
 }

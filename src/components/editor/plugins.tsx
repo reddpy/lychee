@@ -165,7 +165,7 @@ export function Plugins({
       <ClickToAppendPlugin />
 
       {/* Section position indicator */}
-      <SectionIndicatorPlugin />
+      <SectionIndicatorPlugin documentId={documentId} />
 
       {/* In-editor find + highlights (Cmd/Ctrl+F) */}
       <SearchHighlightPlugin documentId={documentId} isActive={isActive} />

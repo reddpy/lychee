@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, type KeyboardEvent, type MouseEvent } from "react";
+import { useState, useEffect, useMemo, useCallback, type KeyboardEvent, type MouseEvent } from "react";
 import { FileText, Layers2 } from "lucide-react";
 import { useDocumentStore } from "@/renderer/document-store";
 import { DocumentRow } from "@/shared/documents";
@@ -8,6 +8,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useSidebar } from "@/components/ui/sidebar";
+import { emitToolbarExclusive, onToolbarExclusive } from "@/components/lexical-editor";
 
 function buildAncestors(currentId: string, docs: DocumentRow[]): DocumentRow[] {
   const byId = new Map(docs.map((d) => [d.id, d]));
@@ -31,6 +32,10 @@ function buildChildren(currentId: string, docs: DocumentRow[]): DocumentRow[] {
 export function BreadcrumbPill() {
   const [open, setOpen] = useState(false);
   const { open: sidebarOpen } = useSidebar();
+
+  useEffect(() => {
+    return onToolbarExclusive("breadcrumb", () => setOpen(false));
+  }, []);
   const selectedId = useDocumentStore((s) => s.selectedId);
   const documents = useDocumentStore((s) => s.documents);
   const openTab = useDocumentStore((s) => s.openTab);
@@ -91,11 +96,14 @@ export function BreadcrumbPill() {
     return null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(next) => {
+      if (next) emitToolbarExclusive("breadcrumb");
+      setOpen(next);
+    }}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="absolute left-2 top-6 z-50 flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 transition-all duration-200 group cursor-pointer select-none hover:bg-[#C14B55]/15 hover:text-[#C14B55] hover:border-[#C14B55]/30 data-[state=open]:bg-[#C14B55]/15 data-[state=open]:text-[#C14B55] data-[state=open]:border-[#C14B55]/30"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 transition-all duration-200 group cursor-pointer select-none hover:bg-[#C14B55]/15 hover:text-[#C14B55] hover:border-[#C14B55]/30 data-[state=open]:bg-[#C14B55]/15 data-[state=open]:text-[#C14B55] data-[state=open]:border-[#C14B55]/30"
           aria-label="Navigate note hierarchy"
         >
           <Layers2 className="h-4 w-4 transition-colors duration-200" />
@@ -104,8 +112,8 @@ export function BreadcrumbPill() {
 
       <PopoverContent
         className="w-64 max-h-80 overflow-y-auto p-1"
-        align="start"
-        side="right"
+        align="end"
+        side="bottom"
         sideOffset={6}
       >
         <div className="px-2 py-1.5 text-[11px] font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide select-none">
