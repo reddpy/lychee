@@ -6,6 +6,8 @@ type SearchHighlightDocState = {
   query: string;
   isOpen: boolean;
   activeIndex: number;
+  matchCount: number;
+  scrollRequest: number;
   transient:
     | {
         query: string;
@@ -15,11 +17,21 @@ type SearchHighlightDocState = {
     | null;
 };
 
+const defaultDocState: SearchHighlightDocState = {
+  query: "",
+  isOpen: false,
+  activeIndex: 0,
+  matchCount: 0,
+  scrollRequest: 0,
+  transient: null,
+};
+
 type SearchHighlightState = {
   states: Record<string, SearchHighlightDocState>;
   openHighlight: (docId: string, query?: string, activeIndex?: number) => void;
   setQuery: (docId: string, query: string) => void;
   setActiveIndex: (docId: string, activeIndex: number) => void;
+  setMatchCount: (docId: string, matchCount: number) => void;
   setHighlight: (docId: string, query: string, activeIndex?: number) => void;
   setTransientJump: (
     docId: string,
@@ -29,6 +41,7 @@ type SearchHighlightState = {
   ) => void;
   clearTransientJump: (docId: string) => void;
   clearHighlight: (docId?: string) => void;
+  requestScroll: (docId: string) => void;
 };
 
 export const useSearchHighlightStore = create<SearchHighlightState>((set) => ({
@@ -40,13 +53,9 @@ export const useSearchHighlightStore = create<SearchHighlightState>((set) => ({
         window.clearTimeout(timer);
         transientClearTimers.delete(docId);
       }
-      const prev = state.states[docId] ?? {
-        query: "",
-        isOpen: false,
-        activeIndex: 0,
-        transient: null,
-      };
+      const prev = state.states[docId] ?? defaultDocState;
       const next: SearchHighlightDocState = {
+        ...prev,
         query: query ?? prev.query,
         isOpen: true,
         activeIndex: Math.max(0, activeIndex ?? prev.activeIndex),
@@ -56,12 +65,7 @@ export const useSearchHighlightStore = create<SearchHighlightState>((set) => ({
     }),
   setQuery: (docId, query) =>
     set((state) => {
-      const prev = state.states[docId] ?? {
-        query: "",
-        isOpen: false,
-        activeIndex: 0,
-        transient: null,
-      };
+      const prev = state.states[docId] ?? defaultDocState;
       return {
         states: {
           ...state.states,
@@ -71,12 +75,7 @@ export const useSearchHighlightStore = create<SearchHighlightState>((set) => ({
     }),
   setActiveIndex: (docId, activeIndex) =>
     set((state) => {
-      const prev = state.states[docId] ?? {
-        query: "",
-        isOpen: false,
-        activeIndex: 0,
-        transient: null,
-      };
+      const prev = state.states[docId] ?? defaultDocState;
       return {
         states: {
           ...state.states,
@@ -84,6 +83,16 @@ export const useSearchHighlightStore = create<SearchHighlightState>((set) => ({
             ...prev,
             activeIndex: Math.max(0, activeIndex),
           },
+        },
+      };
+    }),
+  setMatchCount: (docId, matchCount) =>
+    set((state) => {
+      const prev = state.states[docId] ?? defaultDocState;
+      return {
+        states: {
+          ...state.states,
+          [docId]: { ...prev, matchCount },
         },
       };
     }),
@@ -101,6 +110,7 @@ export const useSearchHighlightStore = create<SearchHighlightState>((set) => ({
       states: {
         ...state.states,
         [docId]: {
+          ...(state.states[docId] ?? defaultDocState),
           query,
           isOpen: true,
           activeIndex: Math.max(0, activeIndex),
@@ -132,12 +142,7 @@ export const useSearchHighlightStore = create<SearchHighlightState>((set) => ({
         transientClearTimers.delete(docId);
       }, Math.max(0, durationMs));
       transientClearTimers.set(docId, clearTimer);
-      const prev = state.states[docId] ?? {
-        query: "",
-        isOpen: false,
-        activeIndex: 0,
-        transient: null,
-      };
+      const prev = state.states[docId] ?? defaultDocState;
       const expiresAt = Date.now() + Math.max(0, durationMs);
       return {
         states: {
@@ -196,5 +201,14 @@ export const useSearchHighlightStore = create<SearchHighlightState>((set) => ({
         },
       };
     }),
+  requestScroll: (docId) =>
+    set((state) => {
+      const prev = state.states[docId] ?? defaultDocState;
+      return {
+        states: {
+          ...state.states,
+          [docId]: { ...prev, scrollRequest: prev.scrollRequest + 1 },
+        },
+      };
+    }),
 }));
-

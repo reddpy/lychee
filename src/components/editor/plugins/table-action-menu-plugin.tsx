@@ -11,7 +11,6 @@ import {
   $insertNodes,
   $isRangeSelection,
   $isTextNode,
-  $setSelection,
   COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
@@ -128,27 +127,45 @@ function TableActionBar({
   }, [editor])
 
   const insertRowAbove = useCallback(() => run(() => {
-    $insertTableRowAtSelection(false); $setSelection(null)
+    const newRow = $insertTableRowAtSelection(false)
+    if (newRow) {
+      const firstCell = newRow.getFirstChild()
+      if ($isTableCellNode(firstCell)) firstCell.selectStart()
+    }
   }), [run])
 
   const insertRowBelow = useCallback(() => run(() => {
-    $insertTableRowAtSelection(true); $setSelection(null)
+    const newRow = $insertTableRowAtSelection(true)
+    if (newRow) {
+      const firstCell = newRow.getFirstChild()
+      if ($isTableCellNode(firstCell)) firstCell.selectStart()
+    }
   }), [run])
 
   const insertColumnLeft = useCallback(() => run(() => {
-    $insertTableColumnAtSelection(false); $setSelection(null)
-  }), [run])
+    const cellKey = tableCellNode.getKey()
+    $insertTableColumnAtSelection(false)
+    const cell = $getNodeByKey(cellKey)
+    if (!cell) return
+    const newCell = cell.getPreviousSibling()
+    if ($isTableCellNode(newCell)) newCell.selectStart()
+  }), [run, tableCellNode])
 
   const insertColumnRight = useCallback(() => run(() => {
-    $insertTableColumnAtSelection(true); $setSelection(null)
-  }), [run])
+    const cellKey = tableCellNode.getKey()
+    $insertTableColumnAtSelection(true)
+    const cell = $getNodeByKey(cellKey)
+    if (!cell) return
+    const newCell = cell.getNextSibling()
+    if ($isTableCellNode(newCell)) newCell.selectStart()
+  }), [run, tableCellNode])
 
   const deleteRow = useCallback(() => run(() => {
-    $deleteTableRowAtSelection(); $setSelection(null)
+    $deleteTableRowAtSelection()
   }), [run])
 
   const deleteColumn = useCallback(() => run(() => {
-    $deleteTableColumnAtSelection(); $setSelection(null)
+    $deleteTableColumnAtSelection()
   }), [run])
 
   const deleteTable = useCallback(() => run(() => {
@@ -176,6 +193,10 @@ function TableActionBar({
 
   if (!position) return null
 
+  // Flip the dropdown upward when there isn't enough space below.
+  // Menu height ≈ 220px + trigger height ≈ 20px + gap 4px = ~244px; use 270 for safety.
+  const menuFlipped = (window.innerHeight - position.top) < 270
+
   const iconClass = "h-3.5 w-3.5"
   const btnBase = "flex w-full items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground"
   const insertBtnClass = `${btnBase} hover:bg-accent hover:text-accent-foreground`
@@ -200,7 +221,10 @@ function TableActionBar({
 
       {/* Expanded vertical menu */}
       {open && (
-        <div className="mt-1 flex flex-col rounded-md border border-[hsl(var(--border))] bg-popover p-1 shadow-md animate-in fade-in-0 slide-in-from-top-1">
+        <div
+          className="absolute right-0 flex flex-col rounded-md border border-[hsl(var(--border))] bg-popover p-1 shadow-md animate-in fade-in-0 slide-in-from-top-1"
+          style={menuFlipped ? { bottom: "calc(100% + 4px)" } : { top: "calc(100% + 4px)" }}
+        >
             <button
               className={isFirstRow ? `${insertBtnClass} pointer-events-none opacity-40` : insertBtnClass}
               onClick={isFirstRow ? undefined : insertRowAbove}
@@ -230,7 +254,13 @@ function TableActionBar({
 
             <div className={dividerClass} />
 
-            <button className={deleteBtnClass} onClick={deleteRow} title="Delete row">
+            <button
+              className={isFirstRow ? `${deleteBtnClass} pointer-events-none opacity-40` : deleteBtnClass}
+              onClick={isFirstRow ? undefined : deleteRow}
+              title="Delete row"
+              disabled={isFirstRow}
+              aria-disabled={isFirstRow}
+            >
               <X className={iconClass} />
               <Rows3 className={iconClass} />
               <span>Del Row</span>

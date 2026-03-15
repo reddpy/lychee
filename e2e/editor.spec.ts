@@ -293,7 +293,7 @@ test.describe('Editor — Slash Commands', () => {
     const title = window.locator('h1.editor-title');
     await title.click();
     await window.keyboard.press('Enter');
-    await window.keyboard.type('/');
+    await window.keyboard.type('/div');
     await window.waitForTimeout(200);
     await window.getByRole('option', { name: 'Divider' }).click();
     await window.waitForTimeout(200);

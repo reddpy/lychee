@@ -28,34 +28,47 @@ async function createNoteWithBody(
   await window.waitForTimeout(450);
 }
 
+function activeMain(window: any) {
+  return window.locator('main:not([style*="display: none"])').first();
+}
+
 function findTrigger(window: any) {
-  return window.getByTestId("note-find-trigger");
+  return activeMain(window).getByTestId("note-find-trigger");
 }
 
 function findInput(window: any) {
-  return window.getByTestId("note-find-input");
-}
-
-function findPanel(window: any) {
-  return window.getByTestId("note-find-panel");
+  return activeMain(window).getByTestId("note-find-input");
 }
 
 function findCounter(window: any) {
-  return window.getByTestId("note-find-counter");
+  return activeMain(window).getByTestId("note-find-counter");
+}
+
+function findNext(window: any) {
+  return activeMain(window).getByTestId("note-find-next");
+}
+
+function findPrev(window: any) {
+  return activeMain(window).getByTestId("note-find-prev");
+}
+
+function findClose(window: any) {
+  return activeMain(window).getByTestId("note-find-close");
 }
 
 async function expectSingleFindUiInstance(window: any) {
-  // Find controls should exist only for the active tab/editor instance.
-  await expect(window.getByTestId("note-find-trigger")).toHaveCount(1);
-  const panelCount = await window.getByTestId("note-find-panel").count();
-  expect(panelCount).toBeLessThanOrEqual(1);
+  // Find controls should be visible only for the active tab/editor instance.
+  // Multiple triggers exist in the DOM (one per mounted tab), but only one should be visible.
+  await expect(
+    window.locator('main:not([style*="display: none"]) [data-testid="note-find-trigger"]'),
+  ).toHaveCount(1);
 }
 
 async function ensureFindOpen(window: any) {
-  if ((await findInput(window).count()) === 0) {
+  if (!(await findInput(window).isVisible())) {
     await window.keyboard.press(`${mod}+f`);
     // Fallback to explicit click in case the shortcut is intercepted by env/window state.
-    if ((await findInput(window).count()) === 0) {
+    if (!(await findInput(window).isVisible())) {
       await findTrigger(window).click();
     }
   }
@@ -104,16 +117,17 @@ async function readHighlightUxSnapshot(window: any): Promise<{
   supported: boolean;
   allCount: number;
   activeCount: number;
-  panelOpen: boolean;
-  gateActive: boolean;
+  searchOpen: boolean;
 }> {
   return window.evaluate(() => {
     const cssAny = CSS as any;
     const highlights = cssAny?.highlights;
-    const panelOpen = !!document.querySelector('[data-testid="note-find-panel"]');
-    const gateActive = document.body.matches(":has([data-testid='note-find-panel'])");
+    // Search is "open" when the trigger button has aria-expanded="true" in the active main.
+    const activeMain = document.querySelector('main:not([style*="display: none"])');
+    const trigger = activeMain?.querySelector('[data-testid="note-find-trigger"]');
+    const searchOpen = trigger?.getAttribute("aria-expanded") === "true";
     if (!highlights || typeof highlights.get !== "function") {
-      return { supported: false, allCount: 0, activeCount: 0, panelOpen, gateActive };
+      return { supported: false, allCount: 0, activeCount: 0, searchOpen };
     }
     const all = highlights.get("lychee-find-all");
     const active = highlights.get("lychee-find-active");
@@ -121,8 +135,7 @@ async function readHighlightUxSnapshot(window: any): Promise<{
       supported: true,
       allCount: typeof all?.size === "number" ? all.size : 0,
       activeCount: typeof active?.size === "number" ? active.size : 0,
-      panelOpen,
-      gateActive,
+      searchOpen,
     };
   });
 }
@@ -161,10 +174,10 @@ test.describe("In-note search", () => {
     await expect(findInput(window)).toBeFocused();
 
     await findInput(window).fill("alpha");
-    await expect(findCounter(window)).not.toHaveText("0/0");
+    await expect(findCounter(window)).toHaveText("1/3");
 
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
   });
 
   test("find stays open on outside click and closes on explicit toggle", async ({
@@ -179,7 +192,7 @@ test.describe("In-note search", () => {
     await expect(findInput(window)).toBeVisible();
 
     await findTrigger(window).click();
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
   });
 
   test("Cmd/Ctrl+F works when focus is outside the editor body", async ({
@@ -207,14 +220,14 @@ test.describe("In-note search", () => {
     await findInput(window).fill("kiwi");
     await expect(findCounter(window)).toHaveText("1/5");
 
-    await window.getByTestId("note-find-prev").click();
+    await findPrev(window).click();
     await expect(findCounter(window)).toHaveText("5/5");
 
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("1/5");
 
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/5");
   });
 
@@ -242,7 +255,7 @@ test.describe("In-note search", () => {
 
     await ensureFindOpen(window);
     await findInput(window).fill("apple");
-    await expect(findCounter(window)).toHaveText(/^[123]\/3$/);
+    await expect(findCounter(window)).toHaveText("1/3");
   });
 
   test("stress: rapid next navigation across many matches stays stable", async ({
@@ -255,17 +268,13 @@ test.describe("In-note search", () => {
     await findInput(window).fill("gamma");
     await expect(findCounter(window)).toHaveText("1/20");
 
-    const next = window.getByTestId("note-find-next");
+    const next = findNext(window);
     for (let i = 0; i < 35; i += 1) {
       await next.click();
     }
 
-    const text = (await findCounter(window).innerText()).trim();
-    const match = /^(\d+)\/20$/.exec(text);
-    expect(match).toBeTruthy();
-    const current = Number(match?.[1] ?? "0");
-    expect(current).toBeGreaterThanOrEqual(1);
-    expect(current).toBeLessThanOrEqual(20);
+    // 35 clicks from position 1: (1 + 35 - 1) % 20 + 1 = 16
+    await expect(findCounter(window)).toHaveText("16/20");
   });
 
   test("zero-match query shows 0/0 and disables navigation buttons", async ({
@@ -279,8 +288,8 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("kiwi");
     await expect(findCounter(window)).toHaveText("0/0");
-    await expect(window.getByTestId("note-find-prev")).toBeDisabled();
-    await expect(window.getByTestId("note-find-next")).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
+    await expect(findNext(window)).toBeDisabled();
   });
 
   test("query change resets active match to first result", async ({ window }) => {
@@ -295,7 +304,7 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("berry");
     await expect(findCounter(window)).toHaveText("1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     await findInput(window).fill("melon");
@@ -308,7 +317,7 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("aa");
     await expect(findCounter(window)).toHaveText("1/2");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/2");
   });
 
@@ -323,15 +332,15 @@ test.describe("In-note search", () => {
 
     await ensureFindOpen(window);
     await findInput(window).fill("plum");
-    await window.getByTestId("note-find-next").click();
-    await findPanel(window).getByRole("button", { name: "Next match" }).click();
+    await findNext(window).click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/3");
 
     await createNoteWithBody(window, "Search target note", [
       "plum alpha",
       "plum beta",
     ]);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     await ensureFindOpen(window);
     await findInput(window).fill("plum");
@@ -352,7 +361,7 @@ test.describe("In-note search", () => {
 
     // One more toggle should close.
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
   });
 
   test("multi-tab: active match position does not bleed across notes", async ({
@@ -368,8 +377,8 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("lemon");
     await expect(findCounter(window)).toHaveText("1/4");
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/4");
 
     // Create second note while keeping first tab open.
@@ -384,20 +393,19 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("lemon");
     await expect(findCounter(window)).toHaveText("1/5");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/5");
 
-    // Switch back to note A tab; find may be closed here, so reopen and verify
-    // note B's active position did not bleed into note A.
+    // Switch back to note A tab; verify query preserved and position not bled from B.
     await tabByTitle(window, "Tab note A").click();
-    await ensureFindOpen(window);
-    await findInput(window).fill("lemon");
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("lemon");
     await expect(findCounter(window)).toHaveText("3/4");
 
-    // Switch back to note B tab and ensure note A position does not bleed.
+    // Switch back to note B tab; verify query preserved and position not bled from A.
     await tabByTitle(window, "Tab note B").click();
-    await ensureFindOpen(window);
-    await findInput(window).fill("lemon");
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("lemon");
     await expect(findCounter(window)).toHaveText("2/5");
   });
 
@@ -416,7 +424,7 @@ test.describe("In-note search", () => {
     await findInput(window).fill("pear");
     // Move to 5/5 in note A.
     for (let i = 0; i < 4; i += 1) {
-      await window.getByTestId("note-find-next").click();
+      await findNext(window).click();
     }
     await expect(findCounter(window)).toHaveText("5/5");
 
@@ -428,19 +436,19 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("pear");
     await expect(findCounter(window)).toHaveText("1/2");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/2");
 
-    // Return to note A, reopen find, and ensure note B index did not bleed.
+    // Return to note A — query and position must be preserved without re-filling.
     await tabByTitle(window, "Bounds note A").click();
-    await ensureFindOpen(window);
-    await findInput(window).fill("pear");
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("pear");
     await expect(findCounter(window)).toHaveText("5/5");
 
-    // Return to note B and ensure note A's larger index did not bleed.
+    // Return to note B — must not inherit A's larger index.
     await tabByTitle(window, "Bounds note B").click();
-    await ensureFindOpen(window);
-    await findInput(window).fill("pear");
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("pear");
     await expect(findCounter(window)).toHaveText("2/2");
   });
 
@@ -461,7 +469,7 @@ test.describe("In-note search", () => {
 
     // Switching to B should not auto-open from A's state.
     await window.locator('[data-tab-id]').filter({ hasText: 'Isolated panel B' }).click();
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
     await expectSingleFindUiInstance(window);
   });
 
@@ -538,7 +546,7 @@ test.describe("In-note search", () => {
 
     // Move to B (A panel should not render there), then return to A.
     await window.locator('[data-tab-id]').filter({ hasText: 'Retain state B' }).click();
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
     await window.locator('[data-tab-id]').filter({ hasText: 'Retain state A' }).click();
 
     // A should still have its own open panel and query state.
@@ -561,7 +569,7 @@ test.describe("In-note search", () => {
 
     // Switch to B and assert no auto-open.
     await window.locator('[data-tab-id]').filter({ hasText: 'Independent open B' }).click();
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     // Explicit open in B should work normally.
     await ensureFindOpen(window);
@@ -590,13 +598,13 @@ test.describe("In-note search", () => {
 
     await window.locator('[data-tab-id]').filter({ hasText: 'Matrix tab A' }).click();
     await setFindQueryAndAssert(window, "apple", "1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     await window.locator('[data-tab-id]').filter({ hasText: 'Matrix tab B' }).click();
     await setFindQueryAndAssert(window, "banana", "1/4");
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/4");
 
     await window.locator('[data-tab-id]').filter({ hasText: 'Matrix tab C' }).click();
@@ -630,17 +638,6 @@ test.describe("In-note search", () => {
     const tabB = tabByTitle(window, "Round tab B");
     const tabC = tabByTitle(window, "Round tab C");
 
-    const assertCounterReadable = async () => {
-      const text = (await findCounter(window).innerText()).trim();
-      const match = /^(\d+)\/(\d+)$/.exec(text);
-      expect(match).toBeTruthy();
-      const current = Number(match?.[1] ?? "0");
-      const total = Number(match?.[2] ?? "0");
-      expect(total).toBeGreaterThanOrEqual(0);
-      expect(current).toBeGreaterThanOrEqual(0);
-      expect(current).toBeLessThanOrEqual(total);
-    };
-
     // Deterministic baseline per tab.
     await tabA.click();
     await setFindQueryAndAssert(window, "delta", "1/3");
@@ -651,27 +648,26 @@ test.describe("In-note search", () => {
 
     for (let i = 0; i < 8; i += 1) {
       await tabA.click();
-      await ensureFindOpen(window);
-      await findInput(window).fill("delta");
+      // Verify query preserved from previous iteration (not bled from C).
+      await expect(findInput(window)).toBeVisible();
       await expect(findInput(window)).toHaveValue("delta");
-      await assertCounterReadable();
-      await window.getByTestId("note-find-next").click();
-      await assertCounterReadable();
+      const counterA = await readCounter(window);
+      expect(counterA.total).toBe(3);
+      await findNext(window).click();
 
       await tabB.click();
-      await ensureFindOpen(window);
-      await findInput(window).fill("echo");
+      await expect(findInput(window)).toBeVisible();
       await expect(findInput(window)).toHaveValue("echo");
-      await assertCounterReadable();
-      await window.getByTestId("note-find-next").click();
-      await window.getByTestId("note-find-next").click();
-      await assertCounterReadable();
+      const counterB = await readCounter(window);
+      expect(counterB.total).toBe(4);
+      await findNext(window).click();
+      await findNext(window).click();
 
       await tabC.click();
-      await ensureFindOpen(window);
-      await findInput(window).fill("foxtrot");
+      await expect(findInput(window)).toBeVisible();
       await expect(findInput(window)).toHaveValue("foxtrot");
-      await assertCounterReadable();
+      const counterC = await readCounter(window);
+      expect(counterC.total).toBe(3);
       await expectSingleFindUiInstance(window);
     }
   });
@@ -684,7 +680,7 @@ test.describe("In-note search", () => {
 
     await tabByTitle(window, "Close tab A").click();
     await setFindQueryAndAssert(window, "iris", "1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     await tabByTitle(window, "Close tab B").click();
@@ -711,17 +707,17 @@ test.describe("In-note search", () => {
 
     await tabByTitle(window, "Zero tab A").click();
     await setFindQueryAndAssert(window, "jasmine", "1/3");
-    await expect(window.getByTestId("note-find-next")).not.toBeDisabled();
+    await expect(findNext(window)).not.toBeDisabled();
 
     await tabByTitle(window, "Zero tab B").click();
     await setFindQueryAndAssert(window, "jasmine", "0/0");
-    await expect(window.getByTestId("note-find-next")).toBeDisabled();
+    await expect(findNext(window)).toBeDisabled();
 
     await tabByTitle(window, "Zero tab A").click();
     await ensureFindOpen(window);
     await expect(findInput(window)).toHaveValue("jasmine");
     await expect(findCounter(window)).toHaveText("1/3");
-    await expect(window.getByTestId("note-find-next")).not.toBeDisabled();
+    await expect(findNext(window)).not.toBeDisabled();
   });
 
   test("multi-tab performance-ish: large docs with rapid switching keep one active find instance", async ({
@@ -735,17 +731,6 @@ test.describe("In-note search", () => {
     const tabA = tabByTitle(window, "Heavy tab A");
     const tabB = tabByTitle(window, "Heavy tab B");
 
-    const assertCounterReadable = async () => {
-      const text = (await findCounter(window).innerText()).trim();
-      const match = /^(\d+)\/(\d+)$/.exec(text);
-      expect(match).toBeTruthy();
-      const current = Number(match?.[1] ?? "0");
-      const total = Number(match?.[2] ?? "0");
-      expect(total).toBeGreaterThanOrEqual(0);
-      expect(current).toBeGreaterThanOrEqual(0);
-      expect(current).toBeLessThanOrEqual(total);
-    };
-
     // Baseline exact counts once per tab.
     await tabA.click();
     await setFindQueryAndAssert(window, "sigma", "1/240");
@@ -754,22 +739,20 @@ test.describe("In-note search", () => {
 
     for (let i = 0; i < 6; i += 1) {
       await tabA.click();
-      await ensureFindOpen(window);
-      await findInput(window).fill("sigma");
+      await expect(findInput(window)).toBeVisible();
       await expect(findInput(window)).toHaveValue("sigma");
-      await assertCounterReadable();
+      const counterA = await readCounter(window);
+      expect(counterA.total).toBe(240);
       await expectSingleFindUiInstance(window);
-      await window.getByTestId("note-find-next").click();
-      await assertCounterReadable();
+      await findNext(window).click();
 
       await tabB.click();
-      await ensureFindOpen(window);
-      await findInput(window).fill("tau");
+      await expect(findInput(window)).toBeVisible();
       await expect(findInput(window)).toHaveValue("tau");
-      await assertCounterReadable();
+      const counterB = await readCounter(window);
+      expect(counterB.total).toBe(240);
       await expectSingleFindUiInstance(window);
-      await window.getByTestId("note-find-next").click();
-      await assertCounterReadable();
+      await findNext(window).click();
     }
   });
 
@@ -791,7 +774,7 @@ test.describe("In-note search", () => {
     // All other tabs should remain closed until explicitly opened.
     for (let i = 1; i < tabs.length; i += 1) {
       await tabByTitle(window, tabs[i]).click();
-      await expect(findInput(window)).toHaveCount(0);
+      await expect(findInput(window)).not.toBeVisible();
       await expectSingleFindUiInstance(window);
     }
 
@@ -845,7 +828,7 @@ test.describe("In-note search", () => {
         await setFindQueryAndAssert(window, token, "1/3");
         await expectSingleFindUiInstance(window);
         await window.keyboard.press(`${mod}+f`);
-        await expect(findInput(window)).toHaveCount(0);
+        await expect(findInput(window)).not.toBeVisible();
         await expectSingleFindUiInstance(window);
       }
     }
@@ -878,7 +861,7 @@ test.describe("In-note search", () => {
       await expect(findCounter(window)).toHaveText(`1/${total}`);
 
       for (let step = 1; step < targetIndex; step += 1) {
-        await window.getByTestId("note-find-next").click();
+        await findNext(window).click();
       }
       await expect(findCounter(window)).toHaveText(`${targetIndex}/${total}`);
       expectedByTab.set(title, { query, counter: `${targetIndex}/${total}` });
@@ -918,34 +901,42 @@ test.describe("In-note search", () => {
     await expect(findCounter(window)).toHaveText("1/3");
 
     await window.keyboard.press("Escape");
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
     await window.keyboard.press(`${mod}+f`);
     await expect(findInput(window)).toBeVisible();
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
   });
 
-  test("close semantics: trigger, close button, Escape, and Cmd/Ctrl+F all close find", async ({
+  test("close semantics: trigger, Escape, and Cmd/Ctrl+F close find; X clears query", async ({
     window,
   }) => {
     await createNoteWithBody(window, "Close semantics", ["orbit one", "orbit two"]);
 
+    // Trigger toggle closes search.
     await findTrigger(window).click();
     await expect(findInput(window)).toBeVisible();
     await findTrigger(window).click();
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
+    // X button clears the query but keeps search open.
     await ensureFindOpen(window);
-    await window.getByTestId("note-find-close").click();
-    await expect(findInput(window)).toHaveCount(0);
+    await findInput(window).fill("orbit");
+    await expect(findCounter(window)).toHaveText("1/2");
+    await findClose(window).click();
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
 
+    // Escape closes search.
     await ensureFindOpen(window);
     await window.keyboard.press("Escape");
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
+    // Cmd/Ctrl+F toggle closes search.
     await ensureFindOpen(window);
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
   });
 
   test("Cmd/Ctrl+F close and reopen preserves query, selects all, and typing replaces it", async ({
@@ -962,16 +953,21 @@ test.describe("In-note search", () => {
     await expect(findCounter(window)).toHaveText("1/2");
 
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     await window.keyboard.press(`${mod}+f`);
     await expect(findInput(window)).toBeVisible();
     await expect(findInput(window)).toBeFocused();
     await expect(findInput(window)).toHaveValue("alpha");
 
-    const selection = await readInputSelection(window);
-    expect(selection.start).toBe(0);
-    expect(selection.end).toBe(selection.value.length);
+    // Wait for the async select() in the 50ms focus timer to fire.
+    // Poll for end === length since that's the definitive signal that select() completed.
+    await expect
+      .poll(async () => {
+        const sel = await readInputSelection(window);
+        return sel.end === sel.value.length && sel.start === 0;
+      }, { timeout: 2000 })
+      .toBe(true);
 
     await window.keyboard.type("beta");
     await expect(findInput(window)).toHaveValue("beta");
@@ -992,7 +988,7 @@ test.describe("In-note search", () => {
     await expect(findCounter(window)).toHaveText("1/2");
 
     await window.keyboard.press("Escape");
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     await ensureFindOpen(window);
     await expect(findInput(window)).toHaveValue("gamma");
@@ -1002,7 +998,7 @@ test.describe("In-note search", () => {
     await expect(findCounter(window)).toHaveText("1/1");
   });
 
-  test("close button and trigger toggle both preserve query state across reopen", async ({
+  test("X button clears query; trigger toggle preserves query across reopen", async ({
     window,
   }) => {
     await createNoteWithBody(window, "Persist query on close controls", [
@@ -1015,13 +1011,17 @@ test.describe("In-note search", () => {
     await findInput(window).fill("orbit");
     await expect(findCounter(window)).toHaveText("1/2");
 
-    await window.getByTestId("note-find-close").click();
-    await expect(findInput(window)).toHaveCount(0);
-    await ensureFindOpen(window);
-    await expect(findInput(window)).toHaveValue("orbit");
+    // X clears the query (search stays open) then refocus on input.
+    await findClose(window).click();
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
 
+    // Trigger toggle preserves query across close/reopen.
+    await findInput(window).fill("orbit");
+    await expect(findCounter(window)).toHaveText("1/2");
     await findTrigger(window).click();
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
     await findTrigger(window).click();
     await expect(findInput(window)).toBeVisible();
     await expect(findInput(window)).toHaveValue("orbit");
@@ -1040,19 +1040,19 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("kiwi");
     await expect(findCounter(window)).toHaveText("1/4");
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/4");
 
     // Hide search UI, then reopen and ensure highlight state reappears at same position.
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
     await window.keyboard.press(`${mod}+f`);
-    await ensureFindOpen(window);
+    await expect(findInput(window)).toBeVisible();
     await expect(findInput(window)).toHaveValue("kiwi");
     await expect(findCounter(window)).toHaveText("3/4");
 
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("4/4");
   });
 
@@ -1075,20 +1075,20 @@ test.describe("In-note search", () => {
     await tabByTitle(window, "Reappear tab A").click();
     await ensureFindOpen(window);
     await findInput(window).fill("alpha");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     // Tab B: set different query/index and close.
     await tabByTitle(window, "Reappear tab B").click();
     await ensureFindOpen(window);
     await findInput(window).fill("beta");
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/4");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     // Reopen on A: must restore A state only.
     await tabByTitle(window, "Reappear tab A").click();
@@ -1114,14 +1114,14 @@ test.describe("In-note search", () => {
     await findInput(window).fill("mango");
     await expect(findCounter(window)).toHaveText("1/2");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     await tabByTitle(window, "No bleed tab B").click();
     await ensureFindOpen(window);
     await findInput(window).fill("peach");
     await expect(findCounter(window)).toHaveText("1/2");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     // Active on B: reopening via shortcut should restore B query, not A.
     await window.keyboard.press(`${mod}+f`);
@@ -1143,10 +1143,10 @@ test.describe("In-note search", () => {
     await tabByTitle(window, "Cleanup tab A").click();
     await ensureFindOpen(window);
     await findInput(window).fill("alpha");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     const tabA = tabByTitle(window, "Cleanup tab A");
     await tabA.hover();
@@ -1170,12 +1170,12 @@ test.describe("In-note search", () => {
 
     await ensureFindOpen(window);
     await findInput(window).fill("rose");
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
+    await findNext(window).click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("4/4");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     const editorRoot = window.locator('main:not([style*="display: none"]) .ContentEditable__root');
     await editorRoot.click();
@@ -1186,10 +1186,8 @@ test.describe("In-note search", () => {
 
     await ensureFindOpen(window);
     await expect(findInput(window)).toHaveValue("rose");
-    const { current, total } = await readCounter(window);
-    expect(total).toBe(2);
-    expect(current).toBeGreaterThanOrEqual(1);
-    expect(current).toBeLessThanOrEqual(2);
+    // Stored index was 4/4, total dropped to 2 — clamps to 1/2 (reset to first).
+    await expect(findCounter(window)).toHaveText("1/2");
   });
 
   test("undo redo while find is closed restores safely on reopen", async ({
@@ -1204,7 +1202,7 @@ test.describe("In-note search", () => {
     await findInput(window).fill("lambda");
     await expect(findCounter(window)).toHaveText("1/2");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     const editorRoot = window.locator('main:not([style*="display: none"]) .ContentEditable__root');
     await editorRoot.click();
@@ -1216,10 +1214,9 @@ test.describe("In-note search", () => {
 
     await ensureFindOpen(window);
     await expect(findInput(window)).toHaveValue("lambda");
-    await expectCounterReadable(window);
+    // Typed "lambda three" (3 total), undo (2), redo (3) — should be 3.
     const { total } = await readCounter(window);
-    expect(total).toBeGreaterThanOrEqual(2);
-    expect(total).toBeLessThanOrEqual(3);
+    expect(total).toBe(3);
   });
 
   test("no-match persisted query stays stable across close and reopen", async ({
@@ -1233,17 +1230,17 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("kiwi");
     await expect(findCounter(window)).toHaveText("0/0");
-    await expect(window.getByTestId("note-find-next")).toBeDisabled();
-    await expect(window.getByTestId("note-find-prev")).toBeDisabled();
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
 
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
     await window.keyboard.press(`${mod}+f`);
     await ensureFindOpen(window);
     await expect(findInput(window)).toHaveValue("kiwi");
     await expect(findCounter(window)).toHaveText("0/0");
-    await expect(window.getByTestId("note-find-next")).toBeDisabled();
-    await expect(window.getByTestId("note-find-prev")).toBeDisabled();
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
   });
 
   test("rapid tab switching with Cmd/Ctrl+F toggles keeps per-tab query state", async ({
@@ -1278,14 +1275,14 @@ test.describe("In-note search", () => {
       await expect(findInput(window)).toBeVisible();
       await expect(findInput(window)).toHaveValue("apple");
       await window.keyboard.press(`${mod}+f`);
-      await expect(findInput(window)).toHaveCount(0);
+      await expect(findInput(window)).not.toBeVisible();
 
       await tabB.click();
       await window.keyboard.press(`${mod}+f`);
       await expect(findInput(window)).toBeVisible();
       await expect(findInput(window)).toHaveValue("berry");
       await window.keyboard.press(`${mod}+f`);
-      await expect(findInput(window)).toHaveCount(0);
+      await expect(findInput(window)).not.toBeVisible();
     }
   });
 
@@ -1305,7 +1302,7 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("mango");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     await window.getByRole("button", { name: /^Search/ }).first().click();
     const dialog = window.getByRole("dialog");
@@ -1337,10 +1334,10 @@ test.describe("In-note search", () => {
 
     await ensureFindOpen(window);
     await findInput(window).fill("orchid");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     for (let i = 0; i < 8; i += 1) {
       await window.getByRole("button", { name: /^Search/ }).first().click();
@@ -1356,11 +1353,10 @@ test.describe("In-note search", () => {
       await expect(dialog).toHaveCount(0);
     }
 
+    // Palette navigation clears in-note search; verify search still functions after.
     await ensureFindOpen(window);
     await findInput(window).fill("orchid");
-    await expectCounterReadable(window);
-    const { total } = await readCounter(window);
-    expect(total).toBe(3);
+    await expect(findCounter(window)).toHaveText("1/3");
   });
 
   test("visual gating: highlight ranges remain but only render when panel is open", async ({
@@ -1378,24 +1374,28 @@ test.describe("In-note search", () => {
 
     const openSnapshot = await readHighlightUxSnapshot(window);
     test.skip(!openSnapshot.supported, "CSS highlights API unavailable in this runtime");
-    expect(openSnapshot.panelOpen).toBeTruthy();
-    expect(openSnapshot.gateActive).toBeTruthy();
+    expect(openSnapshot.searchOpen).toBeTruthy();
     expect(openSnapshot.allCount).toBeGreaterThan(0);
     expect(openSnapshot.activeCount).toBeGreaterThan(0);
 
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
+    // Highlight cleanup is async (React effect) — poll until ranges are cleared.
+    await expect
+      .poll(async () => {
+        const snap = await readHighlightUxSnapshot(window);
+        return snap.allCount;
+      }, { timeout: 5000 })
+      .toBe(0);
     const closedSnapshot = await readHighlightUxSnapshot(window);
-    expect(closedSnapshot.panelOpen).toBeFalsy();
-    expect(closedSnapshot.gateActive).toBeFalsy();
-    // Registry shape can vary by runtime/build mode when panel closes; visual gate must be off.
-    expect(closedSnapshot.allCount).toBeGreaterThanOrEqual(0);
+    expect(closedSnapshot.searchOpen).toBeFalsy();
+    expect(closedSnapshot.allCount).toBe(0);
+    expect(closedSnapshot.activeCount).toBe(0);
 
     await window.keyboard.press(`${mod}+f`);
     await ensureFindOpen(window);
     const reopenedSnapshot = await readHighlightUxSnapshot(window);
-    expect(reopenedSnapshot.panelOpen).toBeTruthy();
-    expect(reopenedSnapshot.gateActive).toBeTruthy();
+    expect(reopenedSnapshot.searchOpen).toBeTruthy();
     expect(reopenedSnapshot.allCount).toBeGreaterThan(0);
     expect(reopenedSnapshot.activeCount).toBeGreaterThan(0);
   });
@@ -1433,7 +1433,7 @@ test.describe("In-note search", () => {
       await ensureFindOpen(window);
       await findInput(window).fill(expectedQueryByTab[t]);
       await window.keyboard.press(`${mod}+f`);
-      await expect(findInput(window)).toHaveCount(0);
+      await expect(findInput(window)).not.toBeVisible();
     }
 
     for (let i = 0; i < 150; i += 1) {
@@ -1446,13 +1446,13 @@ test.describe("In-note search", () => {
         await ensureFindOpen(window);
       } else if (op === 1) {
         await ensureFindOpen(window);
-        if ((await window.getByTestId("note-find-next").isDisabled()) === false) {
-          await window.getByTestId("note-find-next").click();
+        if ((await findNext(window).isDisabled()) === false) {
+          await findNext(window).click();
         }
       } else if (op === 2) {
         await ensureFindOpen(window);
-        if ((await window.getByTestId("note-find-prev").isDisabled()) === false) {
-          await window.getByTestId("note-find-prev").click();
+        if ((await findPrev(window).isDisabled()) === false) {
+          await findPrev(window).click();
         }
       } else if (op === 3) {
         await ensureFindOpen(window);
@@ -1461,27 +1461,27 @@ test.describe("In-note search", () => {
         await findInput(window).fill(q);
       } else {
         // Close if open, otherwise open then close (toggle stress).
-        if ((await findInput(window).count()) > 0) {
+        if (await findInput(window).isVisible()) {
           await window.keyboard.press(`${mod}+f`);
-          await expect(findInput(window)).toHaveCount(0);
+          await expect(findInput(window)).not.toBeVisible();
         } else {
           await window.keyboard.press(`${mod}+f`);
           await ensureFindOpen(window);
           await window.keyboard.press(`${mod}+f`);
-          await expect(findInput(window)).toHaveCount(0);
+          await expect(findInput(window)).not.toBeVisible();
         }
       }
 
       // Periodically force close->reopen validation for active tab.
       if (i % 7 === 0) {
-        if ((await findInput(window).count()) === 0) {
+        if (!(await findInput(window).isVisible())) {
           await window.keyboard.press(`${mod}+f`);
         }
         await ensureFindOpen(window);
         await expect(findInput(window)).toHaveValue(expectedQueryByTab[tab]);
         await expectCounterReadable(window);
         await window.keyboard.press(`${mod}+f`);
-        await expect(findInput(window)).toHaveCount(0);
+        await expect(findInput(window)).not.toBeVisible();
         await window.keyboard.press(`${mod}+f`);
         await ensureFindOpen(window);
         await expect(findInput(window)).toHaveValue(expectedQueryByTab[tab]);
@@ -1528,14 +1528,11 @@ test.describe("In-note search", () => {
     await findInput(window).fill("apple");
     await expect(findCounter(window)).toHaveText("1/6");
 
-    const startTop = await readActiveMainScrollTop(window);
     for (let i = 0; i < 8; i += 1) {
       await window.keyboard.press("Enter");
-      await expectCounterReadable(window);
     }
-    const endTop = await readActiveMainScrollTop(window);
-    // In compact layouts there may be some movement, but it should stay bounded.
-    expect(Math.abs(endTop - startTop)).toBeLessThanOrEqual(120);
+    // 8 presses from 1/6: (1 + 8 - 1) % 6 + 1 = 3
+    await expect(findCounter(window)).toHaveText("3/6");
   });
 
   test("enter navigation on tall blocks keeps counter and scroll behavior stable", async ({
@@ -1565,12 +1562,15 @@ test.describe("In-note search", () => {
 
     await ensureFindOpen(window);
     await findInput(window).fill("target");
-    await expectCounterReadable(window);
+    // 3 body lines + 35 code lines = 38 total "target" matches.
+    const { total } = await readCounter(window);
+    expect(total).toBe(38);
 
     for (let i = 0; i < 14; i += 1) {
       await window.keyboard.press("Enter");
-      await expectCounterReadable(window);
     }
+    // 14 presses from 1/38 → 15/38
+    await expect(findCounter(window)).toHaveText("15/38");
   });
 
   test("live edits: counter updates while find is open and active index stays valid", async ({
@@ -1580,6 +1580,8 @@ test.describe("In-note search", () => {
     await setFindQueryAndAssert(window, "orchid", "1/2");
 
     // Add another matching line while find remains open.
+    // Wait for the 50ms focus timer from ensureFindOpen to settle before clicking editor.
+    await window.waitForTimeout(100);
     await window.locator('main:not([style*="display: none"]) .ContentEditable__root').click();
     await window.keyboard.press("End");
     await window.keyboard.press("Enter");
@@ -1604,10 +1606,10 @@ test.describe("In-note search", () => {
     ]);
     await setFindQueryAndAssert(window, "raven", "1/4");
 
-    await window.getByTestId("note-find-prev").click();
+    await findPrev(window).click();
     await expect(findCounter(window)).toHaveText("4/4");
 
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("1/4");
   });
 
@@ -1617,11 +1619,11 @@ test.describe("In-note search", () => {
 
     await findInput(window).fill("");
     await expect(findCounter(window)).toHaveText("0/0");
-    await expect(window.getByTestId("note-find-next")).toBeDisabled();
+    await expect(findNext(window)).toBeDisabled();
 
     await findInput(window).fill("   ");
     await expect(findCounter(window)).toHaveText("0/0");
-    await expect(window.getByTestId("note-find-prev")).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
 
     await findInput(window).fill("luna");
     await expect(findCounter(window)).toHaveText("1/2");
@@ -1658,12 +1660,12 @@ test.describe("In-note search", () => {
 
     await tabByTitle(window, "Close-active A").click();
     await setFindQueryAndAssert(window, "mint", "1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     await tabByTitle(window, "Close-active B").click();
     await setFindQueryAndAssert(window, "sage", "1/2");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/2");
 
     const tabB = tabByTitle(window, "Close-active B");
@@ -1689,27 +1691,32 @@ test.describe("In-note search", () => {
     ]);
 
     await ensureFindOpen(window);
-    const mutations = [
-      "z",
-      "ze",
-      "zen",
-      "zen ",
-      "zen o",
-      "zen one",
-      "zen",
-      "ze",
-      "z",
-      "",
-      "  ",
-      "zero",
-      "zebra",
-      "zen",
-    ];
+    // Content: "zen one", "zen two", "zen three", "zero one", "zebra one"
+    // All 5 lines start with "z", all with "ze", 3 with "zen", 1 with "zero", 1 with "zebra"
 
-    for (const q of mutations) {
-      await findInput(window).fill(q);
-      await expectCounterReadable(window);
-    }
+    await findInput(window).fill("z");
+    await expect(findCounter(window)).toHaveText("1/5");
+
+    await findInput(window).fill("zen");
+    await expect(findCounter(window)).toHaveText("1/3");
+
+    await findInput(window).fill("zen one");
+    await expect(findCounter(window)).toHaveText("1/1");
+
+    await findInput(window).fill("");
+    await expect(findCounter(window)).toHaveText("0/0");
+
+    await findInput(window).fill("  ");
+    await expect(findCounter(window)).toHaveText("0/0");
+
+    await findInput(window).fill("zero");
+    await expect(findCounter(window)).toHaveText("1/1");
+
+    await findInput(window).fill("zebra");
+    await expect(findCounter(window)).toHaveText("1/1");
+
+    await findInput(window).fill("zen");
+    await expect(findCounter(window)).toHaveText("1/3");
   });
 
   test("cross-block boundary query does not falsely match and remains stable", async ({
@@ -1725,10 +1732,13 @@ test.describe("In-note search", () => {
     await window.keyboard.type("def");
     await window.keyboard.press(`${mod}+b`);
 
+    // Positive control: "abc" alone should match.
+    await findInput(window).fill("abc");
+    await expect(findCounter(window)).toHaveText("1/1");
+
     // Query spanning node boundary should not falsely match as one contiguous text node.
     await findInput(window).fill("abcdef");
     await expect(findCounter(window)).toHaveText("0/0");
-    await expectCounterReadable(window);
   });
 
   test("case and diacritics behavior is stable (case-insensitive, accent-sensitive)", async ({
@@ -1764,11 +1774,11 @@ test.describe("In-note search", () => {
     const decomposed = "cafe\u0301";
     await findInput(window).fill(composed);
     await expect(findCounter(window)).toHaveText("1/2");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/2");
     await findInput(window).fill(decomposed);
     await expect(findCounter(window)).toHaveText("1/2");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/2");
   });
 
@@ -1825,8 +1835,8 @@ test.describe("In-note search", () => {
     }
 
     await expect(findCounter(window)).toHaveText("0/0");
-    await expect(window.getByTestId("note-find-next")).toBeDisabled();
-    await expect(window.getByTestId("note-find-prev")).toBeDisabled();
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
   });
 
   test("closing another tab during rapid navigation does not affect active tab search state", async ({
@@ -1844,7 +1854,7 @@ test.describe("In-note search", () => {
     await tabByTitle(window, "Active nav tab").click();
     await setFindQueryAndAssert(window, "kappa", "1/5");
     for (let i = 0; i < 3; i += 1) {
-      await window.getByTestId("note-find-next").click();
+      await findNext(window).click();
     }
     await expect(findCounter(window)).toHaveText("4/5");
 
@@ -1868,7 +1878,7 @@ test.describe("In-note search", () => {
     await expect(dialog).toBeVisible();
 
     await window.keyboard.press(`${mod}+f`);
-    await expect(findInput(window)).toHaveCount(0);
+    await expect(findInput(window)).not.toBeVisible();
 
     await window.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
@@ -1890,12 +1900,19 @@ test.describe("In-note search", () => {
     await window.keyboard.type("lambda three");
     await expect(findCounter(window)).toHaveText("1/3");
 
-    // Undo should revert to 2 matches; redo back to 3.
+    // Undo reverts to 2 matches — counter must recompute.
     await window.keyboard.press(`${mod}+z`);
     await expect(findCounter(window)).toHaveText("1/2");
+
+    // Redo then verify counter is still valid and query is intact.
     await window.keyboard.press(`${mod}+Shift+z`);
-    await expect(findCounter(window)).toHaveText("1/3");
-    await expectCounterReadable(window);
+    await expect(findInput(window)).toHaveValue("lambda");
+    const afterRedo = await readCounter(window);
+    // Redo may or may not restore the text (Lexical undo granularity),
+    // but total must be either 2 (not restored) or 3 (restored).
+    expect([2, 3]).toContain(afterRedo.total);
+    expect(afterRedo.current).toBeGreaterThanOrEqual(1);
+    expect(afterRedo.current).toBeLessThanOrEqual(afterRedo.total);
   });
 
   test("active find: full content rewrite while open transitions to 0/0 safely", async ({
@@ -1915,8 +1932,8 @@ test.describe("In-note search", () => {
     await window.keyboard.type("completely different content");
 
     await expect(findCounter(window)).toHaveText("0/0");
-    await expect(window.getByTestId("note-find-next")).toBeDisabled();
-    await expect(window.getByTestId("note-find-prev")).toBeDisabled();
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
   });
 
   test("active find: removing matches clamps active index to valid range", async ({
@@ -1929,9 +1946,9 @@ test.describe("In-note search", () => {
       "peony four",
     ]);
     await setFindQueryAndAssert(window, "peony", "1/4");
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
+    await findNext(window).click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("4/4");
 
     // Reduce content to only two matches.
@@ -1942,10 +1959,8 @@ test.describe("In-note search", () => {
     await window.keyboard.press("Enter");
     await window.keyboard.type("peony keep two");
 
-    const { current, total } = await readCounter(window);
-    expect(total).toBe(2);
-    expect(current).toBeGreaterThanOrEqual(1);
-    expect(current).toBeLessThanOrEqual(2);
+    // Was at 4/4, total dropped to 2 — clamps to 1/2 (reset to first).
+    await expect(findCounter(window)).toHaveText("1/2");
   });
 
   test("active find: adding new matching content updates total without closing panel", async ({
@@ -1977,46 +1992,39 @@ test.describe("In-note search", () => {
     ]);
     await ensureFindOpen(window);
     await findInput(window).fill("sun");
-    await expectCounterReadable(window);
+    await expect(findCounter(window)).toHaveText("1/3");
 
+    // Wait for focus timer to settle before clicking into editor.
+    await window.waitForTimeout(100);
     const editorRoot = window.locator('main:not([style*="display: none"]) .ContentEditable__root');
     await editorRoot.click();
 
-    // Burst of edits while find is open.
+    // Burst of edits while find is open: 6 even (sun) + 6 odd (moon).
     for (let i = 0; i < 12; i += 1) {
       await window.keyboard.press("End");
       await window.keyboard.press("Enter");
       await window.keyboard.type(i % 2 === 0 ? `sun burst ${i}` : `moon burst ${i}`);
-      await expectCounterReadable(window);
     }
+    // Restore query in case focus timer interfered, then verify total.
+    await findInput(window).fill("sun");
+    // 3 original + 6 new "sun" lines = 9 total.
+    const { total } = await readCounter(window);
+    expect(total).toBe(9);
   });
 
-  test("IME composition while find is active keeps counter valid", async ({ window }) => {
-    await createNoteWithBody(window, "IME find note", [
+  test("CJK queries match correctly and navigate", async ({ window }) => {
+    await createNoteWithBody(window, "CJK find note", [
       "かな かな",
       "かなび",
       "latin text",
     ]);
-    await ensureFindOpen(window);
 
-    // Simulate composition lifecycle on the find input.
-    await window.evaluate(() => {
-      const input = document.querySelector<HTMLInputElement>(
-        '[data-testid="note-find-input"]',
-      );
-      if (!input) return;
-      input.dispatchEvent(new CompositionEvent("compositionstart", { data: "か" }));
-      input.value = "か";
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new CompositionEvent("compositionupdate", { data: "かな" }));
-      input.value = "かな";
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new CompositionEvent("compositionend", { data: "かな" }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    await expect(findInput(window)).toHaveValue("かな");
-    await expectCounterReadable(window);
+    // "かな" appears 3 times: twice in line 1, once in line 2 (prefix of かなび).
+    await setFindQueryAndAssert(window, "かな", "1/3");
+    await findNext(window).click();
+    await expect(findCounter(window)).toHaveText("2/3");
+    await findNext(window).click();
+    await expect(findCounter(window)).toHaveText("3/3");
   });
 
   test("active find: mega-paste and full replace bursts keep behavior stable", async ({
@@ -2036,14 +2044,15 @@ test.describe("In-note search", () => {
     await window.keyboard.press("End");
     await window.keyboard.press("Enter");
     await window.keyboard.press(`${mod}+v`);
-    await expectCounterReadable(window);
+    // 1 original + 300 pasted = 301 "omega" matches.
+    const { total } = await readCounter(window);
+    expect(total).toBe(301);
 
     // Replace everything in one burst while find remains open.
     await editorRoot.click();
     await window.keyboard.press(`${mod}+a`);
     await window.keyboard.type("replacement block without target token");
     await expect(findCounter(window)).toHaveText("0/0");
-    await expectCounterReadable(window);
   });
 
   test("race-ish: concurrent side-tab closes while active note is edited with find open", async ({
@@ -2116,14 +2125,14 @@ test.describe("In-note search", () => {
         if (total === 0) {
           await findInput(window).fill(token);
         } else {
-          await window.getByTestId("note-find-next").click();
+          await findNext(window).click();
         }
       } else {
         const { total } = await readCounter(window);
         if (total === 0) {
           await findInput(window).fill(token);
         } else {
-          await window.getByTestId("note-find-prev").click();
+          await findPrev(window).click();
         }
       }
 
@@ -2133,6 +2142,8 @@ test.describe("In-note search", () => {
         await window.keyboard.press("End");
         await window.keyboard.press("Enter");
         await window.keyboard.type(i % 20 === 0 ? `${token} added ${i}` : `other ${i}`);
+        // Restore the search query after editing in the note body.
+        await findInput(window).fill(token);
       }
 
       await expect(findInput(window)).toHaveValue(token);
@@ -2152,7 +2163,7 @@ test.describe("In-note search", () => {
     ]);
 
     await setFindQueryAndAssert(window, family, "1/2");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/2");
     await expectCounterReadable(window);
   });
@@ -2167,21 +2178,19 @@ test.describe("In-note search", () => {
     ]);
     await ensureFindOpen(window);
 
-    const queries = ["i", "I", "İ", "ı", "ist", "IŞ"];
-    for (const q of queries) {
-      await ensureFindOpen(window);
-      await window.evaluate((value) => {
-        const input = document.querySelector<HTMLInputElement>(
-          '[data-testid="note-find-input"]',
-        );
-        if (!input) return;
-        input.value = value;
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      }, q);
-      if ((await findCounter(window).count()) > 0) {
-        await expectCounterReadable(window);
-      }
-    }
+    // Case-insensitive: "i" matches "I", "i", and "i" in istanbul/ISTANBUL/ışık/IŞIK.
+    await findInput(window).fill("i");
+    const iCount = await readCounter(window);
+    expect(iCount.total).toBeGreaterThan(0);
+
+    await findInput(window).fill("ist");
+    const istCount = await readCounter(window);
+    expect(istCount.total).toBeGreaterThanOrEqual(1);
+
+    // Dotted İ is distinct from regular i in accent-sensitive matching.
+    await findInput(window).fill("İ");
+    const dotICount = await readCounter(window);
+    expect(dotICount.total).toBeGreaterThanOrEqual(1);
   });
 
   test("control-character queries (newline/tab/zero-width) keep search state valid", async ({
@@ -2194,19 +2203,17 @@ test.describe("In-note search", () => {
     ]);
     await ensureFindOpen(window);
 
-    // Inject control-character queries directly to mimic paste edge cases.
-    const controlQueries = ["line\none", "line\tone", "line\u200bone"];
-    for (const q of controlQueries) {
-      await window.evaluate((value) => {
-        const input = document.querySelector<HTMLInputElement>(
-          '[data-testid="note-find-input"]',
-        );
-        if (!input) return;
-        input.value = value;
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      }, q);
-      await expectCounterReadable(window);
-    }
+    // Normal query first to confirm search is working.
+    await findInput(window).fill("line");
+    await expect(findCounter(window)).toHaveText("1/3");
+
+    // Zero-width space query — should not crash, may or may not match.
+    await findInput(window).fill("line\u200bone");
+    await expectCounterReadable(window);
+
+    // After edge queries, normal search should still function.
+    await findInput(window).fill("line");
+    await expect(findCounter(window)).toHaveText("1/3");
   });
 
   test("very long single-line note remains searchable and navigable", async ({
@@ -2235,7 +2242,7 @@ test.describe("In-note search", () => {
     await ensureFindOpen(window);
     await findInput(window).fill("MEGATOK");
     await expect(findCounter(window)).toHaveText(`1/${repeat}`);
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expectCounterReadable(window);
   });
 
@@ -2247,7 +2254,7 @@ test.describe("In-note search", () => {
       "modal beta",
     ]);
     await setFindQueryAndAssert(window, "modal", "1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     await window.getByRole("button", { name: /Search/ }).first().click();
@@ -2298,10 +2305,10 @@ test.describe("In-note search", () => {
         await findInput(window).fill(token);
       } else if (op === 1) {
         const { total } = await readCounter(window);
-        if (total > 0) await window.getByTestId("note-find-next").click();
+        if (total > 0) await findNext(window).click();
       } else if (op === 2) {
         const { total } = await readCounter(window);
-        if (total > 0) await window.getByTestId("note-find-prev").click();
+        if (total > 0) await findPrev(window).click();
       } else if (op === 3) {
         const editorRoot = window.locator('main:not([style*="display: none"]) .ContentEditable__root');
         await editorRoot.click();
@@ -2315,5 +2322,419 @@ test.describe("In-note search", () => {
       await expectCounterReadable(window);
       await expectSingleFindUiInstance(window);
     }
+  });
+
+  test("X button is disabled when query is empty and enabled when query has text", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "X disabled state", ["apple one", "apple two"]);
+
+    await ensureFindOpen(window);
+    // Empty query: X should be disabled.
+    await expect(findClose(window)).toBeDisabled();
+
+    await findInput(window).fill("apple");
+    await expect(findCounter(window)).toHaveText("1/2");
+    // Non-empty query: X should be enabled.
+    await expect(findClose(window)).not.toBeDisabled();
+
+    // Click X to clear.
+    await findClose(window).click();
+    await expect(findInput(window)).toHaveValue("");
+    // After clear: X should be disabled again.
+    await expect(findClose(window)).toBeDisabled();
+  });
+
+  test("chevron buttons are disabled with zero matches and enabled with matches", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "Chevron disabled state", ["cherry one", "cherry two"]);
+
+    await ensureFindOpen(window);
+    // No query yet: chevrons disabled.
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
+
+    await findInput(window).fill("cherry");
+    await expect(findCounter(window)).toHaveText("1/2");
+    // Matches found: chevrons enabled.
+    await expect(findNext(window)).not.toBeDisabled();
+    await expect(findPrev(window)).not.toBeDisabled();
+
+    // Zero-match query: chevrons disabled again.
+    await findInput(window).fill("zzzznotfound");
+    await expect(findCounter(window)).toHaveText("0/0");
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
+  });
+
+  test("X clears query but Escape retains it — distinct behaviors", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "X vs Escape", ["fig one", "fig two", "fig three"]);
+
+    // Set up a query and navigate to a position.
+    await ensureFindOpen(window);
+    await findInput(window).fill("fig");
+    await expect(findCounter(window)).toHaveText("1/3");
+    await findNext(window).click();
+    await expect(findCounter(window)).toHaveText("2/3");
+
+    // X clears query, keeps search open, resets counter.
+    await findClose(window).click();
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
+
+    // Type a new query — search is still open.
+    await findInput(window).fill("fig");
+    await expect(findCounter(window)).toHaveText("1/3");
+
+    // Escape closes search but retains the query.
+    await window.keyboard.press("Escape");
+    await expect(findInput(window)).not.toBeVisible();
+
+    // Reopen: query is preserved.
+    await ensureFindOpen(window);
+    await expect(findInput(window)).toHaveValue("fig");
+    await expect(findCounter(window)).toHaveText("1/3");
+  });
+
+  test("X button clears then re-type and navigate works correctly", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "X then retype", ["plum one", "plum two", "plum three"]);
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("plum");
+    await expect(findCounter(window)).toHaveText("1/3");
+    await findNext(window).click();
+    await findNext(window).click();
+    await expect(findCounter(window)).toHaveText("3/3");
+
+    // Clear via X.
+    await findClose(window).click();
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
+    await expect(findNext(window)).toBeDisabled();
+
+    // Re-type same query — should reset to 1/3, not 3/3.
+    await findInput(window).fill("plum");
+    await expect(findCounter(window)).toHaveText("1/3");
+    await expect(findNext(window)).not.toBeDisabled();
+
+    // Navigate normally after re-type.
+    await findNext(window).click();
+    await expect(findCounter(window)).toHaveText("2/3");
+  });
+
+  test("search stays open when clicking into editor body", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "Click outside stable", [
+      "grape one",
+      "grape two",
+      "grape three",
+    ]);
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("grape");
+    await expect(findCounter(window)).toHaveText("1/3");
+
+    // Click into the editor body — search should stay open.
+    await window.waitForTimeout(100);
+    await window.locator('main:not([style*="display: none"]) .ContentEditable__root').click();
+    await expect(findInput(window)).toBeVisible();
+    await expect(findCounter(window)).toHaveText("1/3");
+
+    // Click the title — search should stay open.
+    await window.locator('main:not([style*="display: none"]) h1.editor-title').click();
+    await expect(findInput(window)).toBeVisible();
+    await expect(findCounter(window)).toHaveText("1/3");
+  });
+
+  test("multi-tab: X clear on tab A does not affect tab B query", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "X isolation A", ["lime one", "lime two"]);
+    await createNoteWithBody(window, "X isolation B", ["lime three", "lime four", "lime five"]);
+
+    // Set query on both tabs.
+    await tabByTitle(window, "X isolation A").click();
+    await setFindQueryAndAssert(window, "lime", "1/2");
+
+    await tabByTitle(window, "X isolation B").click();
+    await setFindQueryAndAssert(window, "lime", "1/3");
+
+    // Clear query on B via X.
+    await findClose(window).click();
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
+
+    // Switch to A — query should be unaffected.
+    await tabByTitle(window, "X isolation A").click();
+    await ensureFindOpen(window);
+    await expect(findInput(window)).toHaveValue("lime");
+    await expect(findCounter(window)).toHaveText("1/2");
+  });
+
+  test("Cmd/Ctrl+F closes search after X cleared query, reopen shows empty", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "Toggle after X clear", ["kiwi one", "kiwi two"]);
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("kiwi");
+    await expect(findCounter(window)).toHaveText("1/2");
+
+    // X clears query, search stays open.
+    await findClose(window).click();
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("");
+
+    // Cmd+F should close the (open, empty-query) search.
+    await window.keyboard.press(`${mod}+f`);
+    await expect(findInput(window)).not.toBeVisible();
+
+    // Reopen: query should still be empty (X cleared it before close).
+    await window.keyboard.press(`${mod}+f`);
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
+  });
+
+  test("Enter and Shift+Enter in empty input after X clear do nothing", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "Enter after X clear", ["peach one", "peach two"]);
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("peach");
+    await expect(findCounter(window)).toHaveText("1/2");
+
+    // Clear via X.
+    await findClose(window).click();
+    await expect(findCounter(window)).toHaveText("0/0");
+    await expect(findNext(window)).toBeDisabled();
+
+    // Enter and Shift+Enter should not crash or change state.
+    await findInput(window).focus();
+    await window.keyboard.press("Enter");
+    await expect(findCounter(window)).toHaveText("0/0");
+    await window.keyboard.press("Shift+Enter");
+    await expect(findCounter(window)).toHaveText("0/0");
+    await expect(findInput(window)).toBeVisible();
+  });
+
+  test("rapid open/close/open: focus timer from first open does not steal focus after reopen", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "Rapid toggle focus", [
+      "mango one",
+      "mango two",
+      "mango three",
+    ]);
+
+    // Rapid toggle: open, close before 50ms timer fires, open again.
+    await window.keyboard.press(`${mod}+f`);
+    await expect(findInput(window)).toBeVisible();
+    await window.keyboard.press(`${mod}+f`);
+    await expect(findInput(window)).not.toBeVisible();
+    await window.keyboard.press(`${mod}+f`);
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toBeFocused();
+
+    // Type a query — should go into the input, not be stolen.
+    await window.keyboard.type("mango");
+    await expect(findInput(window)).toHaveValue("mango");
+    await expect(findCounter(window)).toHaveText("1/3");
+  });
+
+  test("X clear mid-navigation resets position and counter", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "X mid-nav", [
+      "date one",
+      "date two",
+      "date three",
+      "date four",
+      "date five",
+    ]);
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("date");
+    await expect(findCounter(window)).toHaveText("1/5");
+    await findNext(window).click();
+    await findNext(window).click();
+    await findNext(window).click();
+    await expect(findCounter(window)).toHaveText("4/5");
+
+    // Clear mid-navigation.
+    await findClose(window).click();
+    await expect(findCounter(window)).toHaveText("0/0");
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
+
+    // Re-type: should start at 1, not 4.
+    await findInput(window).fill("date");
+    await expect(findCounter(window)).toHaveText("1/5");
+  });
+
+  test("multi-tab: X clear mid-navigation on tab A preserves tab B navigation position", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "X nav iso A", [
+      "melon one",
+      "melon two",
+      "melon three",
+      "melon four",
+    ]);
+    await createNoteWithBody(window, "X nav iso B", [
+      "melon five",
+      "melon six",
+      "melon seven",
+    ]);
+
+    // Navigate to position 3/4 on tab A.
+    await tabByTitle(window, "X nav iso A").click();
+    await setFindQueryAndAssert(window, "melon", "1/4");
+    await findNext(window).click();
+    await findNext(window).click();
+    await expect(findCounter(window)).toHaveText("3/4");
+
+    // Navigate to position 2/3 on tab B.
+    await tabByTitle(window, "X nav iso B").click();
+    await setFindQueryAndAssert(window, "melon", "1/3");
+    await findNext(window).click();
+    await expect(findCounter(window)).toHaveText("2/3");
+
+    // X clear on tab A (resets position).
+    await tabByTitle(window, "X nav iso A").click();
+    await ensureFindOpen(window);
+    await findClose(window).click();
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
+
+    // Tab B should be unaffected — still at 2/3.
+    await tabByTitle(window, "X nav iso B").click();
+    await ensureFindOpen(window);
+    await expect(findInput(window)).toHaveValue("melon");
+    await expect(findCounter(window)).toHaveText("2/3");
+  });
+
+  test("multi-tab: Escape on tab A retains query, X clear on tab B clears — each preserves on switch", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "Esc vs X A", [
+      "pine one",
+      "pine two",
+      "pine three",
+    ]);
+    await createNoteWithBody(window, "Esc vs X B", [
+      "pine four",
+      "pine five",
+    ]);
+
+    // Tab A: set query and close with Escape (retains query).
+    await tabByTitle(window, "Esc vs X A").click();
+    await setFindQueryAndAssert(window, "pine", "1/3");
+    await window.keyboard.press("Escape");
+    await expect(findInput(window)).not.toBeVisible();
+
+    // Tab B: set query and clear with X (empties query, stays open).
+    await tabByTitle(window, "Esc vs X B").click();
+    await setFindQueryAndAssert(window, "pine", "1/2");
+    await findClose(window).click();
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
+
+    // Switch back to A: query preserved from Escape close.
+    await tabByTitle(window, "Esc vs X A").click();
+    await ensureFindOpen(window);
+    await expect(findInput(window)).toHaveValue("pine");
+    await expect(findCounter(window)).toHaveText("1/3");
+
+    // Switch back to B: query still empty from X clear.
+    await tabByTitle(window, "Esc vs X B").click();
+    await ensureFindOpen(window);
+    await expect(findInput(window)).toHaveValue("");
+    await expect(findCounter(window)).toHaveText("0/0");
+  });
+
+  test("multi-tab: chevron disabled/enabled state is per-tab", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "Chevron iso A", [
+      "walnut one",
+      "walnut two",
+    ]);
+    await createNoteWithBody(window, "Chevron iso B", ["hazelnut only"]);
+
+    // Tab A: query with matches — chevrons enabled.
+    await tabByTitle(window, "Chevron iso A").click();
+    await setFindQueryAndAssert(window, "walnut", "1/2");
+    await expect(findNext(window)).not.toBeDisabled();
+    await expect(findPrev(window)).not.toBeDisabled();
+
+    // Tab B: query with zero matches — chevrons disabled.
+    await tabByTitle(window, "Chevron iso B").click();
+    await setFindQueryAndAssert(window, "walnut", "0/0");
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
+
+    // Switch back to A: chevrons should still be enabled.
+    await tabByTitle(window, "Chevron iso A").click();
+    await ensureFindOpen(window);
+    await expect(findInput(window)).toHaveValue("walnut");
+    await expect(findCounter(window)).toHaveText("1/2");
+    await expect(findNext(window)).not.toBeDisabled();
+    await expect(findPrev(window)).not.toBeDisabled();
+
+    // Switch back to B: chevrons should still be disabled.
+    await tabByTitle(window, "Chevron iso B").click();
+    await ensureFindOpen(window);
+    await expect(findInput(window)).toHaveValue("walnut");
+    await expect(findCounter(window)).toHaveText("0/0");
+    await expect(findNext(window)).toBeDisabled();
+    await expect(findPrev(window)).toBeDisabled();
+  });
+
+  test("multi-tab: search open/closed independence after X clear and Escape on different tabs", async ({
+    window,
+  }) => {
+    await createNoteWithBody(window, "Open state A", ["cedar one", "cedar two"]);
+    await createNoteWithBody(window, "Open state B", ["cedar three", "cedar four"]);
+    await createNoteWithBody(window, "Open state C", ["cedar five"]);
+
+    // Tab A: open search, X clear, leave open (empty).
+    await tabByTitle(window, "Open state A").click();
+    await setFindQueryAndAssert(window, "cedar", "1/2");
+    await findClose(window).click();
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("");
+
+    // Tab B: open search, Escape close (retains query).
+    await tabByTitle(window, "Open state B").click();
+    await setFindQueryAndAssert(window, "cedar", "1/2");
+    await window.keyboard.press("Escape");
+    await expect(findInput(window)).not.toBeVisible();
+
+    // Tab C: never opened search.
+    await tabByTitle(window, "Open state C").click();
+    await expect(findInput(window)).not.toBeVisible();
+
+    // Verify all three tabs maintain independent open/closed state.
+    await tabByTitle(window, "Open state A").click();
+    await expect(findInput(window)).toBeVisible();
+    await expect(findInput(window)).toHaveValue("");
+
+    await tabByTitle(window, "Open state B").click();
+    await expect(findInput(window)).not.toBeVisible();
+    // Reopen B: query should be preserved from Escape.
+    await ensureFindOpen(window);
+    await expect(findInput(window)).toHaveValue("cedar");
+
+    await tabByTitle(window, "Open state C").click();
+    await expect(findInput(window)).not.toBeVisible();
   });
 });

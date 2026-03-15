@@ -55,16 +55,24 @@ function openTabButtons(window: Page) {
   return window.locator("[data-tab-id]");
 }
 
+function activeMain(window: Page) {
+  return window.locator('main:not([style*="display: none"])').first();
+}
+
 function findInput(window: Page) {
-  return window.getByTestId("note-find-input");
+  return activeMain(window).getByTestId("note-find-input");
 }
 
 function findCounter(window: Page) {
-  return window.getByTestId("note-find-counter");
+  return activeMain(window).getByTestId("note-find-counter");
 }
 
 function findTrigger(window: Page) {
-  return window.getByTestId("note-find-trigger");
+  return activeMain(window).getByTestId("note-find-trigger");
+}
+
+function findNext(window: Page) {
+  return activeMain(window).getByTestId("note-find-next");
 }
 
 function activeEditorTitle(window: Page) {
@@ -1142,7 +1150,7 @@ test.describe("Search palette e2e", () => {
     await openFindUi(window);
     await findInput(window).fill("wal");
     await expect(findCounter(window)).toHaveText("1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     const tabsBefore = await openTabButtons(window).count();
@@ -1178,7 +1186,7 @@ test.describe("Search palette e2e", () => {
     await openFindUi(window);
     await findInput(window).fill("wal");
     await expect(findCounter(window)).toHaveText("1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     await openPalette(window);
@@ -1204,7 +1212,7 @@ test.describe("Search palette e2e", () => {
     await tabByTitle(window, "Same note parity preserve").click();
     await openFindUi(window);
     await findInput(window).fill("wal");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     // Click path.
@@ -1217,7 +1225,7 @@ test.describe("Search palette e2e", () => {
     await expect(findCounter(window)).toHaveText("2/3");
 
     // Keyboard Enter path.
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/3");
     await openPalette(window);
     await paletteInput(window).fill("same note parity preserve");
@@ -1268,7 +1276,7 @@ test.describe("Search palette e2e", () => {
     await tabByTitle(window, "Same note chevron preserve").click();
     await openFindUi(window);
     await findInput(window).fill("wal");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/5");
 
     await openPalette(window);
@@ -1295,7 +1303,7 @@ test.describe("Search palette e2e", () => {
     await tabByTitle(window, "Same note escape preserve").click();
     await openFindUi(window);
     await findInput(window).fill("wal");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     await openPalette(window);
@@ -1346,7 +1354,7 @@ test.describe("Search palette e2e", () => {
     await tabByTitle(window, "Same note rapid preserve").click();
     await openFindUi(window);
     await findInput(window).fill("wal");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/4");
     const tabsBefore = await openTabButtons(window).count();
 
@@ -1382,7 +1390,7 @@ test.describe("Search palette e2e", () => {
     await openFindUi(window);
     await findInput(window).fill("WalBody");
     await expect(findCounter(window)).toHaveText("1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     await openPalette(window);
@@ -1661,9 +1669,9 @@ test.describe("Search palette e2e", () => {
       .locator('[data-slot="search-result-meta"] span')
       .allInnerTexts()).map((t) => t.trim());
 
-    expect(currentChips.at(-1)).toBe("3");
-    expect(activeChips.at(-1)).toBe("2");
-    expect(closedChips.at(-1)).toBe("4");
+    expect(currentChips[currentChips.length - 1]).toBe("3");
+    expect(activeChips[activeChips.length - 1]).toBe("2");
+    expect(closedChips[closedChips.length - 1]).toBe("4");
   });
 
   test("opening a note that is not currently open creates/selects tab and navigates correctly", async ({
@@ -2051,7 +2059,7 @@ test.describe("Search palette e2e", () => {
     await openFindUi(window);
     await findInput(window).fill("garnet");
     await expect(findCounter(window)).toHaveText("1/3");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/3");
 
     // Move away, then return via palette open path.
@@ -2118,7 +2126,7 @@ test.describe("Search palette e2e", () => {
       await expect(findInput(window)).toHaveValue("");
       await expect(findCounter(window)).toHaveText("0/0");
       await window.keyboard.press(`${mod}+f`);
-      await expect(findInput(window)).toHaveCount(0);
+      await expect(findInput(window)).not.toBeVisible();
     }
   });
 
@@ -2173,7 +2181,7 @@ test.describe("Search palette e2e", () => {
       await expect(findInput(window)).toHaveValue("");
       await expect(findCounter(window)).toHaveText("0/0");
       await window.keyboard.press(`${mod}+f`);
-      await expect(findInput(window)).toHaveCount(0);
+      await expect(findInput(window)).not.toBeVisible();
     }
   });
 
@@ -2264,7 +2272,7 @@ test.describe("Search palette e2e", () => {
       await findInput(window).fill(step.probe);
       await expect(findCounter(window)).toHaveText("1/1");
       await window.keyboard.press(`${mod}+f`);
-      await expect(findInput(window)).toHaveCount(0);
+      await expect(findInput(window)).not.toBeVisible();
     }
   });
 
@@ -2431,7 +2439,7 @@ test.describe("Search palette e2e", () => {
     await openFindUi(window);
     await findInput(window).fill("opal");
     await expect(findCounter(window)).toHaveText("1/4");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("2/4");
 
     // Wait longer than transient-jump TTL to ensure normal find has no timer-based expiry.
@@ -2440,7 +2448,7 @@ test.describe("Search palette e2e", () => {
     await expect(findInput(window)).toBeVisible();
     await expect(findInput(window)).toHaveValue("opal");
     await expect(findCounter(window)).toHaveText("2/4");
-    await window.getByTestId("note-find-next").click();
+    await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/4");
   });
 
@@ -2484,7 +2492,7 @@ test.describe("Search palette e2e", () => {
       await expect(findInput(window)).toHaveValue("");
       await expect(findCounter(window)).toHaveText("0/0");
       await window.keyboard.press(`${mod}+f`);
-      await expect(findInput(window)).toHaveCount(0);
+      await expect(findInput(window)).not.toBeVisible();
     }
   });
 
