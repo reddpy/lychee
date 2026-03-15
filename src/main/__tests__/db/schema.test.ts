@@ -24,7 +24,7 @@ describe('Database Schema — Fresh Migration', () => {
     closeTestDb();
   });
 
-  it('creates documents table with all 9 columns after fresh migration', () => {
+  it('creates documents table with all 10 columns after fresh migration', () => {
     const columns = db
       .prepare(`PRAGMA table_info(documents)`)
       .all() as { name: string }[];
@@ -38,7 +38,8 @@ describe('Database Schema — Fresh Migration', () => {
     expect(colNames).toContain('emoji');
     expect(colNames).toContain('deletedAt');
     expect(colNames).toContain('sortOrder');
-    expect(colNames).toHaveLength(9);
+    expect(colNames).toContain('metadata');
+    expect(colNames).toHaveLength(10);
   });
 
   it('creates images table with all 6 columns', () => {
@@ -55,11 +56,11 @@ describe('Database Schema — Fresh Migration', () => {
     expect(colNames).toHaveLength(6);
   });
 
-  it('sets schema_version to 8 in meta table', () => {
+  it('sets schema_version to 9 in meta table', () => {
     const row = db
       .prepare(`SELECT value FROM meta WHERE key = 'schema_version'`)
       .get() as { value: string };
-    expect(row.value).toBe('8');
+    expect(row.value).toBe('9');
   });
 
   it('creates all expected indexes', () => {

@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { ExternalLink, Plus, Trash2 } from 'lucide-react';
+import { Bookmark, BookmarkMinus, ExternalLink, Plus, Trash2 } from 'lucide-react';
 
 import { useDocumentStore } from '../../renderer/document-store';
+import { useToggleBookmark } from '../../renderer/use-toggle-bookmark';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -30,12 +31,17 @@ function DocumentMenuItems({
 }) {
   const openTab = useDocumentStore((s) => s.openTab);
   const trashDocument = useDocumentStore((s) => s.trashDocument);
+  const { isBookmarked, toggleBookmark } = useToggleBookmark(docId);
 
   return (
     <>
       <Item onSelect={() => openTab(docId)}>
         <ExternalLink className="h-3.5 w-3.5" />
         <span>Open in new tab</span>
+      </Item>
+      <Item onSelect={toggleBookmark}>
+        {isBookmarked ? <BookmarkMinus className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
+        <span>{isBookmarked ? 'Remove bookmark' : 'Add to bookmarks'}</span>
       </Item>
       {canAddChild && onAddPageInside && (
         <Item onSelect={onAddPageInside}>

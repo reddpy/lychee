@@ -11,6 +11,7 @@ import { Editor } from "@/components/editor/editor";
 import { NoteEmojiPicker } from "@/components/sidebar/note-emoji-picker";
 import { NoteContext } from "@/renderer/note-context";
 import { BreadcrumbPill } from "@/components/breadcrumb-pill";
+import { BookmarkButton } from "@/components/editor/plugins/bookmark-button-plugin";
 
 function getSerializedState(
   content: string | undefined,
@@ -388,6 +389,7 @@ export function LexicalEditor({
             className="flex items-center gap-0.5"
           />
           <BreadcrumbPill />
+          <BookmarkButton documentId={documentId} />
         </div>
       </div>
 

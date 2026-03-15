@@ -1,4 +1,4 @@
-import type { DocumentRow } from './documents';
+import type { DocumentRow, NoteMetadata } from './documents';
 
 // ── URL resolution types ─────────────────────────────────────────────
 
@@ -43,6 +43,7 @@ export type IpcContract = {
       content?: string;
       parentId?: string | null;
       emoji?: string | null;
+      metadata?: Partial<NoteMetadata>;
     };
     res: { document: DocumentRow };
   };
