@@ -1006,6 +1006,77 @@ test.describe("Table — action menu: position and column delete", () => {
     ).toContainText("EXISTING");
   });
 
+  test("cursor lands in first cell of newly inserted row below", async ({
+    window,
+  }) => {
+    await openActionMenuForCell(
+      window,
+      "table.EditorTheme__table tr:nth-of-type(2) td:first-child",
+    );
+    await window.locator('button[title="Insert row below"]').click();
+    await window.waitForTimeout(300);
+
+    // Typing immediately should land in the new row (now at index 2)
+    await window.keyboard.type("CURSOR_ROW_BELOW");
+    await expect(
+      window.locator("table.EditorTheme__table tr").nth(2).locator("td").first(),
+    ).toContainText("CURSOR_ROW_BELOW");
+  });
+
+  test("cursor lands in first cell of newly inserted row above", async ({
+    window,
+  }) => {
+    await openActionMenuForCell(
+      window,
+      "table.EditorTheme__table tr:nth-of-type(2) td:first-child",
+    );
+    await window.locator('button[title="Insert row above"]').click();
+    await window.waitForTimeout(300);
+
+    // Typing immediately should land in the new row (now at index 1, pushed original to index 2)
+    await window.keyboard.type("CURSOR_ROW_ABOVE");
+    await expect(
+      window.locator("table.EditorTheme__table tr").nth(1).locator("td").first(),
+    ).toContainText("CURSOR_ROW_ABOVE");
+  });
+
+  test("cursor lands in correct cell of newly inserted column right", async ({
+    window,
+  }) => {
+    // Click col 1 of data row
+    await openActionMenuForCell(
+      window,
+      "table.EditorTheme__table tr:nth-of-type(2) td:first-child",
+    );
+    await window.locator('button[title="Insert column right"]').click();
+    await window.waitForTimeout(300);
+
+    // Cursor should be in the new column (col 2) of the same row
+    await window.keyboard.type("CURSOR_COL_RIGHT");
+    await expect(
+      window
+        .locator("table.EditorTheme__table tr:nth-of-type(2) td:nth-child(2)"),
+    ).toContainText("CURSOR_COL_RIGHT");
+  });
+
+  test("cursor lands in correct cell of newly inserted column left", async ({
+    window,
+  }) => {
+    // Click last column of data row
+    await openActionMenuForCell(
+      window,
+      "table.EditorTheme__table tr:nth-of-type(2) td:last-child",
+    );
+    await window.locator('button[title="Insert column left"]').click();
+    await window.waitForTimeout(300);
+
+    // Cursor should be in the new column (now second-to-last) of the same row
+    await window.keyboard.type("CURSOR_COL_LEFT");
+    const cells = window.locator("table.EditorTheme__table tr:nth-of-type(2) td");
+    const count = await cells.count();
+    await expect(cells.nth(count - 2)).toContainText("CURSOR_COL_LEFT");
+  });
+
   test("insert column right adds cells to every row", async ({ window }) => {
     await openActionMenuForCell(
       window,
@@ -2562,6 +2633,16 @@ test.describe("Table — edge cases", () => {
       'button[title="Insert row above"]',
     );
     await expect(insertRowAboveBtn).toBeDisabled();
+  });
+
+  test("delete row is disabled when focused on header cell", async ({
+    window,
+  }) => {
+    await openActionMenuForCell(
+      window,
+      "table.EditorTheme__table tr:first-of-type th",
+    );
+    await expect(window.locator('button[title="Delete row"]')).toBeDisabled();
   });
 
   test("table content persists after switching to another note and back", async ({
