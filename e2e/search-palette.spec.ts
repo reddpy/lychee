@@ -55,16 +55,20 @@ function openTabButtons(window: Page) {
   return window.locator("[data-tab-id]");
 }
 
+function activeMain(window: Page) {
+  return window.locator('main:not([style*="display: none"])').first();
+}
+
 function findInput(window: Page) {
-  return window.getByTestId("note-find-input");
+  return activeMain(window).getByTestId("note-find-input");
 }
 
 function findCounter(window: Page) {
-  return window.getByTestId("note-find-counter");
+  return activeMain(window).getByTestId("note-find-counter");
 }
 
 function findTrigger(window: Page) {
-  return window.getByTestId("note-find-trigger");
+  return activeMain(window).getByTestId("note-find-trigger");
 }
 
 function activeEditorTitle(window: Page) {
