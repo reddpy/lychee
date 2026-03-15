@@ -12,7 +12,7 @@ type RawDocumentRow = Omit<DocumentRow, 'metadata'> & { metadata: string };
 /** Parse the metadata JSON string into an object. */
 function hydrateRow(raw: RawDocumentRow): DocumentRow {
   let metadata: NoteMetadata = {};
-  try { metadata = JSON.parse(raw.metadata); } catch { /* default to empty */ }
+  try { metadata = JSON.parse(raw.metadata) ?? {}; } catch { /* default to empty */ }
   return { ...raw, metadata };
 }
 
