@@ -2185,7 +2185,7 @@ test.describe("Table — paste edge cases", () => {
     await expect(window.locator("table.EditorTheme__table td")).toHaveCount(0);
   });
 
-  test("paste header-only table, delete row, table gone and persisted to DB", async ({
+  test("paste header-only table, use delete table to remove it and persist to DB", async ({
     window,
     electronApp,
   }) => {
@@ -2197,7 +2197,7 @@ test.describe("Table — paste edge cases", () => {
     await window.waitForTimeout(300);
     await window.locator('button[title="Table actions"]').click();
     await window.waitForTimeout(200);
-    await window.locator('button[title="Delete row"]').click();
+    await window.locator('button[title="Delete table"]').click();
     await window.waitForTimeout(1500);
 
     await expect(window.locator("table.EditorTheme__table")).toHaveCount(0);
@@ -2598,28 +2598,22 @@ test.describe("Table — edge cases", () => {
     await window.waitForTimeout(200);
   }
 
-  test("deleting the header row leaves a valid table with data rows only", async ({
+  test("header row is protected: delete row disabled and table row count unchanged", async ({
     window,
   }) => {
-    // Delete the header row (first row)
+    const rowsBefore = await window.locator("table.EditorTheme__table tr").count();
+
     await openActionMenuForCell(
       window,
       "table.EditorTheme__table tr:first-of-type th",
     );
-    await window.locator('button[title="Delete row"]').click();
-    await window.waitForTimeout(500);
+    await expect(window.locator('button[title="Delete row"]')).toBeDisabled();
 
-    // Table should still exist with 2 rows (original data rows)
-    await expect(window.locator("table.EditorTheme__table")).toBeVisible();
-    await expect(window.locator("table.EditorTheme__table tr")).toHaveCount(2);
-    await expect(window.locator("table.EditorTheme__table td")).toHaveCount(6);
+    // Close the menu without acting
+    await window.keyboard.press("Escape");
+    await window.waitForTimeout(200);
 
-    await window.waitForTimeout(1000);
-    const doc = await getLatestDocumentFromDb(window);
-    const table = JSON.parse(doc!.content).root.children.find(
-      (n: any) => n.type === "table",
-    );
-    expect(table.children).toHaveLength(2);
+    await expect(window.locator("table.EditorTheme__table tr")).toHaveCount(rowsBefore);
   });
 
   test("insert row above is disabled when focused on header cell", async ({
@@ -2691,7 +2685,7 @@ test.describe("Table — edge cases", () => {
     expect(table.children).toHaveLength(1);
   });
 
-  test("delete row when header-only removes table from editor", async ({
+  test("delete table button removes a header-only table from the editor", async ({
     window,
   }) => {
     for (let i = 0; i < 2; i++) {
@@ -2703,17 +2697,18 @@ test.describe("Table — edge cases", () => {
       await window.waitForTimeout(300);
     }
 
+    // Only header row remains; use Delete table to remove it
     await openActionMenuForCell(
       window,
       "table.EditorTheme__table tr:first-of-type th",
     );
-    await window.locator('button[title="Delete row"]').click();
+    await window.locator('button[title="Delete table"]').click();
     await window.waitForTimeout(500);
 
     await expect(window.locator("table.EditorTheme__table")).toHaveCount(0);
   });
 
-  test("delete row when header-only removes table from database", async ({
+  test("delete table button removes a header-only table from the database", async ({
     window,
   }) => {
     for (let i = 0; i < 2; i++) {
@@ -2729,7 +2724,7 @@ test.describe("Table — edge cases", () => {
       window,
       "table.EditorTheme__table tr:first-of-type th",
     );
-    await window.locator('button[title="Delete row"]').click();
+    await window.locator('button[title="Delete table"]').click();
     await window.waitForTimeout(1500);
 
     const doc = await getLatestDocumentFromDb(window);
@@ -2740,7 +2735,7 @@ test.describe("Table — edge cases", () => {
     expect(hasTable).toBe(false);
   });
 
-  test("delete row when header-only leaves document in valid state", async ({
+  test("delete table on header-only table leaves document in valid state", async ({
     window,
   }) => {
     for (let i = 0; i < 2; i++) {
@@ -2756,7 +2751,7 @@ test.describe("Table — edge cases", () => {
       window,
       "table.EditorTheme__table tr:first-of-type th",
     );
-    await window.locator('button[title="Delete row"]').click();
+    await window.locator('button[title="Delete table"]').click();
     await window.waitForTimeout(1500);
 
     const doc = await getLatestDocumentFromDb(window);
@@ -2765,17 +2760,25 @@ test.describe("Table — edge cases", () => {
     expect(content.root.children.length).toBeGreaterThanOrEqual(1);
   });
 
-  test("stress: delete all 3 rows one by one until table gone, backend has no table", async ({
+  test("stress: delete all data rows then use delete table to remove header", async ({
     window,
   }) => {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       await openActionMenuForCell(
         window,
-        "table.EditorTheme__table tr:last-of-type td:first-child, table.EditorTheme__table tr:last-of-type th:first-child",
+        "table.EditorTheme__table tr:nth-of-type(2) td:first-child",
       );
       await window.locator('button[title="Delete row"]').click();
       await window.waitForTimeout(200);
     }
+
+    // Header row remains; delete it via Delete table
+    await openActionMenuForCell(
+      window,
+      "table.EditorTheme__table tr:first-of-type th:first-child",
+    );
+    await window.locator('button[title="Delete table"]').click();
+    await window.waitForTimeout(200);
 
     await expect(window.locator("table.EditorTheme__table")).toHaveCount(0);
     await window.waitForTimeout(1500);

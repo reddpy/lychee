@@ -436,10 +436,12 @@ export function SearchHighlightPlugin({
       clearAllHighlights();
     }
     if (!wasVisible && isHighlightVisible) {
-      requestAnimationFrame(() => refreshHighlights(false, false));
+      // Scroll to the match on initial reveal when activated via transient jump
+      // (palette preview open), but not when regular find opens.
+      requestAnimationFrame(() => refreshHighlights(false, isTransientActive));
     }
     wasVisibleRef.current = isHighlightVisible;
-  }, [clearAllHighlights, isHighlightVisible, refreshHighlights]);
+  }, [clearAllHighlights, isHighlightVisible, isTransientActive, refreshHighlights]);
 
   React.useEffect(() => {
     if (!isOpenForDoc && !isTransientActive) return;
