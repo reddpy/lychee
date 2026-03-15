@@ -113,7 +113,10 @@ async function dragNote(
   const srcY = sourceBox.y + sourceBox.height / 2;
 
   // Pre-hover source to keep collapsed floating sidebar in an explicit hover-open state.
-  await source.hover();
+  // Use raw mouse.move instead of source.hover() to avoid Playwright's viewport-bounds
+  // actionability check, which fails in CI when the floating sidebar's items are positioned
+  // just outside the viewport edge.
+  await window.mouse.move(srcX, srcY);
   await window.waitForTimeout(40);
 
   const dragWithMouse = async () => {
