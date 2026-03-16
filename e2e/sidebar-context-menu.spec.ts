@@ -38,13 +38,13 @@ async function rightClickNote(window: Page, docId: string) {
 
 /**
  * Hover over a note item and click its ⋯ Options dropdown trigger.
- * The trigger is a span[role="button"] containing the lucide-more-horizontal SVG.
+ * The trigger is a span[role="button"] containing the lucide-ellipsis SVG.
  */
 async function openOptionsDropdown(window: Page, docId: string) {
   const noteItem = window.locator(`[data-note-id="${docId}"]`).first();
   await noteItem.hover();
   await window.waitForTimeout(200);
-  const optionsBtn = noteItem.locator('[role="button"]:has(svg.lucide-more-horizontal)');
+  const optionsBtn = noteItem.locator('[role="button"]:has(svg.lucide-ellipsis)');
   await expect(optionsBtn).toBeVisible({ timeout: 3000 });
   await optionsBtn.click();
   await window.waitForTimeout(300);
@@ -108,6 +108,15 @@ function bookmarksSectionHeader(window: Page) {
   return window.locator('aside').locator('button').filter({ hasText: /^Bookmarks$/ }).first();
 }
 
+/** Close a tab via Zustand store without UI interaction. */
+async function closeTabViaStore(window: Page, docId: string): Promise<void> {
+  await window.evaluate(
+    (id: string) => (window as any).__documentStore.getState().closeTab(id),
+    docId,
+  );
+  await window.waitForTimeout(100);
+}
+
 // ── Context Menu — All Options ────────────────────────────────────────
 
 test.describe('Sidebar Context Menu — All Options', () => {
@@ -127,6 +136,8 @@ test.describe('Sidebar Context Menu — All Options', () => {
 
     // B is currently selected
     expect(await getSelectedId(window)).toBe(idB);
+    // Close A's tab so "Open in new tab" is not a no-op
+    await closeTabViaStore(window, idA);
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
     // Right-click note A → Open in new tab
@@ -332,8 +343,8 @@ test.describe('Sidebar Context Menu — Conditional Items', () => {
     await bookmarkViaBackend(window, docId);
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 3000 });
 
-    // Right-click the occurrence in the Bookmarks section (the last/second occurrence)
-    const bookmarkSectionItem = window.locator(`[data-note-id="${docId}"]`).last();
+    // Right-click the occurrence in the Bookmarks section
+    const bookmarkSectionItem = window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`);
     await bookmarkSectionItem.click({ button: 'right' });
     await window.waitForTimeout(300);
 
@@ -351,7 +362,7 @@ test.describe('Sidebar Context Menu — Conditional Items', () => {
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 3000 });
 
     // Right-click the Bookmarks section item
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'right' });
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'right' });
     await window.waitForTimeout(300);
     await window.getByRole('menuitem', { name: /remove bookmark/i }).click();
     await window.waitForTimeout(500);
@@ -367,9 +378,11 @@ test.describe('Sidebar Context Menu — Conditional Items', () => {
     await bookmarkViaBackend(window, docId);
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 3000 });
 
+    // Close docId's tab so "Open in new tab" is not a no-op
+    await closeTabViaStore(window, docId);
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'right' });
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'right' });
     await window.waitForTimeout(300);
     await window.getByRole('menuitem', { name: /open in new tab/i }).click();
     await window.waitForTimeout(400);
@@ -382,7 +395,7 @@ test.describe('Sidebar Context Menu — Conditional Items', () => {
     await bookmarkViaBackend(window, docId);
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 3000 });
 
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'right' });
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'right' });
     await window.waitForTimeout(300);
     await window.getByRole('menuitem', { name: /move to trash/i }).click();
     await window.waitForTimeout(500);
@@ -403,7 +416,7 @@ test.describe('Sidebar Hover Dropdown (⋯ Options)', () => {
     await noteItem.hover();
     await window.waitForTimeout(200);
 
-    const optionsBtn = noteItem.locator('[role="button"]:has(svg.lucide-more-horizontal)');
+    const optionsBtn = noteItem.locator('[role="button"]:has(svg.lucide-ellipsis)');
     await expect(optionsBtn).toBeVisible({ timeout: 3000 });
   });
 
@@ -422,6 +435,8 @@ test.describe('Sidebar Hover Dropdown (⋯ Options)', () => {
     const idB = await createNoteWithTitle(window, 'Dropdown Open Tab B');
 
     expect(await getSelectedId(window)).toBe(idB);
+    // Close A's tab so "Open in new tab" is not a no-op
+    await closeTabViaStore(window, idA);
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
     await openOptionsDropdown(window, idA);
@@ -570,6 +585,7 @@ test.describe('Sidebar Click Interactions', () => {
     const idB = await createNoteWithTitle(window, 'Middle Click B');
 
     expect(await getSelectedId(window)).toBe(idB);
+    await closeTabViaStore(window, idA);
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
     // Middle-click note A
@@ -587,6 +603,7 @@ test.describe('Sidebar Click Interactions', () => {
     const idB = await createNoteWithTitle(window, 'CmdClick B');
 
     expect(await getSelectedId(window)).toBe(idB);
+    await closeTabViaStore(window, idA);
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
     await window.locator(`[data-note-id="${idA}"]`).first().click({ modifiers: ['Meta'] });
@@ -618,10 +635,12 @@ test.describe('Sidebar Click Interactions', () => {
 
     const idOther = await createNoteWithTitle(window, 'BM Middle Click Other');
     expect(await getSelectedId(window)).toBe(idOther);
+    // Close docId's tab so middle-click actually opens a new tab
+    await closeTabViaStore(window, docId);
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
     // Middle-click the Bookmarks section occurrence
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'middle' });
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'middle' });
     await window.waitForTimeout(400);
 
     await expect(window.locator('[data-tab-id]')).toHaveCount(tabsBefore + 1, { timeout: 3000 });

@@ -628,8 +628,8 @@ test.describe('Document Bookmark — Stress Tests', () => {
   test('rapid toggle 10 times ends in bookmarked state', async ({ window }) => {
     const docId = await createNoteWithTitle(window, 'Rapid Toggle Stress');
 
-    // 10 clicks starting from unbookmarked → ends bookmarked (even number)
-    for (let i = 0; i < 10; i++) {
+    // 9 clicks starting from unbookmarked → ends bookmarked (odd number)
+    for (let i = 0; i < 9; i++) {
       const btn = window.locator('main:visible').getByRole('button', {
         name: /bookmark this note|remove bookmark/i,
       });

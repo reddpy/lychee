@@ -121,6 +121,8 @@ async function injectBookmarkNodeAndReload(
       (window as any).lychee.invoke('documents.update', { id, content: c }),
     { id: docId, c: content },
   );
+  await window.evaluate(() => (window as any).__documentStore.getState().loadDocuments(true));
+  await window.waitForTimeout(200);
 
   // Close the tab so Lexical discards in-memory state
   await window
@@ -612,6 +614,10 @@ test.describe('Bookmark Metadata — Coexistence', () => {
     await expect(
       window.locator('main:visible').getByRole('button', { name: 'Remove bookmark' }),
     ).toBeVisible({ timeout: 3000 });
+
+    // Refocus the editor before triggering the DB save
+    await window.locator('main:visible .ContentEditable__root').click();
+    await window.waitForTimeout(200);
 
     // Both persisted to DB
     const node = await getBookmarkNodeFromDb(window, docId);

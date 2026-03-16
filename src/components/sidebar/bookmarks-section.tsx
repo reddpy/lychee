@@ -45,7 +45,7 @@ function BookmarkItem({ doc, isSelected }: { doc: DocumentRow; isSelected: boole
 
   return (
     <DocumentContextMenu docId={doc.id} canAddChild={false}>
-      <div className="relative" data-note-id={doc.id}>
+      <div className="relative" data-note-id={doc.id} data-section="bookmarks">
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip={doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}

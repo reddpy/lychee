@@ -99,8 +99,8 @@ function bookmarksSectionHeader(window: Page) {
 }
 
 async function isInBookmarksSection(window: Page, docId: string): Promise<boolean> {
-  const count = await window.locator(`[data-note-id="${docId}"]`).count();
-  return count >= 2;
+  const count = await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).count();
+  return count >= 1;
 }
 
 async function collapseSidebar(window: Page) {
@@ -114,7 +114,7 @@ async function expandSidebar(window: Page) {
 }
 
 function notesSectionHeader(window: Page) {
-  return window.getByRole('button', { name: /^Notes New note$/ });
+  return window.getByRole('button', { name: /^Notes$/ });
 }
 
 /** Create a note via IPC + store refresh. No UI interaction. */
@@ -136,6 +136,24 @@ async function openNoteViaStore(window: Page, docId: string): Promise<void> {
     docId,
   );
   await window.waitForTimeout(200);
+}
+
+/** Add a note to the tab bar and select it (appends without replacing existing tabs). */
+async function addTabViaStore(window: Page, docId: string): Promise<void> {
+  await window.evaluate(
+    (id: string) => (window as any).__documentStore.getState().openOrCreateTab(id),
+    docId,
+  );
+  await window.waitForTimeout(100);
+}
+
+/** Close a tab by docId via the Zustand store. */
+async function closeTabViaStore(window: Page, docId: string): Promise<void> {
+  await window.evaluate(
+    (id: string) => (window as any).__documentStore.getState().closeTab(id),
+    docId,
+  );
+  await window.waitForTimeout(100);
 }
 
 // ── Title Sync ────────────────────────────────────────────────────────
@@ -270,7 +288,7 @@ test.describe('Bookmark Cross-Functional — Nested Notes', () => {
     }).toPass({ timeout: 4000 });
 
     // The child appears in Bookmarks section with its title
-    const childInBookmarks = window.locator(`[data-note-id="${childId}"]`).last();
+    const childInBookmarks = window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`);
     await expect(childInBookmarks).toContainText('Child Bookmarked');
   });
 
@@ -286,13 +304,20 @@ test.describe('Bookmark Cross-Functional — Nested Notes', () => {
       expect(await isInBookmarksSection(window, childId)).toBe(true);
     }).toPass({ timeout: 4000 });
 
-    // Collapse the parent in Notes section
+    // Collapse the parent in Notes section using the expand/collapse toggle button
     const parentItem = window.locator(`[data-note-id="${parentId}"]`).first();
-    await parentItem.click();
-    await window.waitForTimeout(300);
-    // Click the chevron/toggle for the parent to collapse children
-    const toggleChevron = parentItem.locator('svg').first();
-    await toggleChevron.click({ force: true });
+    await parentItem.hover();
+    await window.waitForTimeout(150);
+    // Ensure parent is expanded (expand if needed), then collapse
+    const expandBtn = parentItem.locator('[role="button"][aria-label="Expand"]');
+    if (await expandBtn.count() > 0) {
+      await expandBtn.click({ force: true });
+      await window.waitForTimeout(200);
+    }
+    const collapseBtn = parentItem.locator('[role="button"][aria-label="Collapse"]');
+    if (await collapseBtn.count() > 0) {
+      await collapseBtn.click({ force: true });
+    }
     await window.waitForTimeout(400);
 
     // The child is no longer visible in Notes section (collapsed), but still in Bookmarks
@@ -301,8 +326,8 @@ test.describe('Bookmark Cross-Functional — Nested Notes', () => {
       // Should still appear at least once (in Bookmarks section)
       expect(bookmarksCount).toBeGreaterThanOrEqual(1);
       // And that one occurrence should be visible (in Bookmarks section)
-      const lastItem = window.locator(`[data-note-id="${childId}"]`).last();
-      await expect(lastItem).toBeVisible();
+      const bookmarksItem = window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`);
+      await expect(bookmarksItem).toBeVisible();
     }).toPass({ timeout: 3000 });
   });
 
@@ -320,7 +345,7 @@ test.describe('Bookmark Cross-Functional — Nested Notes', () => {
     await createNoteWithTitle(window, 'Distractor Note');
 
     // Click child via Bookmarks section
-    const childInBookmarks = window.locator(`[data-note-id="${childId}"]`).last();
+    const childInBookmarks = window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`);
     await childInBookmarks.click();
     await window.waitForTimeout(400);
 
@@ -352,7 +377,7 @@ test.describe('Bookmark Cross-Functional — Notes Section Independence', () => 
     // Bookmarks section header still visible
     await expect(bookmarksSectionHeader(window)).toBeVisible();
     // Bookmark item still visible (only Notes section collapsed)
-    const bookmarkItem = window.locator(`[data-note-id="${docId}"]`).last();
+    const bookmarkItem = window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`);
     await expect(bookmarkItem).toBeVisible();
   });
 
@@ -372,7 +397,7 @@ test.describe('Bookmark Cross-Functional — Notes Section Independence', () => 
     await window.waitForTimeout(400);
 
     // Navigate via Bookmarks section
-    const bookmarkItem = window.locator(`[data-note-id="${docId}"]`).last();
+    const bookmarkItem = window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`);
     await bookmarkItem.click();
     await window.waitForTimeout(400);
 
@@ -399,7 +424,7 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
     await expect(async () => {
       expect(await isInBookmarksSection(window, childId)).toBe(true);
     }).toPass({ timeout: 4000 });
-    await window.locator(`[data-note-id="${childId}"]`).last().click();
+    await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
     // Breadcrumb pill is hidden while sidebar is open
@@ -422,7 +447,7 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
     await expect(async () => {
       expect(await isInBookmarksSection(window, childId)).toBe(true);
     }).toPass({ timeout: 4000 });
-    await window.locator(`[data-note-id="${childId}"]`).last().click();
+    await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
     // Now collapse the sidebar
@@ -444,7 +469,7 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
     await expect(async () => {
       expect(await isInBookmarksSection(window, childId)).toBe(true);
     }).toPass({ timeout: 4000 });
-    await window.locator(`[data-note-id="${childId}"]`).last().click();
+    await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
     await collapseSidebar(window);
@@ -457,7 +482,7 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
 
     // Popover should show "Note Tree" and include the parent title
     await expect(window.getByText('Note Tree')).toBeVisible({ timeout: 3000 });
-    await expect(window.getByText('BreadcrumbAncestor')).toBeVisible({ timeout: 3000 });
+    await expect(window.getByText('BreadcrumbAncestor').first()).toBeVisible({ timeout: 3000 });
 
     // Restore sidebar
     await expandSidebar(window);
@@ -468,7 +493,7 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
     await bookmarkViaBackend(window, docId);
 
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 3000 });
-    await window.locator(`[data-note-id="${docId}"]`).last().click();
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click();
     await window.waitForTimeout(400);
 
     await collapseSidebar(window);
@@ -583,10 +608,13 @@ test.describe('Bookmark Cross-Functional — Tab System', () => {
     // Open another note so we can count tabs meaningfully
     await createNoteWithTitle(window, 'Other Note For Tab Count');
 
+    // Close docId's tab so middle-click creates a genuinely new tab
+    await closeTabViaStore(window, docId);
+
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
     // Middle-click the bookmarked item in the Bookmarks section
-    const bookmarkItem = window.locator(`[data-note-id="${docId}"]`).last();
+    const bookmarkItem = window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`);
     await bookmarkItem.click({ button: 'middle' });
     await window.waitForTimeout(400);
 
@@ -601,16 +629,8 @@ test.describe('Bookmark Cross-Functional — Content-Level Bookmark Card Preserv
   test('note with embedded bookmark card opened from Bookmarks section renders the card', async ({
     window,
   }) => {
-    // Create a note with an embedded BookmarkNode via IPC, then bookmark it
-    await window.locator('[aria-label="New note"]').click();
-    await window.waitForTimeout(400);
-
-    const docId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
-
-    // Inject a Lexical document with a BookmarkNode card
-    const content = JSON.stringify({
+    // Create the note via backend (never opens a tab) so the editor mounts fresh on first open
+    const bookmarkContent = JSON.stringify({
       root: {
         children: [
           {
@@ -639,13 +659,18 @@ test.describe('Bookmark Cross-Functional — Content-Level Bookmark Card Preserv
       },
     });
 
-    await window.evaluate(
-      ({ id, c }: { id: string; c: string }) =>
-        (window as any).lychee.invoke('documents.update', { id, content: c }),
-      { id: docId, c: content },
+    // Create note and inject content in one call
+    const result = await window.evaluate(
+      (c: string) => (window as any).lychee.invoke('documents.create', { title: 'BookmarkCardNote', content: c }),
+      bookmarkContent,
     );
+    const docId = result.document.id as string;
 
-    // Bookmark it via backend
+    // Reload store to pick up the new note with its content
+    await window.evaluate(() => (window as any).__documentStore.getState().loadDocuments(true));
+    await window.waitForTimeout(200);
+
+    // Bookmark the note
     await bookmarkViaBackend(window, docId);
 
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 3000 });
@@ -653,17 +678,9 @@ test.describe('Bookmark Cross-Functional — Content-Level Bookmark Card Preserv
       expect(await isInBookmarksSection(window, docId)).toBe(true);
     }).toPass({ timeout: 4000 });
 
-    // Close the tab (force reload from DB on reopen)
-    const tab = window.locator('[data-tab-id]').first();
-    const tabCount = await window.locator('[data-tab-id]').count();
-
-    if (tabCount > 1) {
-      await tab.locator('[aria-label="Close tab"]').click({ force: true });
-      await window.waitForTimeout(300);
-    }
-
-    // Open the note from the Bookmarks section
-    await window.locator(`[data-note-id="${docId}"]`).last().click();
+    // Open the note from the Bookmarks section (tab never existed — opens fresh with full content)
+    const bookmarkItem = window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`);
+    await bookmarkItem.click();
     await window.waitForTimeout(600);
 
     // The bookmark card should be rendered in the editor
@@ -828,7 +845,7 @@ test.describe('Bookmark Cross-Functional — Search Palette', () => {
     // Create a note and type some body text, then bookmark it
     const docId = await createNoteWithTitle(window, 'BodySearchBookmarked');
     // Type some body content
-    const editor = window.locator('main:visible .editor-content-editable');
+    const editor = window.locator('main:visible .ContentEditable__root');
     await editor.click();
     await window.keyboard.press('End');
     await window.keyboard.press('Enter');
@@ -940,8 +957,8 @@ test.describe('Bookmark Cross-Functional — Section Interplay', () => {
       expect(await isInBookmarksSection(window, docId)).toBe(true);
     }).toPass({ timeout: 4000 });
 
-    // Right-click on the Bookmarks section occurrence (last)
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'right' });
+    // Right-click on the Bookmarks section occurrence
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'right' });
     await window.waitForTimeout(300);
 
     // Context menu appears
@@ -1232,7 +1249,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Context Menu From Bookm
     }).toPass({ timeout: 4000 });
 
     // Right-click the Bookmarks section occurrence
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'right' });
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'right' });
     await window.waitForTimeout(300);
     await window.getByRole('menuitem', { name: /remove bookmark/i }).click();
     await window.waitForTimeout(500);
@@ -1256,7 +1273,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Context Menu From Bookm
     }).toPass({ timeout: 4000 });
 
     // Trash from the Bookmarks section context menu
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'right' });
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'right' });
     await window.waitForTimeout(300);
     await window.getByRole('menuitem', { name: /move to trash/i }).click();
     await window.waitForTimeout(500);
@@ -1280,9 +1297,12 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Context Menu From Bookm
     // Navigate away so the bookmarked note's tab isn't currently active
     await createNoteWithTitle(window, 'Distractor For New Tab');
 
+    // Close docId's tab so "Open in new tab" creates a genuinely new tab
+    await closeTabViaStore(window, docId);
+
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'right' });
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'right' });
     await window.waitForTimeout(300);
     await window.getByRole('menuitem', { name: /open in new tab/i }).click();
     await window.waitForTimeout(400);
@@ -1329,7 +1349,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     await expect(async () => {
       expect(await isInBookmarksSection(window, childId)).toBe(true);
     }).toPass({ timeout: 4000 });
-    await window.locator(`[data-note-id="${childId}"]`).last().click();
+    await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
     await collapseSidebar(window);
@@ -1339,8 +1359,8 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     await pill.click();
     await window.waitForTimeout(300);
 
-    // Click the parent in the popover
-    await window.getByText('BreadcrumbNavParent').click();
+    // Click the parent in the popover (.last() targets the popover item; .first() is the off-screen sidebar item)
+    await window.getByText('BreadcrumbNavParent').last().click();
     await window.waitForTimeout(400);
 
     const selectedId = await window.evaluate(
@@ -1363,7 +1383,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     await expect(async () => {
       expect(await isInBookmarksSection(window, childId)).toBe(true);
     }).toPass({ timeout: 4000 });
-    await window.locator(`[data-note-id="${childId}"]`).last().click();
+    await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
     await collapseSidebar(window);
 
@@ -1372,8 +1392,8 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     await pill.click();
     await window.waitForTimeout(300);
 
-    // Navigate to the parent (top-level → no hierarchy)
-    await window.getByText('BreadcrumbTopParent').click();
+    // Navigate to the parent (.last() targets the popover item; .first() is the off-screen sidebar item)
+    await window.getByText('BreadcrumbTopParent').last().click();
     await window.waitForTimeout(500);
 
     // Pill should disappear: parent is top-level with no children other than what we just came from
@@ -1385,7 +1405,8 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
       await pill.click();
       await window.waitForTimeout(300);
       // The current node row should be the parent, and the child should appear below
-      await expect(window.getByText('BreadcrumbTopChild')).toBeVisible({ timeout: 3000 });
+      // Use .last() to target the popover item (sidebar item is off-screen/first)
+      await expect(window.getByText('BreadcrumbTopChild').last()).toBeVisible({ timeout: 3000 });
       await window.keyboard.press('Escape');
       await window.waitForTimeout(200);
     }
@@ -1408,7 +1429,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     await expect(async () => {
       expect(await isInBookmarksSection(window, childId)).toBe(true);
     }).toPass({ timeout: 4000 });
-    await window.locator(`[data-note-id="${childId}"]`).last().click();
+    await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
     await collapseSidebar(window);
@@ -1420,7 +1441,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     // Popover header
     await expect(window.getByText('Note Tree')).toBeVisible({ timeout: 3000 });
     // Current note shown (dimmed/highlighted row)
-    await expect(window.getByText('BreadcrumbHeadingChild')).toBeVisible({ timeout: 3000 });
+    await expect(window.getByText('BreadcrumbHeadingChild').first()).toBeVisible({ timeout: 3000 });
 
     await window.keyboard.press('Escape');
     await expandSidebar(window);
@@ -1445,7 +1466,8 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Nested Hierarchy', () =
       const parentCount = await window.locator(`[data-note-id="${parentId}"]`).count();
       const childCount = await window.locator(`[data-note-id="${childId}"]`).count();
       expect(parentCount).toBeGreaterThanOrEqual(2);
-      expect(childCount).toBeGreaterThanOrEqual(2);
+      // Child may only appear in Bookmarks section if its parent is collapsed in Notes
+      expect(childCount).toBeGreaterThanOrEqual(1);
     }).toPass({ timeout: 4000 });
   });
 
@@ -1464,7 +1486,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Nested Hierarchy', () =
     }).toPass({ timeout: 4000 });
 
     // The Bookmarks section item has no indentation — it's flat regardless of nesting depth
-    const bookmarkItem = window.locator(`[data-note-id="${level3Id}"]`).last();
+    const bookmarkItem = window.locator(`[data-section="bookmarks"][data-note-id="${level3Id}"]`);
     await expect(bookmarkItem).toContainText('Depth3 Level3');
     await expect(bookmarkItem).toBeVisible();
   });
@@ -1564,6 +1586,9 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Search Palette', () => 
     // Navigate away
     await createNoteWithTitle(window, 'Away For Cmd Click');
 
+    // Close docId's tab so Cmd+click creates a genuinely new tab
+    await closeTabViaStore(window, docId);
+
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
     await window.keyboard.press('Meta+p');
@@ -1591,10 +1616,10 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Search Palette', () => 
 
 /** Hover over the Bookmarks-section occurrence of a note and click its ⋯ button. */
 async function openBookmarksOptionsDropdown(window: Page, docId: string) {
-  const item = window.locator(`[data-note-id="${docId}"]`).last(); // Bookmarks section item
+  const item = window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`); // Bookmarks section item
   await item.hover();
   await window.waitForTimeout(150);
-  const btn = item.locator('[role="button"]:has(svg.lucide-more-horizontal)');
+  const btn = item.locator('[role="button"]:has(svg.lucide-ellipsis)');
   await expect(btn).toBeVisible({ timeout: 3000 });
   await btn.click();
   await window.waitForTimeout(300);
@@ -1610,12 +1635,12 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
       expect(await isInBookmarksSection(window, docId)).toBe(true);
     }).toPass({ timeout: 4000 });
 
-    const item = window.locator(`[data-note-id="${docId}"]`).last();
+    const item = window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`);
     await item.hover();
     await window.waitForTimeout(150);
 
     // After hover, the ⋯ trigger should be visible (opacity-100 via group-hover)
-    const optionsBtn = item.locator('[role="button"]:has(svg.lucide-more-horizontal)');
+    const optionsBtn = item.locator('[role="button"]:has(svg.lucide-ellipsis)');
     await expect(optionsBtn).toBeVisible({ timeout: 3000 });
   });
 
@@ -1661,7 +1686,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
       expect(await isInBookmarksSection(window, docId)).toBe(true);
     }).toPass({ timeout: 4000 });
 
-    const item = window.locator(`[data-note-id="${docId}"]`).last();
+    const item = window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`);
     await item.hover();
     await window.waitForTimeout(150);
 
@@ -1707,6 +1732,10 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
 
     // Navigate away
     await createNoteWithTitle(window, 'Stay On This Note');
+
+    // Close docId's tab so "Open in new tab" creates a genuinely new tab
+    await closeTabViaStore(window, docId);
+
     const selectedBefore = await window.evaluate(
       () => (window as any).__documentStore.getState().selectedId as string,
     );
@@ -1864,7 +1893,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     const notesItem = window.locator(`[data-note-id="${docId}"]`).first();
     await notesItem.hover();
     await window.waitForTimeout(150);
-    await notesItem.locator('[role="button"]:has(svg.lucide-more-horizontal)').click();
+    await notesItem.locator('[role="button"]:has(svg.lucide-ellipsis)').click();
     await window.waitForTimeout(300);
 
     await expect(window.getByRole('menuitem', { name: /add to bookmarks/i })).toBeVisible({ timeout: 3000 });
@@ -1884,7 +1913,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     const expectedItems = [/open in new tab/i, /remove bookmark/i, /move to trash/i];
 
     // Right-click context menu
-    await window.locator(`[data-note-id="${docId}"]`).last().click({ button: 'right' });
+    await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click({ button: 'right' });
     await window.waitForTimeout(300);
     for (const name of expectedItems) {
       await expect(window.getByRole('menuitem', { name })).toBeVisible({ timeout: 3000 });
@@ -1950,10 +1979,10 @@ test.describe('Bookmark Cross-Functional — ⋯ Dropdown Stress Tests', () => {
     }).toPass({ timeout: 6000 });
 
     for (const id of ids) {
-      const item = window.locator(`[data-note-id="${id}"]`).last();
+      const item = window.locator(`[data-section="bookmarks"][data-note-id="${id}"]`);
       await item.hover();
       await window.waitForTimeout(150);
-      const btn = item.locator('[role="button"]:has(svg.lucide-more-horizontal)');
+      const btn = item.locator('[role="button"]:has(svg.lucide-ellipsis)');
       await expect(btn).toBeVisible({ timeout: 3000 });
       // Move away before checking next item
       await window.mouse.move(0, 0);
@@ -1972,15 +2001,15 @@ test.describe('Bookmark Cross-Functional — ⋯ Dropdown Stress Tests', () => {
     await openBookmarksOptionsDropdown(window, docId);
     await expect(window.getByRole('menuitem', { name: /remove bookmark/i })).toBeVisible({ timeout: 2000 });
 
-    // Collapse sidebar while dropdown is open
-    await collapseSidebar(window);
+    // Collapse sidebar while dropdown is open using force:true (dropdown overlay blocks normal click)
+    await window.locator('[aria-label="Toggle sidebar"]').click({ force: true });
     await window.waitForTimeout(400);
 
     // Dropdown should no longer be visible (sidebar is gone / menu unmounted)
     await expect(window.getByRole('menuitem', { name: /remove bookmark/i })).not.toBeVisible({ timeout: 2000 });
 
     // Restore sidebar for subsequent tests
-    await expandSidebar(window);
+    await window.locator('[aria-label="Toggle sidebar"]').click({ force: true });
     await window.waitForTimeout(300);
   });
 
@@ -2036,9 +2065,12 @@ test.describe('Bookmark Cross-Functional — ⋯ Dropdown Stress Tests', () => {
     await openBookmarksOptionsDropdown(window, idA);
     await expect(window.getByRole('menuitem', { name: /remove bookmark/i })).toBeVisible({ timeout: 2000 });
 
-    // Now hover item B (should not close A's dropdown)
-    const itemB = window.locator(`[data-note-id="${idB}"]`).last();
-    await itemB.hover();
+    // Now move mouse over item B via direct mouse.move() (hover() is blocked by dropdown overlay)
+    const itemB = window.locator(`[data-section="bookmarks"][data-note-id="${idB}"]`);
+    const box = await itemB.boundingBox();
+    if (box) {
+      await window.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    }
     await window.waitForTimeout(300);
 
     // A's dropdown should still be open
@@ -2110,10 +2142,10 @@ test.describe('Bookmark Cross-Functional — ⋯ Dropdown Stress Tests', () => {
 
     // Hover still works on any arbitrary item after the full sequence (no lock leak)
     const lastId = ids[ids.length - 1];
-    const lastItem = window.locator(`[data-note-id="${lastId}"]`).last();
+    const lastItem = window.locator(`[data-section="bookmarks"][data-note-id="${lastId}"]`);
     await lastItem.hover();
     await window.waitForTimeout(200);
-    await expect(lastItem.locator('[role="button"]:has(svg.lucide-more-horizontal)')).toBeVisible({ timeout: 3000 });
+    await expect(lastItem.locator('[role="button"]:has(svg.lucide-ellipsis)')).toBeVisible({ timeout: 3000 });
   });
 
   test('dropdown held open for 3 seconds remains functional and action still executes', async ({
@@ -2374,9 +2406,9 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
     await bookmarkViaBackend(window, idA, '2024-11-01T00:00:01.000Z');
     await bookmarkViaBackend(window, idB, '2024-11-01T00:00:02.000Z');
 
-    // Open both notes so both have tabs
-    await openNoteViaStore(window, idA);
-    await openNoteViaStore(window, idB);
+    // Open both notes in separate tabs (openOrCreateTab appends each without replacing)
+    await addTabViaStore(window, idA);
+    await addTabViaStore(window, idB);
 
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 4000 });
     await expect(async () => {
@@ -2389,16 +2421,16 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
     await window.waitForTimeout(200);
 
     // Bookmarks section item for A is active, B is not
-    await expect(window.locator(`[data-note-id="${idA}"]`).last().locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
-    await expect(window.locator(`[data-note-id="${idB}"]`).last().locator('button[data-active="true"]')).not.toBeVisible({ timeout: 2000 });
+    await expect(window.locator(`[data-section="bookmarks"][data-note-id="${idA}"]`).locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
+    await expect(window.locator(`[data-section="bookmarks"][data-note-id="${idB}"]`).locator('button[data-active="true"]')).not.toBeVisible({ timeout: 2000 });
 
     // Switch to tab B
     await window.locator('[data-tab-id]').filter({ hasText: 'ActiveTab B' }).click();
     await window.waitForTimeout(200);
 
     // Now B is active, A is not
-    await expect(window.locator(`[data-note-id="${idB}"]`).last().locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
-    await expect(window.locator(`[data-note-id="${idA}"]`).last().locator('button[data-active="true"]')).not.toBeVisible({ timeout: 2000 });
+    await expect(window.locator(`[data-section="bookmarks"][data-note-id="${idB}"]`).locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
+    await expect(window.locator(`[data-section="bookmarks"][data-note-id="${idA}"]`).locator('button[data-active="true"]')).not.toBeVisible({ timeout: 2000 });
   });
 
   test('removing bookmark from an inactive (background) tab note reacts immediately in the section', async ({
@@ -2409,9 +2441,9 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
     await bookmarkViaBackend(window, idFg, '2024-11-01T00:00:01.000Z');
     await bookmarkViaBackend(window, idBg, '2024-11-01T00:00:02.000Z');
 
-    // Open both, leave foreground note active
-    await openNoteViaStore(window, idBg);
-    await openNoteViaStore(window, idFg); // idFg is now the active tab
+    // Open both notes in separate tabs; idFg is added last so it becomes the active tab
+    await addTabViaStore(window, idBg);
+    await addTabViaStore(window, idFg); // idFg is now the active tab
 
     await expect(async () => {
       expect(await isInBookmarksSection(window, idBg)).toBe(true);
@@ -2429,7 +2461,7 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
 
     // Foreground note still bookmarked and highlighted
     expect(await isInBookmarksSection(window, idFg)).toBe(true);
-    await expect(window.locator(`[data-note-id="${idFg}"]`).last().locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
+    await expect(window.locator(`[data-section="bookmarks"][data-note-id="${idFg}"]`).locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
 
     // Switch to the background note's tab — its bookmark button state should reflect "not bookmarked"
     await window.locator('[data-tab-id]').filter({ hasText: 'BackgroundTab Inactive' }).click();
@@ -2453,9 +2485,9 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
     await bookmarkViaBackend(window, idClose, '2024-11-01T00:00:01.000Z');
     await bookmarkViaBackend(window, idStay, '2024-11-01T00:00:02.000Z');
 
-    // Open both; make idClose the active tab
-    await openNoteViaStore(window, idStay);
-    await openNoteViaStore(window, idClose);
+    // Open both notes in separate tabs; idClose is added last so it becomes the active tab
+    await addTabViaStore(window, idStay);
+    await addTabViaStore(window, idClose);
 
     await expect(async () => {
       expect(await isInBookmarksSection(window, idClose)).toBe(true);
@@ -2463,7 +2495,7 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
     }).toPass({ timeout: 5000 });
 
     // Verify idClose is the active highlight in Bookmarks
-    await expect(window.locator(`[data-note-id="${idClose}"]`).last().locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
+    await expect(window.locator(`[data-section="bookmarks"][data-note-id="${idClose}"]`).locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
 
     // Close the active tab
     const closeTab = window.locator('[data-tab-id]').filter({ hasText: 'CloseActiveTab Bookmark' });
@@ -2477,10 +2509,10 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
     expect(selectedAfter).not.toBe(idClose);
 
     // idClose Bookmarks item no longer has active highlight
-    await expect(window.locator(`[data-note-id="${idClose}"]`).last().locator('button[data-active="true"]')).not.toBeVisible({ timeout: 2000 });
+    await expect(window.locator(`[data-section="bookmarks"][data-note-id="${idClose}"]`).locator('button[data-active="true"]')).not.toBeVisible({ timeout: 2000 });
 
     // idStay Bookmarks item is now highlighted (it became the active tab)
-    await expect(window.locator(`[data-note-id="${idStay}"]`).last().locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
+    await expect(window.locator(`[data-section="bookmarks"][data-note-id="${idStay}"]`).locator('button[data-active="true"]')).toBeVisible({ timeout: 2000 });
   });
 });
 
@@ -2726,7 +2758,7 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
     const notesItem = window.locator(`[data-note-id="${docId}"]`).first();
     await notesItem.hover();
     await window.waitForTimeout(150);
-    await notesItem.locator('[role="button"]:has(svg.lucide-more-horizontal)').click();
+    await notesItem.locator('[role="button"]:has(svg.lucide-ellipsis)').click();
     await window.waitForTimeout(300);
     await window.getByRole('menuitem', { name: /add to bookmarks/i }).click();
     await window.waitForTimeout(500);
@@ -2795,17 +2827,11 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
       expect(await isInBookmarksSection(window, idB)).toBe(true);
     }).toPass({ timeout: 5000 });
 
-    // Verify initial order: B first, A second
-    const itemsInitial = window.locator('aside [data-note-id]');
-    // Both present; we'll rely on index within the Bookmarks section
-    void itemsInitial; // locator used only to confirm section rendered
-    const allIds = await window
-      .locator('aside [data-note-id]')
+    // Verify initial order: B first, A second (using Bookmarks-only selector)
+    const bmIds = await window
+      .locator('aside [data-section="bookmarks"][data-note-id]')
       .evaluateAll((els) => els.map((el) => el.getAttribute('data-note-id')));
-    // idB (newer) must appear before idA (older) in the Bookmarks occurrences
-    const bmOccurrences = allIds.filter((id) => id === idA || id === idB);
-    // Each appears twice (Notes + Bookmarks); the Bookmarks pair is the second half
-    const bmPair = bmOccurrences.slice(bmOccurrences.length / 2);
+    const bmPair = bmIds.filter((id) => id === idA || id === idB);
     expect(bmPair[0]).toBe(idB); // B is newer → top
     expect(bmPair[1]).toBe(idA);
 
@@ -2826,12 +2852,10 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
     }).toPass({ timeout: 4000 });
 
     // Now A should be first (it was most recently bookmarked)
-    const allIdsAfter = await window
-      .locator('aside [data-note-id]')
+    const bmIdsAfter = await window
+      .locator('aside [data-section="bookmarks"][data-note-id]')
       .evaluateAll((els) => els.map((el) => el.getAttribute('data-note-id')));
-    const bmPairAfter = allIdsAfter
-      .filter((id) => id === idA || id === idB)
-      .slice(Math.floor(allIdsAfter.filter((id) => id === idA || id === idB).length / 2));
+    const bmPairAfter = bmIdsAfter.filter((id) => id === idA || id === idB);
     expect(bmPairAfter[0]).toBe(idA); // A is now newest → top
     expect(bmPairAfter[1]).toBe(idB);
   });
