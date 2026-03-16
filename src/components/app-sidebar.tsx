@@ -49,6 +49,7 @@ export function AppSidebar() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={() => createDocument(null)}
+                aria-label="New note"
                 className="group cursor-pointer"
               >
                 <SquarePen className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
