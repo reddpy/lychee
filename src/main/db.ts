@@ -196,6 +196,26 @@ function runMigrations(database: BetterSqlite3Database) {
 
     tx();
   }
+
+  // v9: add metadata JSON column for per-note settings (bookmarks, etc.)
+  const hasMetadata = (
+    database.prepare(`PRAGMA table_info(documents)`).all() as { name: string }[]
+  ).some((col) => col.name === 'metadata');
+
+  if (!hasMetadata) {
+    const tx = database.transaction(() => {
+      database.exec(`ALTER TABLE documents ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';`);
+
+      database
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run('9');
+    });
+
+    tx();
+  }
 }
 
 export function initDatabase(): { dbPath: string } {

@@ -87,6 +87,9 @@ jobs:
           - name: in-note-search
             specs: e2e/in-note-search.spec.ts
             workers: 1
+          - name: bookmarks
+            specs: e2e/document-bookmarks.spec.ts e2e/bookmark-metadata.spec.ts e2e/bookmark-cross-functional.spec.ts
+            workers: 1
           - name: misc
             specs: e2e/youtube-embed.spec.ts e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts
             workers: 1

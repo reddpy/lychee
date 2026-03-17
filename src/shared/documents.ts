@@ -11,5 +11,13 @@ export interface DocumentRow {
   deletedAt: string | null;
   /** Sort order within siblings (lower = earlier). */
   sortOrder: number;
+  /** Per-note metadata (JSON). */
+  metadata: NoteMetadata;
+}
+
+/** Extensible per-note settings stored as JSON in the `metadata` column. */
+export interface NoteMetadata {
+  /** When set, note is bookmarked/starred (ISO date). Null/undefined = not bookmarked. */
+  bookmarkedAt?: string | null;
 }
 

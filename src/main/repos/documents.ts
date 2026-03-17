@@ -1,9 +1,23 @@
 import { randomUUID } from 'crypto';
-import type { DocumentRow } from '../../shared/documents';
+import type { DocumentRow, NoteMetadata } from '../../shared/documents';
 import { getDb } from '../db';
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+/** Raw row from SQLite where metadata is a JSON string. */
+type RawDocumentRow = Omit<DocumentRow, 'metadata'> & { metadata: string };
+
+/** Parse the metadata JSON string into an object. */
+function hydrateRow(raw: RawDocumentRow): DocumentRow {
+  let metadata: NoteMetadata = {};
+  try { metadata = JSON.parse(raw.metadata) ?? {}; } catch { /* default to empty */ }
+  return { ...raw, metadata };
+}
+
+function hydrateRows(rows: RawDocumentRow[]): DocumentRow[] {
+  return rows.map(hydrateRow);
 }
 
 export function listDocuments(params: {
@@ -14,15 +28,17 @@ export function listDocuments(params: {
   const limit = Math.min(Math.max(params.limit ?? 50, 1), 500);
   const offset = Math.max(params.offset ?? 0, 0);
 
-  return db
-    .prepare(
-      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder
-       FROM documents
-       WHERE deletedAt IS NULL
-       ORDER BY sortOrder ASC, updatedAt DESC
-       LIMIT ? OFFSET ?`,
-    )
-    .all(limit, offset) as DocumentRow[];
+  return hydrateRows(
+    db
+      .prepare(
+        `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata
+         FROM documents
+         WHERE deletedAt IS NULL
+         ORDER BY sortOrder ASC, updatedAt DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(limit, offset) as RawDocumentRow[],
+  );
 }
 
 export function listTrashedDocuments(params: {
@@ -33,27 +49,29 @@ export function listTrashedDocuments(params: {
   const limit = Math.min(Math.max(params.limit ?? 200, 1), 500);
   const offset = Math.max(params.offset ?? 0, 0);
 
-  return db
-    .prepare(
-      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder
-       FROM documents
-       WHERE deletedAt IS NOT NULL
-       ORDER BY deletedAt DESC
-       LIMIT ? OFFSET ?`,
-    )
-    .all(limit, offset) as DocumentRow[];
+  return hydrateRows(
+    db
+      .prepare(
+        `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata
+         FROM documents
+         WHERE deletedAt IS NOT NULL
+         ORDER BY deletedAt DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(limit, offset) as RawDocumentRow[],
+  );
 }
 
 export function getDocumentById(id: string): DocumentRow | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder
+      `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata
        FROM documents
        WHERE id = ?`,
     )
-    .get(id) as DocumentRow | undefined;
-  return row ?? null;
+    .get(id) as RawDocumentRow | undefined;
+  return row ? hydrateRow(row) : null;
 }
 
 export function createDocument(input: {
@@ -86,11 +104,12 @@ export function createDocument(input: {
     emoji: input.emoji ?? null,
     deletedAt: null,
     sortOrder: 0,
+    metadata: {},
   };
 
   db.prepare(
-    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     doc.id,
     doc.title,
@@ -101,6 +120,7 @@ export function createDocument(input: {
     doc.emoji,
     doc.deletedAt,
     doc.sortOrder,
+    JSON.stringify(doc.metadata),
   );
 
   return doc;
@@ -113,6 +133,7 @@ export function updateDocument(
     content?: string;
     parentId?: string | null;
     emoji?: string | null;
+    metadata?: Partial<NoteMetadata>;
   },
 ): DocumentRow {
   const db = getDb();
@@ -129,13 +150,14 @@ export function updateDocument(
     parentId:
       patch.parentId === undefined ? existing.parentId : patch.parentId ?? null,
     emoji: patch.emoji === undefined ? existing.emoji : patch.emoji ?? null,
+    metadata: patch.metadata ? { ...existing.metadata, ...patch.metadata } : existing.metadata,
     deletedAt: existing.deletedAt,
     updatedAt: nowIso(),
   };
 
   db.prepare(
     `UPDATE documents
-     SET title = ?, content = ?, updatedAt = ?, parentId = ?, emoji = ?
+     SET title = ?, content = ?, updatedAt = ?, parentId = ?, emoji = ?, metadata = ?
      WHERE id = ?`,
   ).run(
     next.title,
@@ -143,6 +165,7 @@ export function updateDocument(
     next.updatedAt,
     next.parentId,
     next.emoji,
+    JSON.stringify(next.metadata),
     id,
   );
 
