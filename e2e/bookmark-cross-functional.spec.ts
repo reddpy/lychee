@@ -172,7 +172,8 @@ test.describe('Bookmark Cross-Functional — Title Sync', () => {
     // Change the title in the editor
     const visibleTitle = window.locator('main:visible h1.editor-title');
     await visibleTitle.click();
-    await window.keyboard.press('Meta+A');
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await window.keyboard.press(`${modifier}+A`);
     await window.keyboard.type('New Title');
     await window.waitForTimeout(800); // debounce save
 
@@ -192,7 +193,8 @@ test.describe('Bookmark Cross-Functional — Title Sync', () => {
     // Clear the editor title
     const visibleTitle = window.locator('main:visible h1.editor-title');
     await visibleTitle.click();
-    await window.keyboard.press('Meta+A');
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await window.keyboard.press(`${modifier}+A`);
     await window.keyboard.press('Backspace');
     await window.waitForTimeout(800);
 
