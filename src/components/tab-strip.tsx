@@ -30,6 +30,7 @@ function SortableTab({
   title,
   emoji,
   isActive,
+  isDuplicate,
   showLeftDivider,
   onSelect,
   onClose,
@@ -39,6 +40,7 @@ function SortableTab({
   title: string;
   emoji: string | null;
   isActive: boolean;
+  isDuplicate: boolean;
   showLeftDivider: boolean;
   onSelect: () => void;
   onClose: (e: React.MouseEvent) => void;
@@ -81,6 +83,9 @@ function SortableTab({
           <span className="shrink-0 text-base leading-none">{emoji}</span>
         ) : null}
         <span className="min-w-0 truncate">{title && title !== 'Untitled' ? title : 'New Page'}</span>
+        {isDuplicate && (
+          <span className="shrink-0 h-1.5 w-1.5 rounded-full bg-current opacity-40" />
+        )}
       </span>
       <button
         type="button"
@@ -123,6 +128,8 @@ export function TabStrip() {
     }),
   );
 
+  const tabIds = React.useMemo(() => openTabs.map((t) => t.tabId), [openTabs]);
+
   const handleDragStart = React.useCallback((event: DragStartEvent) => {
     setDraggingId(event.active.id as string);
   }, []);
@@ -133,28 +140,28 @@ export function TabStrip() {
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
-      const oldIndex = openTabs.indexOf(active.id as string);
-      const newIndex = openTabs.indexOf(over.id as string);
+      const oldIndex = tabIds.indexOf(active.id as string);
+      const newIndex = tabIds.indexOf(over.id as string);
 
       if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
         reorderTabs(oldIndex, newIndex);
       }
     },
-    [openTabs, reorderTabs],
+    [tabIds, reorderTabs],
   );
 
   const handleTabSelect = React.useCallback(
-    (id: string) => {
+    (tabId: string) => {
       if (draggingId) return;
-      selectDocument(id);
+      selectDocument(tabId);
     },
     [draggingId, selectDocument],
   );
 
   const handleTabClose = React.useCallback(
-    (e: React.MouseEvent, id: string) => {
+    (e: React.MouseEvent, tabId: string) => {
       e.stopPropagation();
-      closeTab(id);
+      closeTab(tabId);
     },
     [closeTab],
   );
@@ -184,18 +191,19 @@ export function TabStrip() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <SortableContext items={openTabs} strategy={horizontalListSortingStrategy}>
+        <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
           <div
             ref={scrollContainerRef}
             className="flex min-w-0 shrink items-end overflow-x-auto scrollbar-hide"
           >
-            {openTabs.map((tabId, index) => {
-              const doc = getDocById(documents, tabId);
+            {openTabs.map(({ tabId, docId }, index) => {
+              const doc = getDocById(documents, docId);
               if (!doc) return null;
               const isActive = selectedId === tabId;
-              const prevIsActive = index > 0 && selectedId === openTabs[index - 1];
+              const prevIsActive = index > 0 && selectedId === openTabs[index - 1].tabId;
               // Show a left divider between two adjacent inactive tabs
               const showLeftDivider = !isActive && index > 0 && !prevIsActive;
+              const isDuplicate = openTabs.some((t, i) => i !== index && t.docId === docId);
               return (
                 <SortableTab
                   key={tabId}
@@ -203,6 +211,7 @@ export function TabStrip() {
                   title={doc.title}
                   emoji={doc.emoji ?? null}
                   isActive={isActive}
+                  isDuplicate={isDuplicate}
                   showLeftDivider={showLeftDivider}
                   onSelect={() => handleTabSelect(tabId)}
                   onClose={(e) => handleTabClose(e, tabId)}

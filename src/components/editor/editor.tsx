@@ -142,6 +142,8 @@ export function sanitizeSerializedState(
 
 export function Editor({
   documentId,
+  tabId,
+  activeTabId,
   isActive,
   editorSerializedState,
   onEditorStateChange,
@@ -149,6 +151,9 @@ export function Editor({
   onTitleChange,
 }: {
   documentId: string
+  tabId: string
+  /** The currently active tabId for this document (changes on tab switch). */
+  activeTabId: string | null
   isActive: boolean
   editorSerializedState?: SerializedEditorState
   onEditorStateChange?: (editorState: EditorState) => void
@@ -172,6 +177,8 @@ export function Editor({
       >
         <Plugins
           documentId={documentId}
+          tabId={tabId}
+          activeTabId={activeTabId}
           isActive={isActive}
           initialTitle={initialTitle}
           onTitleChange={onTitleChange}

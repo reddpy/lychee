@@ -14,7 +14,7 @@ export function MediaPlaybackPill() {
 
   // If the media's tab was closed or replaced, dismiss the pill
   useEffect(() => {
-    if (activeMedia && !openTabs.includes(activeMedia.noteId)) {
+    if (activeMedia && !openTabs.some((t) => t.docId === activeMedia.noteId)) {
       dismiss();
     }
   }, [activeMedia, openTabs, dismiss]);
@@ -23,11 +23,17 @@ export function MediaPlaybackPill() {
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!activeMedia) return;
-      selectDocument(activeMedia.noteId);
+      const matches = openTabs.filter((t) => t.docId === activeMedia.noteId);
+      const activeIndex = openTabs.findIndex((t) => t.tabId === selectedId);
+      const mediaTab = matches.reduce<typeof matches[0] | undefined>((best, t) => {
+        if (!best) return t;
+        return Math.abs(openTabs.indexOf(t) - activeIndex) < Math.abs(openTabs.indexOf(best) - activeIndex) ? t : best;
+      }, undefined);
+      if (mediaTab) selectDocument(mediaTab.tabId);
       // Small delay so the tab becomes visible before scrolling
       setTimeout(() => activeMedia.scrollTo(), 50);
     },
-    [activeMedia, selectDocument],
+    [activeMedia, openTabs, selectedId, selectDocument],
   );
 
   const handleToggle = useCallback(
@@ -47,7 +53,8 @@ export function MediaPlaybackPill() {
   );
 
   // Show when media is tracked on a non-active tab (playing or paused)
-  if (!activeMedia || activeMedia.noteId === selectedId || !openTabs.includes(activeMedia.noteId)) return null;
+  const activeTabDocId = openTabs.find((t) => t.tabId === selectedId)?.docId;
+  if (!activeMedia || activeMedia.noteId === activeTabDocId || !openTabs.some((t) => t.docId === activeMedia.noteId)) return null;
 
   const doc = documents.find((d) => d.id === activeMedia.noteId);
   const noteEmoji = doc?.emoji ?? null;

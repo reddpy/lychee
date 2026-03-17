@@ -17,6 +17,7 @@ import { Link, X } from "lucide-react"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { onToolbarExclusive } from "@/components/lexical-editor"
 
 export const OPEN_LINK_EDITOR_COMMAND = createCommand<void>("OPEN_LINK_EDITOR_COMMAND")
 
@@ -70,7 +71,7 @@ export function LinkEditorPlugin() {
   }, [editor])
 
   useEffect(() => {
-    return mergeRegister(
+    const unregister = mergeRegister(
       editor.registerCommand(
         OPEN_LINK_EDITOR_COMMAND,
         () => {
@@ -91,6 +92,16 @@ export function LinkEditorPlugin() {
         COMMAND_PRIORITY_LOW
       )
     )
+
+    // Dismiss on tab switch so popover doesn't bleed into duplicate tabs
+    const unsubTabSwitch = onToolbarExclusive("__link-editor__", () => {
+      setIsOpen(false)
+    })
+
+    return () => {
+      unregister()
+      unsubTabSwitch()
+    }
   }, [editor, openLinkEditor, isOpen])
 
   const handleSubmit = useCallback(

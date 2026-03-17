@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { createCommand, COMMAND_PRIORITY_LOW } from "lexical"
+import { onToolbarExclusive } from "@/components/lexical-editor"
 
 const HIGHLIGHT_CLASS = "heading-highlight"
 
@@ -34,9 +35,22 @@ export function BlockHighlightPlugin(): null {
       COMMAND_PRIORITY_LOW
     )
 
+    // Clear highlight on tab switch so it doesn't bleed into duplicate tabs
+    const unsubTabSwitch = onToolbarExclusive("__block-highlight__", () => {
+      if (highlightedRef.current) {
+        highlightedRef.current.classList.remove(HIGHLIGHT_CLASS)
+        highlightedRef.current = null
+      }
+    })
+
     // Clear highlight when clicking in the editor
     const root = editor.getRootElement()
-    if (!root) return unregister
+    if (!root) {
+      return () => {
+        unregister()
+        unsubTabSwitch()
+      }
+    }
 
     const clearOnClick = () => {
       if (highlightedRef.current) {
@@ -47,6 +61,7 @@ export function BlockHighlightPlugin(): null {
 
     return () => {
       unregister()
+      unsubTabSwitch()
       root.removeEventListener("mousedown", clearOnClick)
     }
   }, [editor])

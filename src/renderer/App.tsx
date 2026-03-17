@@ -19,20 +19,20 @@ function TopBar() {
   const selectDocument = useDocumentStore((s) => s.selectDocument);
   const hasTabs = openTabs.length > 0;
 
-  const activeIndex = selectedId != null ? openTabs.indexOf(selectedId) : -1;
+  const activeIndex = selectedId != null ? openTabs.findIndex((t) => t.tabId === selectedId) : -1;
   const canGoLeft = activeIndex > 0;
   const canGoRight = activeIndex >= 0 && activeIndex < openTabs.length - 1;
 
   const handlePrevTab = React.useCallback(() => {
     if (!canGoLeft) return;
-    const prevId = openTabs[activeIndex - 1];
-    if (prevId) selectDocument(prevId);
+    const prevTab = openTabs[activeIndex - 1];
+    if (prevTab) selectDocument(prevTab.tabId);
   }, [canGoLeft, activeIndex, openTabs, selectDocument]);
 
   const handleNextTab = React.useCallback(() => {
     if (!canGoRight) return;
-    const nextId = openTabs[activeIndex + 1];
-    if (nextId) selectDocument(nextId);
+    const nextTab = openTabs[activeIndex + 1];
+    if (nextTab) selectDocument(nextTab.tabId);
   }, [canGoRight, activeIndex, openTabs, selectDocument]);
 
   return (
@@ -97,13 +97,32 @@ function EditorArea() {
   const openTabs = useDocumentStore((s) => s.openTabs);
   const documents = useDocumentStore((s) => s.documents);
 
-  const hasActiveTab = selectedId && openTabs.includes(selectedId);
-
   const docById = React.useMemo(() => {
     const map = new Map<string, (typeof documents)[number]>();
     for (const d of documents) map.set(d.id, d);
     return map;
   }, [documents]);
+
+  // Collect unique docIds in tab order (first occurrence wins for stable ordering).
+  const uniqueDocIds = React.useMemo(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const { docId } of openTabs) {
+      if (!seen.has(docId)) {
+        seen.add(docId);
+        result.push(docId);
+      }
+    }
+    return result;
+  }, [openTabs]);
+
+  // The active docId: whichever tab is selected.
+  const activeDocId = React.useMemo(
+    () => openTabs.find((t) => t.tabId === selectedId)?.docId ?? null,
+    [openTabs, selectedId],
+  );
+
+  const hasActiveTab = activeDocId != null;
 
   if (!hasActiveTab) {
     return (
@@ -124,15 +143,17 @@ function EditorArea() {
 
   return (
     <>
-      {openTabs.map((tabId) => {
-        const doc = docById.get(tabId);
+      {uniqueDocIds.map((docId) => {
+        const doc = docById.get(docId);
         if (!doc) return null;
+        const activeTabId = openTabs.find((t) => t.tabId === selectedId && t.docId === docId)?.tabId ?? null;
         return (
           <LexicalEditor
-            key={tabId}
+            key={docId}
             documentId={doc.id}
             document={doc}
-            hidden={tabId !== selectedId}
+            hidden={docId !== activeDocId}
+            activeTabId={activeTabId}
           />
         );
       })}

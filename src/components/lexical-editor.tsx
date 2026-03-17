@@ -48,18 +48,18 @@ export function onToolbarExclusive(
   return () => window.removeEventListener("lychee-toolbar-panel", handler);
 }
 
-function SearchBar({ documentId }: { documentId: string }) {
+function SearchBar({ tabId }: { tabId: string }) {
   const isOpen = useSearchHighlightStore(
-    (s) => s.states[documentId]?.isOpen ?? false,
+    (s) => s.states[tabId]?.isOpen ?? false,
   );
   const query = useSearchHighlightStore(
-    (s) => s.states[documentId]?.query ?? "",
+    (s) => s.states[tabId]?.query ?? "",
   );
   const activeIndex = useSearchHighlightStore(
-    (s) => s.states[documentId]?.activeIndex ?? 0,
+    (s) => s.states[tabId]?.activeIndex ?? 0,
   );
   const matchCount = useSearchHighlightStore(
-    (s) => s.states[documentId]?.matchCount ?? 0,
+    (s) => s.states[tabId]?.matchCount ?? 0,
   );
   const openHighlight = useSearchHighlightStore((s) => s.openHighlight);
   const setQuery = useSearchHighlightStore((s) => s.setQuery);
@@ -81,31 +81,31 @@ function SearchBar({ documentId }: { documentId: string }) {
 
   const toggle = React.useCallback(() => {
     if (isOpen) {
-      clearHighlight(documentId);
+      clearHighlight(tabId);
     } else {
-      openHighlight(documentId);
+      openHighlight(tabId);
     }
-  }, [isOpen, documentId, clearHighlight, openHighlight]);
+  }, [isOpen, tabId, clearHighlight, openHighlight]);
 
   const handlePrev = React.useCallback(() => {
     if (matchCount <= 0) return;
     const next = (activeIndex - 1 + matchCount) % matchCount;
     if (next === activeIndex) {
-      requestScroll(documentId);
+      requestScroll(tabId);
     } else {
-      setActiveIndex(documentId, next);
+      setActiveIndex(tabId, next);
     }
-  }, [activeIndex, matchCount, documentId, setActiveIndex, requestScroll]);
+  }, [activeIndex, matchCount, tabId, setActiveIndex, requestScroll]);
 
   const handleNext = React.useCallback(() => {
     if (matchCount <= 0) return;
     const next = (activeIndex + 1) % matchCount;
     if (next === activeIndex) {
-      requestScroll(documentId);
+      requestScroll(tabId);
     } else {
-      setActiveIndex(documentId, next);
+      setActiveIndex(tabId, next);
     }
-  }, [activeIndex, matchCount, documentId, setActiveIndex, requestScroll]);
+  }, [activeIndex, matchCount, tabId, setActiveIndex, requestScroll]);
 
   return (
     <div
@@ -132,13 +132,13 @@ function SearchBar({ documentId }: { documentId: string }) {
             data-testid="note-find-input"
             value={query}
             onChange={(e) => {
-              setQuery(documentId, e.target.value.normalize("NFC"));
-              setActiveIndex(documentId, 0);
+              setQuery(tabId, e.target.value.normalize("NFC"));
+              setActiveIndex(tabId, 0);
             }}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 e.preventDefault();
-                clearHighlight(documentId);
+                clearHighlight(tabId);
                 inputRef.current?.blur();
                 return;
               }
@@ -196,8 +196,8 @@ function SearchBar({ documentId }: { documentId: string }) {
             data-testid="note-find-close"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
-              setQuery(documentId, "");
-              setActiveIndex(documentId, 0);
+              setQuery(tabId, "");
+              setActiveIndex(tabId, 0);
               inputRef.current?.focus();
             }}
             disabled={!query}
@@ -238,13 +238,18 @@ export function LexicalEditor({
   documentId,
   document,
   hidden,
+  activeTabId,
 }: {
   documentId: string;
   document: DocumentRow;
   hidden: boolean;
+  activeTabId: string | null;
 }) {
   const [emojiPickerOpen, setEmojiPickerOpen] = React.useState(false);
   const [addIconPickerOpen, setAddIconPickerOpen] = React.useState(false);
+  const mainRef = React.useRef<HTMLElement>(null);
+  const scrollPositions = React.useRef<Map<string, number>>(new Map());
+  const prevActiveTabId = React.useRef<string | null>(null);
   const updateDocumentInStore = useDocumentStore(
     (s) => s.updateDocumentInStore,
   );
@@ -360,6 +365,26 @@ export function LexicalEditor({
     };
   }, [saveContent, saveTitle, debouncedStoreUpdate]);
 
+  // Save/restore scroll position per tab so duplicate tabs have independent scroll state.
+  // Also close ephemeral popovers (TOC, emoji picker) on tab switch.
+  React.useLayoutEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const prev = prevActiveTabId.current;
+    const curr = activeTabId;
+    if (prev !== curr) {
+      if (prev != null) scrollPositions.current.set(prev, el.scrollTop);
+      if (curr != null) el.scrollTop = scrollPositions.current.get(curr) ?? 0;
+      prevActiveTabId.current = curr;
+
+      // Close all toolbar panels (TOC, breadcrumb, etc.)
+      emitToolbarExclusive("__tab-switch__");
+      // Close emoji pickers
+      setEmojiPickerOpen(false);
+      setAddIconPickerOpen(false);
+    }
+  }, [activeTabId]);
+
   const handleEditorStateChange = React.useCallback(
     (editorState: EditorState) => {
       saveContent(documentId, editorState);
@@ -377,13 +402,14 @@ export function LexicalEditor({
 
   return (
     <main
+      ref={mainRef}
       className="h-full flex-1 bg-[hsl(var(--background))] border-t-0 overflow-auto cursor-text"
       style={hidden ? { display: "none" } : undefined}
     >
       {/* Sticky note toolbar */}
       <div className="sticky top-0 z-40 bg-[hsl(var(--background))]">
         <div className="mx-auto max-w-225 px-8 flex items-center justify-end gap-0.5 py-1">
-          <SearchBar documentId={documentId} />
+          <SearchBar tabId={activeTabId ?? documentId} />
           <div
             data-toolbar-id={documentId}
             className="flex items-center gap-0.5"
@@ -464,6 +490,8 @@ export function LexicalEditor({
         <NoteContext.Provider value={noteContextValue}>
           <Editor
             documentId={documentId}
+            tabId={activeTabId ?? documentId}
+            activeTabId={activeTabId}
             isActive={!hidden}
             editorSerializedState={editorSerializedState}
             onEditorStateChange={handleEditorStateChange}

@@ -18,6 +18,7 @@ import { $findCellNode } from "@lexical/table"
 import { ExternalLink, Bookmark, Code } from "lucide-react"
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
+import { onToolbarExclusive } from "@/components/lexical-editor"
 import { $createImageNode } from "@/components/editor/nodes/image-node"
 import { $createBookmarkNode } from "@/components/editor/nodes/bookmark-node"
 import { $createLoadingPlaceholderNode } from "@/components/editor/nodes/loading-placeholder-node"
@@ -185,6 +186,11 @@ export function LinkClickPlugin(): JSX.Element | null {
 
   // ── Clean up pending timer on unmount ──
   useEffect(() => clearDismissTimer, [clearDismissTimer])
+
+  // ── Dismiss on tab switch so popover doesn't bleed into duplicate tabs ──
+  useEffect(() => {
+    return onToolbarExclusive("__link-hover__", () => dismiss())
+  }, [dismiss])
 
   // ── Core: replace a link node with a block-level replacement ──
   const replaceLink = useCallback(

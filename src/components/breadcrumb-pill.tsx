@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, type KeyboardEvent, type MouseEvent } from "react";
 import { FileText, Layers2 } from "lucide-react";
-import { useDocumentStore } from "@/renderer/document-store";
+import { useDocumentStore, selectActiveDocId } from "@/renderer/document-store";
 import { DocumentRow } from "@/shared/documents";
 import {
   Popover,
@@ -36,7 +36,7 @@ export function BreadcrumbPill() {
   useEffect(() => {
     return onToolbarExclusive("breadcrumb", () => setOpen(false));
   }, []);
-  const selectedId = useDocumentStore((s) => s.selectedId);
+  const selectedId = useDocumentStore(selectActiveDocId);
   const documents = useDocumentStore((s) => s.documents);
   const openTab = useDocumentStore((s) => s.openTab);
   const openOrSelectTab = useDocumentStore((s) => s.openOrSelectTab);
