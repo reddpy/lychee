@@ -11,7 +11,7 @@ function collapsedSidebar(window: Page) {
 }
 
 function notesSectionToggle(window: Page) {
-  return window.getByRole('button', { name: /^Notes New note$/ });
+  return window.getByRole('button', { name: /^Notes$/ });
 }
 
 async function revealFloatingSidebar(window: Page) {
