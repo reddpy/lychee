@@ -1116,9 +1116,10 @@ test.describe('Breadcrumb Pill — Tab Integration', () => {
     expect(tabs).toContain(bId);
     expect(tabs).toContain(cId);
     expect(tabs).toContain(dId);
+    // A clicked once, B clicked twice, C clicked twice → each creates a new tab
     expect(tabs.filter((id) => id === aId)).toHaveLength(1);
-    expect(tabs.filter((id) => id === bId)).toHaveLength(1);
-    expect(tabs.filter((id) => id === cId)).toHaveLength(1);
+    expect(tabs.filter((id) => id === bId)).toHaveLength(2);
+    expect(tabs.filter((id) => id === cId)).toHaveLength(2);
   });
 
   test('cmd-click does not close breadcrumb popover', async ({ window }) => {
@@ -1207,7 +1208,9 @@ test.describe('Breadcrumb Pill — Tab Integration', () => {
     await window.waitForTimeout(150);
 
     await window.evaluate((id) => {
-      (window as any).__documentStore.getState().closeTab(id);
+      const store = (window as any).__documentStore;
+      const tab = store.getState().openTabs.find((t: any) => t.docId === id);
+      if (tab) store.getState().closeTab(tab.tabId);
     }, childId);
     await window.waitForTimeout(200);
 

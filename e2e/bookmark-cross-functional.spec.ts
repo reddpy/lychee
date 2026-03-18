@@ -31,7 +31,9 @@ async function createNoteWithTitle(window: Page, title: string): Promise<string>
 
   return window.evaluate(() => {
     const store = (window as any).__documentStore;
-    return store.getState().selectedId as string;
+    const state = store.getState();
+    const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+    return (tab?.docId ?? state.selectedId) as string;
   });
 }
 
@@ -351,9 +353,11 @@ test.describe('Bookmark Cross-Functional — Nested Notes', () => {
     await childInBookmarks.click();
     await window.waitForTimeout(400);
 
-    const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const state = (window as any).__documentStore.getState();
+      const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+      return (tab?.docId ?? state.selectedId) as string;
+    });
     expect(selectedId).toBe(childId);
   });
 });
@@ -403,9 +407,11 @@ test.describe('Bookmark Cross-Functional — Notes Section Independence', () => 
     await bookmarkItem.click();
     await window.waitForTimeout(400);
 
-    const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const state = (window as any).__documentStore.getState();
+      const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+      return (tab?.docId ?? state.selectedId) as string;
+    });
     expect(selectedId).toBe(docId);
     await expect(window.locator('main:visible h1.editor-title')).toContainText(
       'Navigate From Bookmarks',
@@ -590,9 +596,11 @@ test.describe('Bookmark Cross-Functional — Tab System', () => {
     expect(tabCountAfter).toBe(tabCountBefore);
 
     // The bookmarked note should now be selected
-    const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const state = (window as any).__documentStore.getState();
+      const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+      return (tab?.docId ?? state.selectedId) as string;
+    });
     expect(selectedId).toBe(docId);
   });
 
@@ -816,9 +824,11 @@ test.describe('Bookmark Cross-Functional — Search Palette', () => {
     await result.click();
     await window.waitForTimeout(400);
 
-    const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const state = (window as any).__documentStore.getState();
+      const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+      return (tab?.docId ?? state.selectedId) as string;
+    });
     expect(selectedId).toBe(docId);
   });
 
