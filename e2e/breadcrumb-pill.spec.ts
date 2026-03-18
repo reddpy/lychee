@@ -139,14 +139,16 @@ async function clickBreadcrumbWithModifier(
 async function getSelectedId(window: Page): Promise<string | null> {
   return window.evaluate(() => {
     const store = (window as any).__documentStore;
-    return store.getState().selectedId;
+    const state = store.getState();
+    const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+    return tab?.docId ?? null;
   });
 }
 
 async function getOpenTabs(window: Page): Promise<string[]> {
   return window.evaluate(() => {
     const store = (window as any).__documentStore;
-    return store.getState().openTabs;
+    return store.getState().openTabs.map((t: any) => t.docId);
   });
 }
 
@@ -219,7 +221,7 @@ test.describe('Breadcrumb Pill — Visibility', () => {
     await window.evaluate(() => {
       const store = (window as any).__documentStore;
       const { openTabs } = store.getState();
-      for (const tabId of openTabs) store.getState().closeTab(tabId);
+      for (const tab of openTabs) store.getState().closeTab(tab.tabId);
     });
     await window.waitForTimeout(300);
     await closeSidebar(window);
@@ -1038,7 +1040,7 @@ test.describe('Breadcrumb Pill — Tab Integration', () => {
     expect(afterTabs).toHaveLength(beforeTabs.length + 1);
   });
 
-  test('cmd-click on already-open breadcrumb target does not duplicate tabs', async ({ window }) => {
+  test('cmd-click on already-open breadcrumb target opens in new tab (creating duplicate)', async ({ window }) => {
     const m = await seedTree(window, [
       { title: 'NoDup Parent' },
       { title: 'NoDup Child', parentTitle: 'NoDup Parent' },
@@ -1059,11 +1061,11 @@ test.describe('Breadcrumb Pill — Tab Integration', () => {
     const afterTabs = await getOpenTabs(window);
 
     expect(await getSelectedId(window)).toBe(parentId);
-    expect(afterTabs).toEqual(beforeTabs);
-    expect(afterTabs.filter((id) => id === childId)).toHaveLength(1);
+    expect(afterTabs.length).toBe(beforeTabs.length + 1);
+    expect(afterTabs.filter((id: string) => id === childId)).toHaveLength(2);
   });
 
-  test('repeated cmd-click on same breadcrumb target is idempotent', async ({ window }) => {
+  test('repeated cmd-click on same breadcrumb target creates a new tab each time', async ({ window }) => {
     const m = await seedTree(window, [
       { title: 'Repeat Parent' },
       { title: 'Repeat Child', parentTitle: 'Repeat Parent' },
@@ -1084,7 +1086,7 @@ test.describe('Breadcrumb Pill — Tab Integration', () => {
     expect(await getSelectedId(window)).toBe(parentId);
     expect(tabs).toContain(parentId);
     expect(tabs).toContain(childId);
-    expect(tabs.filter((id) => id === childId)).toHaveLength(1);
+    expect(tabs.filter((id: string) => id === childId)).toHaveLength(5);
   });
 
   test('rapid cmd-click across ancestors opens each once and keeps current note selected', async ({ window }) => {

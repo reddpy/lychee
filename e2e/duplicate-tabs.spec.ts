@@ -1855,7 +1855,7 @@ test.describe('Duplicate Tabs — Table Plugin', () => {
 
     const editor = activeMain(window).locator('.ContentEditable__root');
     await editor.click();
-    await window.keyboard.type('/');
+    await window.keyboard.type('/table');
     await window.waitForTimeout(300);
     const tableOption = window.getByRole('option', { name: 'Table' });
     if (await tableOption.isVisible().catch(() => false)) {
@@ -1894,7 +1894,7 @@ test.describe('Duplicate Tabs — Table Plugin', () => {
 
     const editor = activeMain(window).locator('.ContentEditable__root');
     await editor.click();
-    await window.keyboard.type('/');
+    await window.keyboard.type('/table');
     await window.waitForTimeout(300);
     const tableOption = window.getByRole('option', { name: 'Table' });
     if (await tableOption.isVisible().catch(() => false)) {
@@ -1926,7 +1926,7 @@ test.describe('Duplicate Tabs — Table Plugin', () => {
 
     const editor = activeMain(window).locator('.ContentEditable__root');
     await editor.click();
-    await window.keyboard.type('/');
+    await window.keyboard.type('/table');
     await window.waitForTimeout(300);
     const tableOption = window.getByRole('option', { name: 'Table' });
     if (await tableOption.isVisible().catch(() => false)) {

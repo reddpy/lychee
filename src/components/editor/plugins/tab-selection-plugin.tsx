@@ -60,6 +60,10 @@ export function TabSelectionPlugin({
     // Restore incoming tab's selection
     if (curr != null) {
       const saved = cache.current.get(curr)
+      const editorRoot = editor.getRootElement()
+      const hadFocusBefore = editorRoot
+        ? editorRoot === document.activeElement || editorRoot.contains(document.activeElement)
+        : false
       editor.update(
         () => {
           if (!saved) {
@@ -75,7 +79,17 @@ export function TabSelectionPlugin({
             $setSelection(null)
           }
         },
-        { tag: "history-merge" },
+        {
+          tag: "history-merge",
+          onUpdate: hadFocusBefore
+            ? undefined
+            : () => {
+                const root = editor.getRootElement()
+                if (root && (root === document.activeElement || root.contains(document.activeElement))) {
+                  root.blur()
+                }
+              },
+        },
       )
     }
   }, [activeTabId, editor])

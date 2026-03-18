@@ -16,7 +16,9 @@ async function createNoteWithTitle(window: Page, title: string): Promise<string>
   // Read doc ID from the store
   const docId = await window.evaluate(() => {
     const store = (window as any).__documentStore;
-    return store.getState().selectedId as string;
+    const state = store.getState();
+    const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+    return (tab?.docId ?? state.selectedId) as string;
   });
   return docId;
 }
