@@ -48,7 +48,8 @@ async function createNoteWithTitle(window: Page, title: string): Promise<string>
 
   return window.evaluate(() => {
     const store = (window as any).__documentStore;
-    return store.getState().selectedId as string;
+    const s = store.getState();
+    return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId as string;
   });
 }
 
@@ -313,9 +314,10 @@ test.describe('Document Bookmark — Sidebar Section', () => {
     await noteItemInBookmarks.click();
     await window.waitForTimeout(400);
 
-    const selectedId = await window.evaluate(() =>
-      (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null;
+    });
     expect(selectedId).toBe(docIdA);
   });
 
@@ -543,9 +545,10 @@ test.describe('Document Bookmark — Edge Cases', () => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(600);
 
-    const docId = await window.evaluate(() =>
-      (window as any).__documentStore.getState().selectedId as string,
-    );
+    const docId = await window.evaluate(() => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId as string;
+    });
 
     // BACKEND: inject bookmark; the note has no title typed
     await bookmarkViaBackend(window, docId);
@@ -748,9 +751,10 @@ base.describe('Document Bookmark — Persistence Across Restart', () => {
     await window.keyboard.type('Restart Bookmark Test');
     await window.waitForTimeout(700);
 
-    const docId = await window.evaluate(() =>
-      (window as any).__documentStore.getState().selectedId as string,
-    );
+    const docId = await window.evaluate(() => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId as string;
+    });
 
     const btn = window.locator('main:visible').getByRole('button', { name: /bookmark this note/i });
     await btn.click();
@@ -792,9 +796,10 @@ base.describe('Document Bookmark — Persistence Across Restart', () => {
     await window.keyboard.type('Unbookmark Persist Test');
     await window.waitForTimeout(700);
 
-    const docId = await window.evaluate(() =>
-      (window as any).__documentStore.getState().selectedId as string,
-    );
+    const docId = await window.evaluate(() => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId as string;
+    });
 
     let btn = window.locator('main:visible').getByRole('button', { name: /bookmark this note/i });
     await btn.click();

@@ -51,6 +51,7 @@ import { ClickToAppendPlugin } from "@/components/editor/plugins/click-to-append
 import { TableActionMenuPlugin } from "@/components/editor/plugins/table-action-menu-plugin"
 import { TableColumnResizerPlugin } from "@/components/editor/plugins/table-column-resizer-plugin"
 import { SearchHighlightPlugin } from "@/components/editor/plugins/search-highlight-plugin"
+import { TabSelectionPlugin } from "@/components/editor/plugins/tab-selection-plugin"
 import { IMAGE, IMAGE_EXPORT } from "@/components/editor/plugins/image-markdown-transformer"
 import { TABLE, TABLE_EXPORT } from "@/components/editor/plugins/table-markdown-transformer"
 
@@ -95,6 +96,8 @@ const MATCHERS: LinkMatcher[] = [
 
 interface PluginsProps {
   documentId: string
+  tabId: string
+  activeTabId: string | null
   isActive: boolean
   initialTitle?: string
   onTitleChange?: (title: string) => void
@@ -102,6 +105,8 @@ interface PluginsProps {
 
 export function Plugins({
   documentId,
+  tabId,
+  activeTabId,
   isActive,
   initialTitle,
   onTitleChange,
@@ -168,7 +173,10 @@ export function Plugins({
       <SectionIndicatorPlugin documentId={documentId} />
 
       {/* In-editor find + highlights (Cmd/Ctrl+F) */}
-      <SearchHighlightPlugin documentId={documentId} isActive={isActive} />
+      {/* Per-tab selection save/restore for duplicate tabs */}
+      <TabSelectionPlugin activeTabId={activeTabId} />
+
+      <SearchHighlightPlugin tabId={tabId} documentId={documentId} isActive={isActive} />
     </div>
   )
 }

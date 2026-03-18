@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { SquarePen } from 'lucide-react';
 
-import { useDocumentStore } from '../renderer/document-store';
+import { useDocumentStore, selectActiveDocId } from '../renderer/document-store';
 import {
   Sidebar,
   SidebarContent,
@@ -18,11 +18,11 @@ import { SidebarFooterContent } from './sidebar/sidebar-footer-content';
 export function AppSidebar() {
   const {
     documents,
-    selectedId,
     loading,
     createDocument,
     loadDocuments,
   } = useDocumentStore();
+  const activeDocId = useDocumentStore(selectActiveDocId);
 
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set());
 
@@ -62,7 +62,7 @@ export function AppSidebar() {
         <BookmarksSection documents={documents} />
         <NotesSection
           documents={documents}
-          selectedId={selectedId}
+          selectedId={activeDocId}
           loading={loading}
           expandedIds={expandedIds}
           setExpandedIds={setExpandedIds}

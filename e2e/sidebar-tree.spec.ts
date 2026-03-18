@@ -1204,7 +1204,7 @@ test.describe('Sidebar Tree — Selection & Interaction', () => {
     const a = await createNote(window, 'Tab One');
     const b = await createNote(window, 'Tab Two');
 
-    // Currently Tab Two is open. Cmd+Click Tab One to open it in a NEW tab.
+    // Currently Tab Two is open. Cmd+Click Tab One opens it in a new tab (duplicate tabs are supported).
     const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
     const noteA = window.locator('[data-note-id]').filter({ hasText: 'Tab One' });
     await noteA.click({ modifiers: [modifier] });
@@ -1214,8 +1214,8 @@ test.describe('Sidebar Tree — Selection & Interaction', () => {
     const tabCount = await window.locator('[data-tab-id]').count();
     expect(tabCount).toBeGreaterThanOrEqual(2);
 
-    // Both tabs should exist
-    await expect(window.locator('[data-tab-id]').filter({ hasText: 'Tab One' })).toHaveCount(1);
+    // Tab Two unchanged; Tab One now has 2 tabs (original + duplicate from cmd-click)
+    await expect(window.locator('[data-tab-id]').filter({ hasText: 'Tab One' })).toHaveCount(2);
     await expect(window.locator('[data-tab-id]').filter({ hasText: 'Tab Two' })).toHaveCount(1);
   });
 

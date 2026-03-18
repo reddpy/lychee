@@ -31,9 +31,10 @@ async function createNoteWithTitle(window: Page, title: string): Promise<string>
   await visibleTitle.click();
   await window.keyboard.type(title);
   await window.waitForTimeout(700);
-  return window.evaluate(() =>
-    (window as any).__documentStore.getState().selectedId as string,
-  );
+  return window.evaluate(() => {
+    const s = (window as any).__documentStore.getState();
+    return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId as string;
+  });
 }
 
 async function typeUrlInBody(window: Page, url: string) {

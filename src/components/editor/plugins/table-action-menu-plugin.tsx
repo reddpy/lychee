@@ -45,6 +45,7 @@ import {
   Columns3,
   Settings2,
 } from "lucide-react"
+import { onToolbarExclusive } from "@/components/lexical-editor"
 
 function TableActionBar({
   editor,
@@ -118,6 +119,11 @@ function TableActionBar({
 
   // Close menu when cell changes
   useEffect(() => { setOpen(false) }, [tableCellNode])
+
+  // Close menu on tab switch so it doesn't bleed into duplicate tabs
+  useEffect(() => {
+    return onToolbarExclusive("__table-action__", () => setOpen(false))
+  }, [])
 
   const run = useCallback((fn: () => void) => {
     editor.update(fn)

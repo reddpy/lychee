@@ -59,7 +59,7 @@ export function SearchNotesButton() {
   const openTab = useDocumentStore((s) => s.openTab);
   const openOrCreateTab = useDocumentStore((s) => s.openOrCreateTab);
   const setTransientJump = useSearchHighlightStore((s) => s.setTransientJump);
-  const openTabSet = React.useMemo(() => new Set(openTabs), [openTabs]);
+  const openTabSet = React.useMemo(() => new Set(openTabs.map((t) => t.docId)), [openTabs]);
 
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -771,7 +771,7 @@ export function SearchNotesButton() {
                 renderedDocuments.map((entry) => {
                   const { doc, bodyText, matchCount, normalizedDocTitle } = entry;
                   const title = normalizedDocTitle;
-                  const isActiveTab = selectedId === doc.id;
+                  const isActiveTab = openTabs.some((t) => t.tabId === selectedId && t.docId === doc.id);
                   const tabStatusLabel = isActiveTab
                     ? "Current"
                     : openTabSet.has(doc.id)

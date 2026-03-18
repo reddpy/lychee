@@ -154,24 +154,26 @@ function scrollMatchIntoView(
 }
 
 export function SearchHighlightPlugin({
+  tabId,
   documentId,
   isActive,
 }: {
+  tabId: string;
   documentId: string;
   isActive: boolean;
 }): null {
   const [editor] = useLexicalComposerContext();
   const query = useSearchHighlightStore(
-    (s) => s.states[documentId]?.query ?? "",
+    (s) => s.states[tabId]?.query ?? "",
   );
   const transientJump = useSearchHighlightStore(
-    (s) => s.states[documentId]?.transient ?? null,
+    (s) => s.transients[documentId] ?? null,
   );
   const activeIndex = useSearchHighlightStore(
-    (s) => s.states[documentId]?.activeIndex ?? 0,
+    (s) => s.states[tabId]?.activeIndex ?? 0,
   );
   const isOpenForDoc = useSearchHighlightStore(
-    (s) => isActive && (s.states[documentId]?.isOpen ?? false),
+    (s) => isActive && (s.states[tabId]?.isOpen ?? false),
   );
   const openHighlight = useSearchHighlightStore((s) => s.openHighlight);
   const setQuery = useSearchHighlightStore((s) => s.setQuery);
@@ -180,13 +182,17 @@ export function SearchHighlightPlugin({
   const clearTransientJump = useSearchHighlightStore((s) => s.clearTransientJump);
   const storeSetMatchCount = useSearchHighlightStore((s) => s.setMatchCount);
   const scrollRequest = useSearchHighlightStore(
-    (s) => s.states[documentId]?.scrollRequest ?? 0,
+    (s) => s.states[tabId]?.scrollRequest ?? 0,
   );
   const allRangesRef = React.useRef<TextRange[]>([]);
   const textSearchCacheRef = React.useRef<WeakMap<Node, TextNodeSearchCache>>(
     new WeakMap(),
   );
   const activeMatchIndexRef = React.useRef(0);
+  // Ref so that stale closures (update listener, mutation observer, etc.)
+  // always read the *current* tabId rather than a captured-at-creation value.
+  const tabIdRef = React.useRef(tabId);
+  React.useEffect(() => { tabIdRef.current = tabId; }, [tabId]);
   const wasVisibleRef = React.useRef(false);
   const highlightNames = React.useMemo(
     () => ({
@@ -228,8 +234,8 @@ export function SearchHighlightPlugin({
   ]);
 
   const closeFind = React.useCallback(() => {
-    clearHighlight(documentId);
-  }, [clearHighlight, documentId]);
+    clearHighlight(tabId);
+  }, [clearHighlight, tabId]);
 
   const toggleFind = React.useCallback(() => {
     if (isOpenForDoc) {
@@ -239,16 +245,17 @@ export function SearchHighlightPlugin({
     if (isTransientActive && transientJump) {
       // Cmd/Ctrl+F should interrupt transient mode and open a fresh in-note find UX.
       clearTransientJump(documentId);
-      setQuery(documentId, "");
-      setActiveIndex(documentId, 0);
-      openHighlight(documentId, "", 0);
+      setQuery(tabId, "");
+      setActiveIndex(tabId, 0);
+      openHighlight(tabId, "", 0);
       return;
     }
-    openHighlight(documentId);
+    openHighlight(tabId);
   }, [
     clearTransientJump,
     closeFind,
     documentId,
+    tabId,
     isOpenForDoc,
     isTransientActive,
     openHighlight,
@@ -309,11 +316,12 @@ export function SearchHighlightPlugin({
 
   const refreshHighlights = React.useCallback(
     (resetToFirst: boolean, shouldScroll: boolean) => {
+      const currentTabId = tabIdRef.current;
       const modeIsVisible = isOpenForDoc || isTransientActive;
       const activeQuery = effectiveQuery;
       if (!modeIsVisible || !activeQuery.trim()) {
         allRangesRef.current = [];
-        storeSetMatchCount(documentId, 0);
+        storeSetMatchCount(currentTabId, 0);
         activeMatchIndexRef.current = 0;
         clearAllHighlights();
         return;
@@ -324,7 +332,7 @@ export function SearchHighlightPlugin({
 
       const ranges = createTextRanges(root, activeQuery, textSearchCacheRef.current);
       allRangesRef.current = ranges;
-      storeSetMatchCount(documentId, ranges.length);
+      storeSetMatchCount(currentTabId, ranges.length);
 
       if (!supportsCustomHighlightApi()) {
         activeMatchIndexRef.current = 0;
@@ -373,7 +381,7 @@ export function SearchHighlightPlugin({
             ranges.length,
           );
       activeMatchIndexRef.current = nextIndex;
-      if (!isTransientActive) setActiveIndex(documentId, nextIndex);
+      if (!isTransientActive) setActiveIndex(currentTabId, nextIndex);
       applyActiveHighlight(nextIndex, shouldScroll, false, activeName);
     },
     [
@@ -388,7 +396,6 @@ export function SearchHighlightPlugin({
       highlightNames.transientActive,
       isOpenForDoc,
       isTransientActive,
-      documentId,
       setActiveIndex,
       storeSetMatchCount,
     ],
@@ -402,9 +409,23 @@ export function SearchHighlightPlugin({
 
   const prevQueryRef = React.useRef(effectiveQuery);
   const prevIndexRef = React.useRef(effectiveActiveIndex);
+  const prevTabIdRef = React.useRef(tabId);
 
   React.useEffect(() => {
     if (!isOpenForDoc) return;
+    const tabSwitched = prevTabIdRef.current !== tabId;
+    prevTabIdRef.current = tabId;
+
+    // On tab switch the store reads shift to a different tab's saved state.
+    // Treat this as a restore, not a fresh query change — preserve the saved index.
+    if (tabSwitched) {
+      prevQueryRef.current = effectiveQuery;
+      prevIndexRef.current = effectiveActiveIndex;
+      activeMatchIndexRef.current = Math.max(0, effectiveActiveIndex);
+      refreshHighlights(false, false);
+      return;
+    }
+
     const queryChanged = prevQueryRef.current !== effectiveQuery;
     const indexChanged = prevIndexRef.current !== effectiveActiveIndex;
     prevQueryRef.current = effectiveQuery;
@@ -415,7 +436,7 @@ export function SearchHighlightPlugin({
 
     // Only scroll on explicit navigation (chevrons/Enter), not on typing
     refreshHighlights(queryChanged, indexChanged);
-  }, [effectiveActiveIndex, isOpenForDoc, effectiveQuery, refreshHighlights]);
+  }, [effectiveActiveIndex, isOpenForDoc, effectiveQuery, refreshHighlights, tabId]);
 
   // Scroll to current match when requested (e.g. single-match navigation)
   const prevScrollReqRef = React.useRef(scrollRequest);

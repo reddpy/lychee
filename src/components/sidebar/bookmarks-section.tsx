@@ -15,7 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
-import { useDocumentStore } from '../../renderer/document-store';
+import { useDocumentStore, selectActiveDocId } from '../../renderer/document-store';
 import { DocumentContextMenu, DocumentDropdownMenuContent } from './document-command-menu';
 import { cn } from '../../lib/utils';
 
@@ -123,7 +123,7 @@ function BookmarkItem({ doc, isSelected }: { doc: DocumentRow; isSelected: boole
 
 export function BookmarksSection({ documents }: BookmarksSectionProps) {
   const [isOpen, setIsOpen] = React.useState(true);
-  const selectedId = useDocumentStore((s) => s.selectedId);
+  const selectedId = useDocumentStore(selectActiveDocId);
 
   const bookmarked = React.useMemo(
     () =>

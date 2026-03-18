@@ -31,7 +31,9 @@ async function createNoteWithTitle(window: Page, title: string): Promise<string>
 
   return window.evaluate(() => {
     const store = (window as any).__documentStore;
-    return store.getState().selectedId as string;
+    const state = store.getState();
+    const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+    return (tab?.docId ?? state.selectedId) as string;
   });
 }
 
@@ -351,9 +353,11 @@ test.describe('Bookmark Cross-Functional — Nested Notes', () => {
     await childInBookmarks.click();
     await window.waitForTimeout(400);
 
-    const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const state = (window as any).__documentStore.getState();
+      const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+      return (tab?.docId ?? state.selectedId) as string;
+    });
     expect(selectedId).toBe(childId);
   });
 });
@@ -403,9 +407,11 @@ test.describe('Bookmark Cross-Functional — Notes Section Independence', () => 
     await bookmarkItem.click();
     await window.waitForTimeout(400);
 
-    const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const state = (window as any).__documentStore.getState();
+      const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+      return (tab?.docId ?? state.selectedId) as string;
+    });
     expect(selectedId).toBe(docId);
     await expect(window.locator('main:visible h1.editor-title')).toContainText(
       'Navigate From Bookmarks',
@@ -590,9 +596,11 @@ test.describe('Bookmark Cross-Functional — Tab System', () => {
     expect(tabCountAfter).toBe(tabCountBefore);
 
     // The bookmarked note should now be selected
-    const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const state = (window as any).__documentStore.getState();
+      const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+      return (tab?.docId ?? state.selectedId) as string;
+    });
     expect(selectedId).toBe(docId);
   });
 
@@ -816,9 +824,11 @@ test.describe('Bookmark Cross-Functional — Search Palette', () => {
     await result.click();
     await window.waitForTimeout(400);
 
-    const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
-    );
+    const selectedId = await window.evaluate(() => {
+      const state = (window as any).__documentStore.getState();
+      const tab = state.openTabs.find((t: any) => t.tabId === state.selectedId);
+      return (tab?.docId ?? state.selectedId) as string;
+    });
     expect(selectedId).toBe(docId);
   });
 
@@ -1366,7 +1376,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     await window.waitForTimeout(400);
 
     const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedId).toBe(parentId);
 
@@ -1707,14 +1717,14 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     // Navigate away so the bookmarked note is NOT selected
     await createNoteWithTitle(window, 'Currently Selected Note');
     const selectedBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
 
     await openBookmarksOptionsDropdown(window, docId);
 
     // selectedId must not have changed to the bookmarked note
     const selectedAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedAfter).toBe(selectedBefore);
     expect(selectedAfter).not.toBe(docId);
@@ -1739,7 +1749,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     await closeTabViaStore(window, docId);
 
     const selectedBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
@@ -1752,7 +1762,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
 
     // selectedId unchanged — focus stayed on the current note
     const selectedAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedAfter).toBe(selectedBefore);
   });
@@ -1832,7 +1842,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     }).toPass({ timeout: 4000 });
 
     const selectedBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
 
     await openBookmarksOptionsDropdown(window, docId);
@@ -1847,7 +1857,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 2000 });
     // selectedId unchanged
     expect(await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     )).toBe(selectedBefore);
   });
 
@@ -2032,7 +2042,7 @@ test.describe('Bookmark Cross-Functional — ⋯ Dropdown Stress Tests', () => {
     await expect(window.getByRole('menuitem', { name: /remove bookmark/i })).toBeVisible({ timeout: 2000 });
 
     const selectedBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string | null,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
 
     // Click somewhere in the editor pane (not a menu item)
@@ -2044,7 +2054,7 @@ test.describe('Bookmark Cross-Functional — ⋯ Dropdown Stress Tests', () => {
 
     // Navigation state not changed by the click-to-dismiss
     const selectedAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string | null,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedAfter).toBe(selectedBefore);
   });
@@ -2174,7 +2184,7 @@ test.describe('Bookmark Cross-Functional — ⋯ Dropdown Stress Tests', () => {
     await window.waitForTimeout(400);
 
     const tabs = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
     expect(tabs.filter((id: string) => id === docId).length).toBeGreaterThanOrEqual(1);
   });
@@ -2273,7 +2283,7 @@ test.describe('Bookmark Cross-Functional — Trash Edge Cases', () => {
     }).toPass({ timeout: 4000 });
 
     const tabsBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
     expect(tabsBefore).toContain(docId);
 
@@ -2284,7 +2294,7 @@ test.describe('Bookmark Cross-Functional — Trash Edge Cases', () => {
 
     // Tab for the trashed note should be gone
     const tabsAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
     expect(tabsAfter).not.toContain(docId);
 
@@ -2329,7 +2339,7 @@ test.describe('Bookmark Cross-Functional — Trash Edge Cases', () => {
 
     // Confirm it is currently selected
     const selectedBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedBefore).toBe(docId);
 
@@ -2340,7 +2350,7 @@ test.describe('Bookmark Cross-Functional — Trash Edge Cases', () => {
 
     // selectedId must have changed — no longer the trashed note
     const selectedAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string | null,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedAfter).not.toBe(docId);
 
@@ -2471,7 +2481,7 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
 
     // Background note's tab is now active; selectedId is idBg
     const selectedId = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedId).toBe(idBg);
 
@@ -2506,7 +2516,7 @@ test.describe('Bookmark Cross-Functional — Active Tab Edge Cases', () => {
 
     // selectedId must have moved to another note
     const selectedAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string | null,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedAfter).not.toBe(idClose);
 
@@ -2549,7 +2559,7 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
     await window.waitForTimeout(200);
 
     const tabsBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
     expect(tabsBefore).toContain(idA);
     expect(tabsBefore).toContain(idB);
@@ -2564,13 +2574,13 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
 
     // selectedId switched to A
     const selectedAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedAfter).toBe(idA);
 
     // Both tabs still present — nothing was replaced
     const tabsAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
     expect(tabsAfter.length).toBe(tabsBefore.length);
     expect(tabsAfter).toContain(idA);
@@ -2595,7 +2605,7 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
     }).toPass({ timeout: 4000 });
 
     const tabsBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
     expect(tabsBefore).not.toContain(idBookmarked);
     expect(tabsBefore).toContain(idCurrent);
@@ -2605,7 +2615,7 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
     await window.waitForTimeout(300);
 
     const tabsAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
     // Tab count is the same — slot was replaced, not added
     expect(tabsAfter.length).toBe(tabsBefore.length);
@@ -2614,16 +2624,16 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
     expect(tabsAfter).not.toContain(idCurrent);
 
     const selectedAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedAfter).toBe(idBookmarked);
   });
 
-  test('Cmd+click on a Bookmarks item that is already open is a no-op (no switch, no new tab)', async ({
+  test('Cmd+click on a Bookmarks item opens a new background tab without switching active tab', async ({
     window,
   }) => {
-    // openTab() when note already in openTabs returns early without changing selectedId.
-    // Users pressing Cmd+click on an already-open bookmark get no visual feedback — document that.
+    // openTab() always creates a new tab (appended, not selected).
+    // Cmd+click on an already-open bookmark creates a duplicate background tab; active tab stays unchanged.
     const idA = await createNoteWithTitle(window, 'CmdNoOp A');
     await bookmarkViaBackend(window, idA);
 
@@ -2640,10 +2650,10 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
     await window.waitForTimeout(200);
 
     const tabsBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
     const selectedBefore = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(tabsBefore).toContain(idA);
     expect(selectedBefore).toBe(idB);
@@ -2658,15 +2668,15 @@ test.describe('Bookmark Cross-Functional — UX Contract', () => {
 
     // selectedId unchanged — no switch to A
     const selectedAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().selectedId as string,
+      () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedAfter).toBe(selectedBefore);
 
-    // Tab count unchanged — no duplicate tab created
+    // Tab count increased by one — a new background tab for A was created
     const tabsAfter = await window.evaluate(
-      () => (window as any).__documentStore.getState().openTabs as string[],
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.docId) as string[],
     );
-    expect(tabsAfter.length).toBe(tabsBefore.length);
+    expect(tabsAfter.length).toBe(tabsBefore.length + 1);
   });
 
   // ── Restore from trash ────────────────────────────────────────────────
