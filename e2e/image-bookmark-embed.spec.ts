@@ -15,7 +15,8 @@ async function createNoteWithTitle(window: Page, title: string): Promise<string>
 
   const docId = await window.evaluate(() => {
     const store = (window as any).__documentStore;
-    return store.getState().selectedId as string;
+    const s = store.getState();
+    return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null;
   });
   return docId;
 }
