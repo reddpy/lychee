@@ -33,10 +33,9 @@ function buildAncestors(currentId: string, docs: DocumentRow[]): DocumentRow[] {
   return chain;
 }
 
-type BreakpointMode = "narrow" | "medium" | "wide";
+type BreakpointMode = "medium" | "wide";
 
 function getBreakpoint(w: number): BreakpointMode {
-  if (w < 480) return "narrow";
   if (w < 768) return "medium";
   return "wide";
 }
@@ -69,14 +68,12 @@ function useBreakpointMode(): BreakpointMode {
 
 /** Max ancestors to show inline before collapsing the middle into "..." */
 const COLLAPSE_THRESHOLDS: Record<BreakpointMode, number> = {
-  narrow: 0,   // no ancestors shown
   medium: 1,   // only direct parent
   wide: 4,     // full trail, collapse at 4+
 };
 
 /** Max character width for truncated titles */
 const TITLE_MAX_W: Record<BreakpointMode, string> = {
-  narrow: "80px",
   medium: "100px",
   wide: "120px",
 };

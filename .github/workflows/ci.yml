@@ -69,8 +69,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: breadcrumb-pill
-            specs: e2e/breadcrumb-pill.spec.ts
+          - name: breadcrumb-bar
+            specs: e2e/breadcrumb-bar.spec.ts
+            workers: 1
           - name: table
             specs: e2e/table.spec.ts
           - name: sidebar-tree
