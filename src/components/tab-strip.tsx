@@ -1,4 +1,5 @@
 import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 import { X } from 'lucide-react';
 import {
   DndContext,
@@ -20,10 +21,95 @@ import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../lib/utils';
 import { useDocumentStore } from '../renderer/document-store';
 import type { DocumentRow } from '../shared/documents';
+import { ReadOnlyNotePreview } from './editor/read-only-note-preview';
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                           */
+/* ------------------------------------------------------------------ */
 
 function getDocById(documents: DocumentRow[], id: string): DocumentRow | undefined {
   return documents.find((d) => d.id === id);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Preview popup (rendered once in TabStrip, reads content lazily)   */
+/* ------------------------------------------------------------------ */
+
+const PREVIEW_POPUP_WIDTH = 280;
+
+const TabPreviewPopup = React.memo(function TabPreviewPopup({
+  docId,
+  anchorRect,
+}: {
+  docId: string;
+  anchorRect: DOMRect;
+}) {
+  const doc = useDocumentStore((s) => s.documents.find((d) => d.id === docId));
+
+  const hasTitle = doc ? (doc.title && doc.title !== 'Untitled') : false;
+  const displayTitle = hasTitle ? doc!.title : 'New Page';
+  const emoji = doc?.emoji ?? null;
+
+  const hasContent = React.useMemo(() => {
+    const content = doc?.content;
+    if (!content || content.trim() === '') return false;
+    try {
+      const root = JSON.parse(content)?.root;
+      if (!root?.children?.length) return false;
+      return root.children.some(function walk(node: any): boolean {
+        if (typeof node.text === 'string' && node.text.trim() !== '') return true;
+        return Array.isArray(node.children) && node.children.some(walk);
+      });
+    } catch {
+      return false;
+    }
+  }, [doc?.content]);
+
+  if (!doc) return null;
+
+  const isEmpty = !hasTitle && !hasContent;
+
+  const left = Math.max(
+    4,
+    Math.min(
+      anchorRect.left + anchorRect.width / 2 - PREVIEW_POPUP_WIDTH / 2,
+      window.innerWidth - PREVIEW_POPUP_WIDTH - 4,
+    ),
+  );
+  const top = anchorRect.bottom + 6;
+
+  return ReactDOM.createPortal(
+    <div
+      style={{ left, top, width: PREVIEW_POPUP_WIDTH }}
+      className="fixed z-[9999] flex flex-col bg-[hsl(var(--background))] border border-[hsl(var(--primary))]/40 rounded-lg shadow-xl overflow-hidden pointer-events-none animate-in fade-in-0 zoom-in-95 duration-100"
+    >
+      <div className="px-2.5 pt-2 pb-1.5 shrink-0">
+        <span className="text-[11px] text-[hsl(var(--muted-foreground))] flex items-center gap-1 truncate">
+          <span className="shrink-0 text-xs leading-none">{emoji ?? '📄'}</span>
+          <span className="truncate">{displayTitle}</span>
+        </span>
+      </div>
+      <div className="h-[140px] overflow-hidden border-t border-[hsl(var(--border))]/40">
+        {hasContent ? (
+          <div className="[&_.ContentEditable\_\_root]:!leading-[1.35] [&_*]:!my-0 [&_*]:!py-0 [&_*]:!mb-0.5">
+            <div className="scale-[0.7] origin-top-left w-[400px] [&>div]:!px-2 [&>div]:!py-1.5 [&>div>div]:!px-0">
+              <ReadOnlyNotePreview editorState={doc.content} />
+            </div>
+          </div>
+        ) : isEmpty ? (
+          <div className="flex h-full items-center justify-center">
+            <span className="text-[11px] italic text-[hsl(var(--muted-foreground))]/40">Empty page</span>
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/*  SortableTab (no content prop — preview is handled by parent)      */
+/* ------------------------------------------------------------------ */
 
 function SortableTab({
   id,
@@ -35,6 +121,8 @@ function SortableTab({
   onSelect,
   onClose,
   isDragging,
+  onPreviewShow,
+  onPreviewHide,
 }: {
   id: string;
   title: string;
@@ -45,6 +133,8 @@ function SortableTab({
   onSelect: () => void;
   onClose: (e: React.MouseEvent) => void;
   isDragging: boolean;
+  onPreviewShow: (tabId: string, rect: DOMRect) => void;
+  onPreviewHide: (tabId: string) => void;
 }) {
   const {
     attributes,
@@ -54,6 +144,46 @@ function SortableTab({
     transition,
   } = useSortable({ id });
 
+  const tabRef = React.useRef<HTMLDivElement | null>(null);
+  const hoverTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isHoveredRef = React.useRef(false);
+
+  const showPreview = React.useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      const el = tabRef.current;
+      if (el) onPreviewShow(id, el.getBoundingClientRect());
+    }, 500);
+  }, [id, onPreviewShow]);
+
+  const hidePreview = React.useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    onPreviewHide(id);
+  }, [id, onPreviewHide]);
+
+  const handleMouseEnter = React.useCallback(() => {
+    isHoveredRef.current = true;
+    if (!isDragging && !isActive) showPreview();
+  }, [isDragging, isActive, showPreview]);
+
+  const handleMouseLeave = React.useCallback(() => {
+    isHoveredRef.current = false;
+    hidePreview();
+  }, [hidePreview]);
+
+  // Clear on active / dismiss+restart on drag end
+  React.useEffect(() => {
+    if (isActive || isDragging) {
+      hidePreview();
+    } else if (isHoveredRef.current) {
+      showPreview();
+    }
+  }, [isActive, isDragging, hidePreview, showPreview]);
+
+  React.useEffect(() => {
+    return () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); };
+  }, []);
+
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform ? { ...transform, y: 0, scaleY: 1 } : null),
     transition,
@@ -61,9 +191,14 @@ function SortableTab({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        tabRef.current = node;
+      }}
       style={style}
       data-tab-id={id}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={cn(
         'group titlebar-nodrag relative flex cursor-default select-none items-center gap-1.5 px-3 py-2.5 text-[13px] w-[180px] shrink-0 border-x border-x-transparent first:!border-l-transparent',
         isActive
@@ -108,6 +243,12 @@ function SortableTab({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  TabStrip                                                          */
+/* ------------------------------------------------------------------ */
+
+type PreviewState = { tabId: string; docId: string; rect: DOMRect } | null;
+
 export function TabStrip() {
   const {
     documents,
@@ -119,6 +260,7 @@ export function TabStrip() {
   } = useDocumentStore();
 
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
+  const [preview, setPreview] = React.useState<PreviewState>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -129,6 +271,13 @@ export function TabStrip() {
   );
 
   const tabIds = React.useMemo(() => openTabs.map((t) => t.tabId), [openTabs]);
+
+  // Clear preview if the previewed tab was closed
+  React.useEffect(() => {
+    if (preview && !openTabs.some((t) => t.tabId === preview.tabId)) {
+      setPreview(null);
+    }
+  }, [preview, openTabs]);
 
   const handleDragStart = React.useCallback((event: DragStartEvent) => {
     setDraggingId(event.active.id as string);
@@ -166,7 +315,32 @@ export function TabStrip() {
     [closeTab],
   );
 
+  // Preview callbacks — reads from store directly to avoid depending on openTabs
+  const handlePreviewShow = React.useCallback(
+    (tabId: string, rect: DOMRect) => {
+      const tab = useDocumentStore.getState().openTabs.find((t) => t.tabId === tabId);
+      if (tab) setPreview({ tabId, docId: tab.docId, rect });
+    },
+    [],
+  );
+
+  const handlePreviewHide = React.useCallback(
+    (tabId: string) => {
+      setPreview((prev) => (prev?.tabId === tabId ? null : prev));
+    },
+    [],
+  );
+
+  // Single scroll listener — dismiss any active preview
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const onScroll = () => setPreview(null);
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, []);
 
   React.useEffect(() => {
     if (selectedId == null) return;
@@ -216,6 +390,8 @@ export function TabStrip() {
                   onSelect={() => handleTabSelect(tabId)}
                   onClose={(e) => handleTabClose(e, tabId)}
                   isDragging={draggingId === tabId}
+                  onPreviewShow={handlePreviewShow}
+                  onPreviewHide={handlePreviewHide}
                 />
               );
             })}
@@ -224,6 +400,10 @@ export function TabStrip() {
       </DndContext>
       {/* Empty space after tabs */}
       <div className="flex-1" />
+      {/* Single preview popup instance */}
+      {preview && (
+        <TabPreviewPopup docId={preview.docId} anchorRect={preview.rect} />
+      )}
     </div>
   );
 }
