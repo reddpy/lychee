@@ -6,7 +6,7 @@
  *  - Emoji display (set via backend, appears in Bookmarks section + search palette)
  *  - Nested notes (child hidden under collapsed Notes parent still flat in Bookmarks)
  *  - Notes section collapse independence (Bookmarks section navigable even when Notes collapsed)
- *  - Breadcrumb pill (nested bookmarked note opened from Bookmarks shows ancestor chain)
+ *  - Breadcrumb bar (nested bookmarked note opened from Bookmarks shows ancestor chain)
  *  - Tab system (bookmark button state per-tab, closing tab ≠ removal from Bookmarks section)
  *  - Click-from-Bookmarks focuses existing tab rather than opening duplicate
  *  - Content-level BookmarkNode cards preserved when opening note from Bookmarks section
@@ -419,10 +419,10 @@ test.describe('Bookmark Cross-Functional — Notes Section Independence', () => 
   });
 });
 
-// ── Breadcrumb Pill ───────────────────────────────────────────────────
+// ── Breadcrumb Bar ───────────────────────────────────────────────────
 
-test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
-  test('breadcrumb pill is hidden when sidebar is open', async ({ window }) => {
+test.describe('Bookmark Cross-Functional — Breadcrumb Bar', () => {
+  test('breadcrumb bar shows ancestor for nested bookmarked note', async ({ window }) => {
     const parentId = await createNoteWithTitle(window, 'Breadcrumb Parent');
     const childId = await createChildNoteViaBackend(window, parentId, 'Breadcrumb Child');
     await bookmarkViaBackend(window, childId);
@@ -435,13 +435,14 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
     await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
-    // Breadcrumb pill is hidden while sidebar is open
-    await expect(
-      window.locator('[aria-label="Navigate note hierarchy"]'),
-    ).not.toBeVisible();
+    // Breadcrumb bar shows parent ancestor and current note
+    const nav = window.locator('main:not([style*="display: none"]) nav[aria-label="Breadcrumb"]');
+    await expect(nav).toBeVisible({ timeout: 3000 });
+    await expect(nav).toContainText('Breadcrumb Parent');
+    await expect(nav).toContainText('Breadcrumb Child');
   });
 
-  test('breadcrumb pill appears after sidebar is collapsed (nested note)', async ({ window }) => {
+  test('breadcrumb bar visible regardless of sidebar state', async ({ window }) => {
     const parentId = await createNoteWithTitle(window, 'Breadcrumb Parent Collapsed');
     const childId = await createChildNoteViaBackend(
       window,
@@ -458,16 +459,20 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
     await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
-    // Now collapse the sidebar
-    await collapseSidebar(window);
+    const nav = window.locator('main:not([style*="display: none"]) nav[aria-label="Breadcrumb"]');
+    // Visible with sidebar open
+    await expect(nav).toBeVisible({ timeout: 3000 });
+    await expect(nav).toContainText('Breadcrumb Parent Collapsed');
 
-    // Breadcrumb pill should appear (child has a parent, so hierarchy exists)
-    await expect(window.locator('[aria-label="Navigate note hierarchy"]')).toBeVisible({
-      timeout: 3000,
-    });
+    // Collapse the sidebar — breadcrumb bar still visible
+    await collapseSidebar(window);
+    await expect(nav).toBeVisible({ timeout: 3000 });
+    await expect(nav).toContainText('Breadcrumb Parent Collapsed');
+
+    await expandSidebar(window);
   });
 
-  test('breadcrumb pill popover shows parent ancestor', async ({ window }) => {
+  test('breadcrumb bar shows parent name for nested bookmarked note', async ({ window }) => {
     const parentId = await createNoteWithTitle(window, 'BreadcrumbAncestor');
     const childId = await createChildNoteViaBackend(window, parentId, 'BreadcrumbDescendant');
     await bookmarkViaBackend(window, childId);
@@ -480,23 +485,13 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
     await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
-    await collapseSidebar(window);
-
-    // Click the breadcrumb pill to open the popover
-    const pill = window.locator('[aria-label="Navigate note hierarchy"]');
-    await expect(pill).toBeVisible({ timeout: 3000 });
-    await pill.click();
-    await window.waitForTimeout(300);
-
-    // Popover should show "Note Tree" and include the parent title
-    await expect(window.getByText('Note Tree')).toBeVisible({ timeout: 3000 });
-    await expect(window.getByText('BreadcrumbAncestor').first()).toBeVisible({ timeout: 3000 });
-
-    // Restore sidebar
-    await expandSidebar(window);
+    // Breadcrumb bar includes parent title
+    const nav = window.locator('main:not([style*="display: none"]) nav[aria-label="Breadcrumb"]');
+    await expect(nav).toContainText('BreadcrumbAncestor', { timeout: 3000 });
+    await expect(nav).toContainText('BreadcrumbDescendant');
   });
 
-  test('breadcrumb pill not shown for top-level notes (no hierarchy)', async ({ window }) => {
+  test('top-level bookmarked note shows only its own name in breadcrumb', async ({ window }) => {
     const docId = await createNoteWithTitle(window, 'Top Level Bookmarked');
     await bookmarkViaBackend(window, docId);
 
@@ -504,12 +499,10 @@ test.describe('Bookmark Cross-Functional — Breadcrumb Pill', () => {
     await window.locator(`[data-section="bookmarks"][data-note-id="${docId}"]`).click();
     await window.waitForTimeout(400);
 
-    await collapseSidebar(window);
-
-    // Top-level note has no ancestors or children → pill should NOT appear
-    await expect(window.locator('[aria-label="Navigate note hierarchy"]')).not.toBeVisible();
-
-    await expandSidebar(window);
+    // Breadcrumb bar shows current note name but no ancestors
+    const nav = window.locator('main:not([style*="display: none"]) nav[aria-label="Breadcrumb"]');
+    await expect(nav).toBeVisible({ timeout: 3000 });
+    await expect(nav).toContainText('Top Level Bookmarked');
   });
 });
 
@@ -1348,10 +1341,10 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Context Menu From Bookm
   });
 });
 
-// ── Edge Cases — Breadcrumb Pill ─────────────────────────────────────
+// ── Edge Cases — Breadcrumb Bar ──────────────────────────────────────
 
 test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
-  test('clicking ancestor in breadcrumb popover navigates to that ancestor', async ({ window }) => {
+  test('clicking ancestor in breadcrumb bar navigates to that ancestor', async ({ window }) => {
     const parentId = await createNoteWithTitle(window, 'BreadcrumbNavParent');
     const childId = await createChildNoteViaBackend(window, parentId, 'BreadcrumbNavChild');
     await bookmarkViaBackend(window, childId);
@@ -1364,69 +1357,45 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
-    await collapseSidebar(window);
-
-    const pill = window.locator('[aria-label="Navigate note hierarchy"]');
-    await expect(pill).toBeVisible({ timeout: 3000 });
-    await pill.click();
-    await window.waitForTimeout(300);
-
-    // Click the parent in the popover (.last() targets the popover item; .first() is the off-screen sidebar item)
-    await window.getByText('BreadcrumbNavParent').last().click();
+    // Click the parent in the breadcrumb bar
+    const nav = window.locator('main:not([style*="display: none"]) nav[aria-label="Breadcrumb"]');
+    await expect(nav).toContainText('BreadcrumbNavParent', { timeout: 3000 });
+    await nav.getByText('BreadcrumbNavParent').click();
     await window.waitForTimeout(400);
 
     const selectedId = await window.evaluate(
       () => { const s = (window as any).__documentStore.getState(); return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId ?? null; },
     );
     expect(selectedId).toBe(parentId);
-
-    await expandSidebar(window);
   });
 
-  test('after navigating to top-level ancestor via breadcrumb, pill disappears', async ({
+  test('after navigating to top-level ancestor via breadcrumb, breadcrumb updates', async ({
     window,
   }) => {
     const parentId = await createNoteWithTitle(window, 'BreadcrumbTopParent');
     const childId = await createChildNoteViaBackend(window, parentId, 'BreadcrumbTopChild');
     await bookmarkViaBackend(window, childId);
 
-    // Open child, collapse sidebar
+    // Open child
     await expect(bookmarksSectionHeader(window)).toBeVisible({ timeout: 3000 });
     await expect(async () => {
       expect(await isInBookmarksSection(window, childId)).toBe(true);
     }).toPass({ timeout: 4000 });
     await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
-    await collapseSidebar(window);
 
-    const pill = window.locator('[aria-label="Navigate note hierarchy"]');
-    await expect(pill).toBeVisible({ timeout: 3000 });
-    await pill.click();
-    await window.waitForTimeout(300);
+    const nav = window.locator('main:not([style*="display: none"]) nav[aria-label="Breadcrumb"]');
+    await expect(nav).toContainText('BreadcrumbTopParent', { timeout: 3000 });
 
-    // Navigate to the parent (.last() targets the popover item; .first() is the off-screen sidebar item)
-    await window.getByText('BreadcrumbTopParent').last().click();
+    // Navigate to the parent via breadcrumb
+    await nav.getByText('BreadcrumbTopParent').click();
     await window.waitForTimeout(500);
 
-    // Pill should disappear: parent is top-level with no children other than what we just came from
-    // (It will show children in the pill if any exist, so here the parent does have one child —
-    //  therefore the pill should still be visible showing the child. Adjust: check that the pill
-    //  now shows the child in the popover rather than the parent.)
-    // Re-open and verify the tree now shows from parent's perspective
-    if (await pill.isVisible()) {
-      await pill.click();
-      await window.waitForTimeout(300);
-      // The current node row should be the parent, and the child should appear below
-      // Use .last() to target the popover item (sidebar item is off-screen/first)
-      await expect(window.getByText('BreadcrumbTopChild').last()).toBeVisible({ timeout: 3000 });
-      await window.keyboard.press('Escape');
-      await window.waitForTimeout(200);
-    }
-
-    await expandSidebar(window);
+    // Breadcrumb should now show the parent as current note (no ancestors above it)
+    await expect(nav).toContainText('BreadcrumbTopParent', { timeout: 3000 });
   });
 
-  test('breadcrumb popover shows "Note Tree" heading and current note highlighted', async ({
+  test('breadcrumb bar shows ancestor and current note for nested bookmarked note', async ({
     window,
   }) => {
     const parentId = await createNoteWithTitle(window, 'BreadcrumbHeadingParent');
@@ -1444,19 +1413,10 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Breadcrumb', () => {
     await window.locator(`[data-section="bookmarks"][data-note-id="${childId}"]`).click();
     await window.waitForTimeout(400);
 
-    await collapseSidebar(window);
-
-    const pill = window.locator('[aria-label="Navigate note hierarchy"]');
-    await pill.click();
-    await window.waitForTimeout(300);
-
-    // Popover header
-    await expect(window.getByText('Note Tree')).toBeVisible({ timeout: 3000 });
-    // Current note shown (dimmed/highlighted row)
-    await expect(window.getByText('BreadcrumbHeadingChild').first()).toBeVisible({ timeout: 3000 });
-
-    await window.keyboard.press('Escape');
-    await expandSidebar(window);
+    // Breadcrumb bar shows both ancestor and current note
+    const nav = window.locator('main:not([style*="display: none"]) nav[aria-label="Breadcrumb"]');
+    await expect(nav).toContainText('BreadcrumbHeadingParent', { timeout: 3000 });
+    await expect(nav).toContainText('BreadcrumbHeadingChild', { timeout: 3000 });
   });
 });
 
