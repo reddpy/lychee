@@ -8,8 +8,20 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+/** Cache the Map across renders — only rebuild when the docs array reference changes. */
+let cachedDocs: DocumentRow[] | null = null;
+let cachedMap: Map<string, DocumentRow> | null = null;
+
+function getDocMap(docs: DocumentRow[]): Map<string, DocumentRow> {
+  if (docs !== cachedDocs) {
+    cachedDocs = docs;
+    cachedMap = new Map(docs.map((d) => [d.id, d]));
+  }
+  return cachedMap!;
+}
+
 function buildAncestors(currentId: string, docs: DocumentRow[]): DocumentRow[] {
-  const byId = new Map(docs.map((d) => [d.id, d]));
+  const byId = getDocMap(docs);
   const current = byId.get(currentId);
   if (!current?.parentId) return [];
   const chain: DocumentRow[] = [];
@@ -23,20 +35,33 @@ function buildAncestors(currentId: string, docs: DocumentRow[]): DocumentRow[] {
 
 type BreakpointMode = "narrow" | "medium" | "wide";
 
+function getBreakpoint(w: number): BreakpointMode {
+  if (w < 480) return "narrow";
+  if (w < 768) return "medium";
+  return "wide";
+}
+
 function useBreakpointMode(): BreakpointMode {
-  const [mode, setMode] = useState<BreakpointMode>(() => {
-    if (window.innerWidth < 480) return "narrow";
-    if (window.innerWidth < 768) return "medium";
-    return "wide";
-  });
+  const [mode, setMode] = useState<BreakpointMode>(() =>
+    getBreakpoint(window.innerWidth),
+  );
 
   useEffect(() => {
+    let raf = 0;
     const update = () => {
-      const w = window.innerWidth;
-      setMode(w < 480 ? "narrow" : w < 768 ? "medium" : "wide");
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        setMode((prev) => {
+          const next = getBreakpoint(window.innerWidth);
+          return next === prev ? prev : next;
+        });
+      });
     };
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", update);
+    };
   }, []);
 
   return mode;
