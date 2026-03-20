@@ -10,7 +10,7 @@ import type { EditorState, SerializedEditorState } from "lexical";
 import { Editor } from "@/components/editor/editor";
 import { NoteEmojiPicker } from "@/components/sidebar/note-emoji-picker";
 import { NoteContext } from "@/renderer/note-context";
-import { BreadcrumbPill } from "@/components/breadcrumb-pill";
+import { BreadcrumbBar } from "@/components/breadcrumb-bar";
 import { BookmarkButton } from "@/components/editor/plugins/bookmark-button-plugin";
 
 function getSerializedState(
@@ -408,13 +408,14 @@ export function LexicalEditor({
     >
       {/* Sticky note toolbar */}
       <div className="sticky top-0 z-40 bg-[hsl(var(--background))]">
-        <div className="mx-auto max-w-225 px-8 flex items-center justify-end gap-0.5 py-1">
+        <div className="flex items-center gap-0.5 py-1 px-3">
+          <BreadcrumbBar />
+          <div className="flex-1" />
           <SearchBar tabId={activeTabId ?? documentId} />
           <div
             data-toolbar-id={documentId}
             className="flex items-center gap-0.5"
           />
-          <BreadcrumbPill />
           <BookmarkButton documentId={documentId} />
         </div>
       </div>
