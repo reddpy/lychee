@@ -1,7 +1,9 @@
 import * as React from 'react';
+import { Reorder } from 'framer-motion';
 import { SquarePen } from 'lucide-react';
 
 import { useDocumentStore, selectActiveDocId } from '../renderer/document-store';
+import { useSidebarSectionOrder, type SidebarSectionId } from '../renderer/sidebar-section-order';
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +16,7 @@ import { NotesSection } from './sidebar/notes-section';
 import { BookmarksSection } from './sidebar/bookmarks-section';
 import { SearchNotesButton } from './sidebar/search-notes-button';
 import { SidebarFooterContent } from './sidebar/sidebar-footer-content';
+import { SidebarSectionDnd } from './sidebar/sidebar-section-dnd';
 
 export function AppSidebar() {
   const {
@@ -23,8 +26,11 @@ export function AppSidebar() {
     loadDocuments,
   } = useDocumentStore();
   const activeDocId = useDocumentStore(selectActiveDocId);
+  const { order, setOrder } = useSidebarSectionOrder();
 
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set());
+  const [bookmarksOpen, setBookmarksOpen] = React.useState(true);
+  const [notesOpen, setNotesOpen] = React.useState(true);
 
   React.useEffect(() => {
     void loadDocuments();
@@ -40,6 +46,61 @@ export function AppSidebar() {
         : next;
     });
   }, [documents]);
+
+  const toggleBookmarks = React.useCallback(() => setBookmarksOpen((prev) => !prev), []);
+  const toggleNotes = React.useCallback(() => setNotesOpen((prev) => !prev), []);
+
+  const hasBookmarks = React.useMemo(
+    () => documents.some((d) => !!d.metadata?.bookmarkedAt),
+    [documents],
+  );
+
+  const handleReorder = React.useCallback((newVisibleOrder: SidebarSectionId[]) => {
+    setOrder((prev) => {
+      const hidden = prev.filter((id) => !newVisibleOrder.includes(id));
+      return [...newVisibleOrder, ...hidden];
+    });
+  }, [setOrder]);
+
+  // Layout animation on Reorder.Item is only enabled mid-drag so that section
+  // expand/collapse and inner-tree expansion don't trigger sibling reflow animations.
+  const [isReordering, setIsReordering] = React.useState(false);
+  const handleSectionDragStart = React.useCallback(() => setIsReordering(true), []);
+  const handleSectionDragEnd = React.useCallback(() => setIsReordering(false), []);
+
+  const sectionRenderers: Record<SidebarSectionId, { visible: boolean; render: () => React.ReactNode }> = {
+    bookmarks: {
+      visible: hasBookmarks,
+      render: () => (
+        <BookmarksSection
+          documents={documents}
+          isOpen={bookmarksOpen}
+          onToggleOpen={toggleBookmarks}
+        />
+      ),
+    },
+    notes: {
+      visible: true,
+      render: () => (
+        <NotesSection
+          documents={documents}
+          selectedId={activeDocId}
+          loading={loading}
+          expandedIds={expandedIds}
+          setExpandedIds={setExpandedIds}
+          createDocument={createDocument}
+          isOpen={notesOpen}
+          onToggleOpen={toggleNotes}
+        />
+      ),
+    },
+  };
+
+  const visibleOrder = React.useMemo(
+    () => order.filter((id) => sectionRenderers[id].visible),
+    // sectionRenderers.bookmarks.visible follows hasBookmarks; notes is always visible.
+    [order, hasBookmarks],
+  );
 
   return (
     <Sidebar>
@@ -59,15 +120,26 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarGroup>
         <SearchNotesButton />
-        <BookmarksSection documents={documents} />
-        <NotesSection
-          documents={documents}
-          selectedId={activeDocId}
-          loading={loading}
-          expandedIds={expandedIds}
-          setExpandedIds={setExpandedIds}
-          createDocument={createDocument}
-        />
+        <Reorder.Group
+          as="div"
+          axis="y"
+          values={visibleOrder}
+          onReorder={handleReorder}
+          data-sidebar-scroll="true"
+          className="sidebar-panel notes-scroll min-h-0 flex-1 pr-2 py-1"
+        >
+          {visibleOrder.map((id) => (
+            <SidebarSectionDnd
+              key={id}
+              id={id}
+              isReordering={isReordering}
+              onDragStart={handleSectionDragStart}
+              onDragEnd={handleSectionDragEnd}
+            >
+              {sectionRenderers[id].render()}
+            </SidebarSectionDnd>
+          ))}
+        </Reorder.Group>
       </SidebarContent>
       <SidebarFooterContent />
     </Sidebar>

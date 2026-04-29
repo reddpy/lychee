@@ -57,7 +57,8 @@ export function NoteTreeItem({
   isFirstInList = false,
 }: NoteTreeItemProps) {
   const ref = React.useRef<HTMLDivElement>(null);
-  const { openTab, openOrSelectTab } = useDocumentStore();
+  const openTab = useDocumentStore((s) => s.openTab);
+  const openOrSelectTab = useDocumentStore((s) => s.openOrSelectTab);
   const hoverLock = useHoverLock();
   const { draggingId, dropTargetId, dropPosition, nestAsFirst, setDraggingId, setDropTarget } = useTreeDnd();
   const hasChildren = children.length > 0;
