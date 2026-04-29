@@ -46,6 +46,8 @@ export type NotesSectionProps = {
   expandedIds: Set<string>;
   setExpandedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   createDocument: (parentId?: string | null) => Promise<void>;
+  isOpen: boolean;
+  onToggleOpen: () => void;
 };
 
 function buildChildrenByParent(documents: DocumentRow[]) {
@@ -124,15 +126,15 @@ export function NotesSection({
   expandedIds,
   setExpandedIds,
   createDocument,
+  isOpen,
+  onToggleOpen,
 }: NotesSectionProps) {
-  const [notesSectionOpen, setNotesSectionOpen] = React.useState(true);
-  const scrollRef = React.useRef<HTMLDivElement>(null);
   const lastCreatedId = useDocumentStore((s) => s.lastCreatedId);
   const moveDocument = useDocumentStore((s) => s.moveDocument);
 
   React.useEffect(() => {
-    if (!notesSectionOpen) return;
-    const el = scrollRef.current;
+    if (!isOpen) return;
+    const el = document.querySelector<HTMLElement>('[data-sidebar-scroll="true"]');
     if (!el) return;
     const EDGE_THRESHOLD = 16;
     return autoScrollForElements({
@@ -151,7 +153,7 @@ export function NotesSection({
         return (atTopEdge && canScrollUp) || (atBottomEdge && canScrollDown);
       },
     });
-  }, [notesSectionOpen]);
+  }, [isOpen]);
 
   const childrenByParent = React.useMemo(
     () => buildChildrenByParent(documents),
@@ -222,13 +224,14 @@ export function NotesSection({
       <SidebarGroup>
         <SidebarMenuItem>
           <SidebarMenuButton
-            onClick={() => setNotesSectionOpen((prev) => !prev)}
-            className="px-2 text-xs font-medium uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))]"
+            onClick={onToggleOpen}
+            data-section-handle="true"
+            className="px-2 text-xs font-medium uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))] cursor-grab active:cursor-grabbing"
           >
             <span className="flex flex-1 items-center gap-1.5">
               <motion.span
                 className="flex shrink-0 items-center justify-center"
-                animate={{ rotate: notesSectionOpen ? 90 : 0 }}
+                animate={{ rotate: isOpen ? 90 : 0 }}
                 transition={{
                   type: 'spring',
                   stiffness: 400,
@@ -243,9 +246,9 @@ export function NotesSection({
         </SidebarMenuItem>
       </SidebarGroup>
       <AnimatePresence initial={false}>
-        {notesSectionOpen && (
+        {isOpen && (
           <motion.div
-            className="min-h-0 flex-1 overflow-hidden flex flex-col"
+            className="overflow-hidden"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -263,58 +266,54 @@ export function NotesSection({
               onMove={moveDocument}
               onExpandParent={handleExpandParent}
             >
-              <div className="min-h-0 flex-1 flex flex-col">
-                <div ref={scrollRef} className="sidebar-panel notes-scroll min-h-0 flex-1 pr-2 py-1">
-                  <SidebarMenu>
-                    {loading ? (
-                      <SidebarMenuItem>
-                        <SidebarMenuButton>
-                          <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
-                          <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                            Loading…
-                          </span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ) : (
-                      <AnimatePresence
-                        initial={false}
-                        custom={{ documentIds: new Set(documents.map((d) => d.id)) }}
-                      >
-                        {flatList.map(({ doc, depth }, index) => {
-                          const children = childrenByParent.get(doc.id) ?? [];
-                          const isExpanded = expandedIds.has(doc.id);
-                          const canAddChild = depth < MAX_NESTING_DEPTH;
-                          const canNestInside = depth < MAX_NESTING_DEPTH;
+              <SidebarMenu>
+                {loading ? (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton>
+                      <span className="h-4 w-4 shrink-0 rounded-full bg-[hsl(var(--muted-foreground))]/20" />
+                      <span className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                        Loading…
+                      </span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : (
+                  <AnimatePresence
+                    initial={false}
+                    custom={{ documentIds: new Set(documents.map((d) => d.id)) }}
+                  >
+                    {flatList.map(({ doc, depth }, index) => {
+                      const children = childrenByParent.get(doc.id) ?? [];
+                      const isExpanded = expandedIds.has(doc.id);
+                      const canAddChild = depth < MAX_NESTING_DEPTH;
+                      const canNestInside = depth < MAX_NESTING_DEPTH;
 
-                          return (
-                            <motion.div
-                              key={doc.id}
-                              initial={false}
-                              variants={{ exit: getExitVariant(doc.id) }}
-                              exit="exit"
-                            >
-                              <NoteTreeItem
-                                doc={doc}
-                                depth={depth}
-                                children={children}
-                                isExpanded={isExpanded}
-                                canAddChild={canAddChild}
-                                isSelected={selectedId === doc.id}
-                                onToggleExpanded={toggleExpanded}
-                                onAddPageInside={handleAddPageInside}
-                                isRoot={depth === 0}
-                                canNestInside={canNestInside}
-                                allDescendantsMap={descendantsByDoc}
-                                isFirstInList={index === 0}
-                              />
-                            </motion.div>
-                          );
-                        })}
-                      </AnimatePresence>
-                    )}
-                  </SidebarMenu>
-                </div>
-              </div>
+                      return (
+                        <motion.div
+                          key={doc.id}
+                          initial={false}
+                          variants={{ exit: getExitVariant(doc.id) }}
+                          exit="exit"
+                        >
+                          <NoteTreeItem
+                            doc={doc}
+                            depth={depth}
+                            children={children}
+                            isExpanded={isExpanded}
+                            canAddChild={canAddChild}
+                            isSelected={selectedId === doc.id}
+                            onToggleExpanded={toggleExpanded}
+                            onAddPageInside={handleAddPageInside}
+                            isRoot={depth === 0}
+                            canNestInside={canNestInside}
+                            allDescendantsMap={descendantsByDoc}
+                            isFirstInList={index === 0}
+                          />
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                )}
+              </SidebarMenu>
             </TreeDndProvider>
           </motion.div>
         )}

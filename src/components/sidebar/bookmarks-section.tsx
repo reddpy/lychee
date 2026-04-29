@@ -21,6 +21,8 @@ import { cn } from '../../lib/utils';
 
 export type BookmarksSectionProps = {
   documents: DocumentRow[];
+  isOpen: boolean;
+  onToggleOpen: () => void;
 };
 
 const itemExit = {
@@ -30,7 +32,8 @@ const itemExit = {
 };
 
 function BookmarkItem({ doc, isSelected }: { doc: DocumentRow; isSelected: boolean }) {
-  const { openTab, openOrSelectTab } = useDocumentStore();
+  const openTab = useDocumentStore((s) => s.openTab);
+  const openOrSelectTab = useDocumentStore((s) => s.openOrSelectTab);
   const hoverLock = useHoverLock();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [optionsTooltip, setOptionsTooltip] = React.useState(false);
@@ -121,8 +124,7 @@ function BookmarkItem({ doc, isSelected }: { doc: DocumentRow; isSelected: boole
   );
 }
 
-export function BookmarksSection({ documents }: BookmarksSectionProps) {
-  const [isOpen, setIsOpen] = React.useState(true);
+export function BookmarksSection({ documents, isOpen, onToggleOpen }: BookmarksSectionProps) {
   const selectedId = useDocumentStore(selectActiveDocId);
 
   const bookmarked = React.useMemo(
@@ -140,8 +142,9 @@ export function BookmarksSection({ documents }: BookmarksSectionProps) {
       <SidebarGroup>
         <SidebarMenuItem>
           <SidebarMenuButton
-            onClick={() => setIsOpen((prev) => !prev)}
-            className="px-2 text-xs font-medium uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))]"
+            onClick={onToggleOpen}
+            data-section-handle="true"
+            className="px-2 text-xs font-medium uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))] cursor-grab active:cursor-grabbing"
           >
             <span className="flex flex-1 items-center gap-1.5">
               <motion.span
@@ -163,7 +166,7 @@ export function BookmarksSection({ documents }: BookmarksSectionProps) {
       <AnimatePresence initial={false}>
         {isOpen && (
           <motion.div
-            className="min-h-0 flex-1 overflow-hidden flex flex-col"
+            className="overflow-hidden"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -175,19 +178,15 @@ export function BookmarksSection({ documents }: BookmarksSectionProps) {
               opacity: { duration: 0.15 },
             }}
           >
-            <div className="min-h-0 flex-1 flex flex-col">
-              <div className="sidebar-panel notes-scroll min-h-0 flex-1 pr-2 py-1">
-                <SidebarMenu>
-                  <AnimatePresence initial={false}>
-                    {bookmarked.map((doc) => (
-                      <motion.div key={doc.id} exit={itemExit}>
-                        <BookmarkItem doc={doc} isSelected={selectedId === doc.id} />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </SidebarMenu>
-              </div>
-            </div>
+            <SidebarMenu>
+              <AnimatePresence initial={false}>
+                {bookmarked.map((doc) => (
+                  <motion.div key={doc.id} exit={itemExit}>
+                    <BookmarkItem doc={doc} isSelected={selectedId === doc.id} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </SidebarMenu>
           </motion.div>
         )}
       </AnimatePresence>

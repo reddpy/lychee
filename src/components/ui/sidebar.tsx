@@ -307,25 +307,17 @@ export function SidebarMenuButton({
   isActive,
   className,
   children,
-  onClick,
-  onAuxClick,
-  onContextMenu,
-  'aria-label': ariaLabel,
-}: React.PropsWithChildren<{
-  tooltip?: string;
-  isActive?: boolean;
-  className?: string;
-  onClick?: (e: React.MouseEvent) => void;
-  onAuxClick?: (e: React.MouseEvent) => void;
-  onContextMenu?: (e: React.MouseEvent) => void;
-  'aria-label'?: string;
-}>) {
+  tooltip: _tooltip,
+  ...rest
+}: React.PropsWithChildren<
+  {
+    tooltip?: string;
+    isActive?: boolean;
+  } & React.ButtonHTMLAttributes<HTMLButtonElement>
+>) {
   return (
     <button
-      onClick={onClick}
-      onAuxClick={onAuxClick}
-      onContextMenu={onContextMenu}
-      aria-label={ariaLabel}
+      {...rest}
       data-active={isActive ? 'true' : 'false'}
       className={cn(
         'group/menu-button flex w-full items-center justify-start gap-1.5 rounded-md px-2 py-1.5 text-sm',
