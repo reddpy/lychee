@@ -38,14 +38,14 @@ import { $insertNodes } from "lexical"
 
 class SlashCommandOption extends MenuOption {
   title: string
-  icon: React.ReactNode
+  icon: React.ReactElement
   keywords: string[]
   onSelect: (editor: ReturnType<typeof useLexicalComposerContext>[0]) => void
 
   constructor(
     title: string,
     options: {
-      icon: React.ReactNode
+      icon: React.ReactElement
       keywords?: string[]
       onSelect: (editor: ReturnType<typeof useLexicalComposerContext>[0]) => void
     }

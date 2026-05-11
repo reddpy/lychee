@@ -17,6 +17,12 @@ export const rendererConfig: Configuration = {
   module: {
     rules,
   },
+  ignoreWarnings: [
+    {
+      module: /framer-motion[\\/]dist[\\/]cjs[\\/]feature-bundle-.*\.js$/,
+      message: /Critical dependency: the request of a dependency is an expression/,
+    },
+  ],
   plugins,
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css'],
