@@ -54,7 +54,7 @@ const contentTypeProbeHandler: UrlHandler = {
     try {
       // Try HEAD first, fall back to GET if HEAD fails (some servers reject HEAD)
       let response = await net.fetch(url, { method: 'HEAD', ...fetchOpts })
-        .catch(() => null);
+        .catch((): null => null);
 
       if (!response || !response.ok) {
         response = await net.fetch(url, { method: 'GET', ...fetchOpts });

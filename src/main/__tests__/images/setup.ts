@@ -91,7 +91,9 @@ function validImageBase64(mime: string, extra?: string | number): string {
 /** Create an ArrayBuffer (for mock download responses) with valid magic bytes. */
 function validImageArrayBuffer(mime: string, extra?: string | number): ArrayBuffer {
   const buf = validImageBuffer(mime, extra);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const arrayBuffer = new ArrayBuffer(buf.byteLength);
+  new Uint8Array(arrayBuffer).set(buf);
+  return arrayBuffer;
 }
 
 export {
