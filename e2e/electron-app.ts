@@ -9,39 +9,56 @@ import os from 'os';
 import fs from 'fs';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const PRODUCT_NAME = 'lychee';
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'),
+) as { name?: string; productName?: string };
+
+const PRODUCT_NAMES = [
+  packageJson.productName,
+  packageJson.name,
+  'Lychee',
+  'lychee',
+].filter((name, index, names): name is string =>
+  typeof name === 'string' && name.length > 0 && names.indexOf(name) === index,
+);
 
 function findPackagedBinary(): string | null {
   const platform = os.platform();
   const arch = os.arch();
   const outDir = path.join(PROJECT_ROOT, 'out');
 
-  let binary: string;
+  for (const productName of PRODUCT_NAMES) {
+    let binary: string;
 
-  if (platform === 'darwin') {
-    binary = path.join(
-      outDir,
-      `${PRODUCT_NAME}-darwin-${arch}`,
-      `${PRODUCT_NAME}.app`,
-      'Contents',
-      'MacOS',
-      PRODUCT_NAME,
-    );
-  } else if (platform === 'win32') {
-    binary = path.join(
-      outDir,
-      `${PRODUCT_NAME}-win32-${arch}`,
-      `${PRODUCT_NAME}.exe`,
-    );
-  } else {
-    binary = path.join(
-      outDir,
-      `${PRODUCT_NAME}-linux-${arch}`,
-      PRODUCT_NAME,
-    );
+    if (platform === 'darwin') {
+      binary = path.join(
+        outDir,
+        `${productName}-darwin-${arch}`,
+        `${productName}.app`,
+        'Contents',
+        'MacOS',
+        productName,
+      );
+    } else if (platform === 'win32') {
+      binary = path.join(
+        outDir,
+        `${productName}-win32-${arch}`,
+        `${productName}.exe`,
+      );
+    } else {
+      binary = path.join(
+        outDir,
+        `${productName}-linux-${arch}`,
+        productName,
+      );
+    }
+
+    if (fs.existsSync(binary)) {
+      return binary;
+    }
   }
 
-  return fs.existsSync(binary) ? binary : null;
+  return null;
 }
 
 function hasDevBuild(): boolean {
