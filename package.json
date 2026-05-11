@@ -1,8 +1,8 @@
 {
   "name": "lychee",
-  "productName": "lychee",
-  "version": "1.0.0",
-  "description": "My Electron application description",
+  "productName": "Lychee",
+  "version": "0.1.0-alpha.1",
+  "description": "A beautiful, fast, local-first notes app for people who just want to write.",
   "main": ".webpack/main",
   "private": true,
   "scripts": {
@@ -18,10 +18,24 @@
     "rebuild:sqlite": "cd node_modules/better-sqlite3 && npx node-gyp rebuild --release",
     "pretest": "pnpm rebuild:sqlite"
   },
-  "keywords": [],
+  "keywords": [
+    "electron",
+    "lexical",
+    "local-first",
+    "notes",
+    "sqlite"
+  ],
+  "homepage": "https://github.com/reddpy/lychee#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/reddpy/lychee.git"
+  },
+  "bugs": {
+    "url": "https://github.com/reddpy/lychee/issues"
+  },
   "author": {
     "name": "KJ",
-    "email": "19541224+reddpy@users.noreply.github.com"
+    "url": "https://github.com/reddpy"
   },
   "license": "MIT",
   "pnpm": {
