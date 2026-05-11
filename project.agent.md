@@ -8,7 +8,7 @@
 ## Current Date & Status
 - Started planning: ~January 2026  
 - Current phase: Early architecture & MVP scaffolding  
-- MVP Goal: Multi-tab document editing with auto-save, document list, basic sidebar navigation, keyboard shortcuts, search (FTS), exports (MD/HTML/PDF)
+- MVP Goal: Multi-tab document editing with auto-save, document list, basic sidebar navigation, keyboard shortcuts, search (FTS), and native Lychee-format export/import
 
 ## Tech Stack (Locked In)
 
@@ -24,7 +24,7 @@
 | IPC Communication  | Electron built-in ipcMain/ipcRenderer with **typed contracts** | Security + maintainability; no ad-hoc strings                              |
 | Keyboard Shortcuts | @react-hotkeys-hook (app-level) + Lexical commands (editor-level) | Global + contextual shortcuts essential for Notion feel                    |
 | Search             | SQLite FTS5 (full-text search)      | Native, fast, no extra deps; index updated on save                         |
-| Exports            | @lexical/markdown + @lexical/html + jsPDF | Local conversion & file save; Markdown/HTML client-side, PDF in main      |
+| Exports            | Native Lychee document packages + optional HTML/PDF | Preserve full editor fidelity first; generic exports are secondary      |
 | UUIDs              | uuid (v4)                           | Simple document IDs                                                        |
 | Utilities          | lodash (debounce, etc.)             | Common helpers                                                             |
 
@@ -40,6 +40,7 @@
 1. **Local-first architecture**  
    - Everything stored in SQLite on disk  
    - No cloud by default → future optional self-hosted sync (e.g. via custom server or Syncthing-like)
+   - Canonical document content stays in Lychee's own structured editor format, not Markdown-on-disk
 
 2. **Typed IPC Contract** (critical – do not use raw channel strings)  
    - Defined in `src/shared/ipc-types.ts`  
@@ -51,7 +52,7 @@
    interface Document {
      id: string;               // UUID
      title: string;
-     content: string;          // JSON.stringify(editor.getEditorState().toJSON())
+     content: string;          // Lychee-native serialized editor state
      createdAt: string;        // ISO
      updatedAt: string;        // ISO
    }
