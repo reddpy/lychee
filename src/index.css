@@ -3,6 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  /* Make bare `border` utilities resolve to the design token instead of currentColor (Tailwind v4 default). */
+  --default-border-color: hsl(var(--border));
+
   /* Map CSS variables to Tailwind theme */
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
