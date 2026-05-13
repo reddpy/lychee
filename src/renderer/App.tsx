@@ -54,7 +54,7 @@ function TopBar() {
         className={`relative z-20 flex shrink-0 items-center overflow-hidden border-r border-r-[hsl(var(--border))] transition-[width] duration-200 ease-out ${sidebarOpen ? "w-[var(--sidebar-width)]" : "w-[184px]"}`}
       >
         {/* Traffic lights space — always reserved */}
-        <div className="w-[76px] shrink-0" />
+        <div className="w-19 shrink-0" />
         {/* Sidebar toggle */}
         <div className="titlebar-nodrag flex shrink-0 items-center px-1 translate-y-0.5">
           <SidebarTrigger className="h-7 w-7 rounded-md border border-transparent text-[hsl(var(--muted-foreground))] hover:bg-[#C14B55]/15 hover:border-[#C14B55]/30 hover:text-[#C14B55] transition-all" />
@@ -139,11 +139,15 @@ function EditorArea() {
       <main className="flex h-full flex-1 items-start justify-center bg-[hsl(var(--background))] pt-[30vh]">
         <div
           className="flex flex-col items-center gap-6 select-none"
-          style={sidebarOpen ? { transform: EMPTY_STATE_OFFSET_TRANSFORM } : undefined}
+          style={
+            sidebarOpen
+              ? { transform: EMPTY_STATE_OFFSET_TRANSFORM }
+              : undefined
+          }
         >
           <LycheeLogoHorizontal className="h-20 opacity-15" />
-          <div className="h-px w-36 bg-[hsl(var(--muted-foreground))]/10" />
-          <p className="text-xl text-[hsl(var(--muted-foreground))]/40">
+          <div className="ml-10 h-px w-36 bg-[hsl(var(--muted-foreground))]/10" />
+          <p className="ml-10 text-xl text-[hsl(var(--muted-foreground))]/40">
             Start writing
             <span className="inline-flex w-5">
               <span className="animate-[ellipsis_1.5s_steps(4,end)_infinite] overflow-hidden whitespace-nowrap">

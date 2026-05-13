@@ -98,7 +98,7 @@ function AppearanceSettings() {
                 onClick={() => setMode(value)}
                 aria-pressed={isActive}
                 className={cn(
-                  'group relative flex flex-col items-center gap-2 rounded-lg border p-2.5 text-left transition-all duration-150',
+                  'relative flex flex-col items-center gap-2 rounded-lg border p-2.5 transition-all duration-150',
                   isActive
                     ? 'border-[hsl(var(--primary))]/55 bg-[hsl(var(--primary))]/5 shadow-sm'
                     : 'border-[hsl(var(--border))] hover:border-[hsl(var(--muted-foreground))]/40 hover:bg-[hsl(var(--accent))]/50',
