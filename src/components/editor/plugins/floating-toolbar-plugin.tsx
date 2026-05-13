@@ -34,6 +34,7 @@ import {
   Underline,
   Strikethrough,
   Code,
+  Highlighter,
   Link,
   ChevronDown,
   Type,
@@ -175,6 +176,7 @@ interface ToolbarState {
   isUnderline: boolean;
   isStrikethrough: boolean;
   isCode: boolean;
+  isHighlight: boolean;
   isLink: boolean;
   blockType: BlockType;
   isSingleBlock: boolean;
@@ -187,12 +189,13 @@ const HIDDEN_STATE: ToolbarState = {
   isUnderline: false,
   isStrikethrough: false,
   isCode: false,
+  isHighlight: false,
   isLink: false,
   blockType: "paragraph",
   isSingleBlock: true,
 };
 
-const TOOLBAR_WIDTH = 380;
+const TOOLBAR_WIDTH = 420;
 const TOOLBAR_HEIGHT = 45;
 const TOOLBAR_GAP = 8;
 const TAB_BAR_HEIGHT = 120;
@@ -250,6 +253,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
         isUnderline: selection.hasFormat("underline"),
         isStrikethrough: selection.hasFormat("strikethrough"),
         isCode: selection.hasFormat("code"),
+        isHighlight: selection.hasFormat("highlight"),
         isLink: $isLinkNode(anchorNode.getParent()),
         blockType,
         isSingleBlock: anchorElement === focusElement && !$isTitleNode(anchorElement),
@@ -267,7 +271,11 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
     if (rect.width === 0 || rect.height === 0) return;
 
     if (toolbarRef.current) {
-      const left = Math.max(rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2, 10);
+      const maxLeft = Math.max(window.innerWidth - TOOLBAR_WIDTH - 10, 10);
+      const left = Math.min(
+        Math.max(rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2, 10),
+        maxLeft,
+      );
       const top = Math.max(rect.top - TOOLBAR_HEIGHT - TOOLBAR_GAP, minTop ?? 10);
       toolbarRef.current.style.top = `${top}px`;
       toolbarRef.current.style.left = `${left}px`;
@@ -360,7 +368,11 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
           toolbarRef.current.style.visibility = "visible";
           scrollHiddenRef.current = false;
         }
-        const left = Math.max(rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2, 10);
+        const maxLeft = Math.max(window.innerWidth - TOOLBAR_WIDTH - 10, 10);
+        const left = Math.min(
+          Math.max(rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2, 10),
+          maxLeft,
+        );
         const top = Math.max(rect.top - TOOLBAR_HEIGHT - TOOLBAR_GAP, TAB_BAR_HEIGHT);
         toolbarRef.current.style.top = `${top}px`;
         toolbarRef.current.style.left = `${left}px`;
@@ -372,7 +384,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   }, []);
 
   const handleFormat = useCallback(
-    (format: "bold" | "italic" | "underline" | "strikethrough" | "code") => {
+    (format: "bold" | "italic" | "underline" | "strikethrough" | "code" | "highlight") => {
       editor.focus();
       editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
     },
@@ -448,6 +460,15 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
           </button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>Inline code <kbd className="ml-1.5 opacity-60">⌘E</kbd></TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" onClick={() => handleFormat("highlight")} className={btnClass(state.isHighlight)} aria-label="Highlight">
+            <Highlighter className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={8}>Highlight <kbd className="ml-1.5 opacity-60">⌘⇧H</kbd></TooltipContent>
       </Tooltip>
 
       <div className="mx-1 h-6 w-px bg-border" />
