@@ -94,6 +94,9 @@ jobs:
           - name: duplicate-tabs
             specs: e2e/duplicate-tabs.spec.ts
             workers: 1
+          - name: tab-scroll-retention
+            specs: e2e/tab-scroll-retention.spec.ts
+            workers: 1
           - name: tab-preview
             specs: e2e/tab-preview.spec.ts
             workers: 1
