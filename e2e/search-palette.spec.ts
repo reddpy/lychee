@@ -1006,13 +1006,13 @@ test.describe("Search palette e2e", () => {
     const secondSelectedText = (await (await selectedItem(window)).innerText()).trim();
     expect(secondSelectedText).not.toBe(firstSelectedText);
 
-    const counter = await readPreviewCounter(window);
+    const counter = previewCounter(window);
     if (secondSelectedText.includes("Arrow sync two")) {
-      expect(counter.total).toBe(3);
+      await expect(counter).toHaveText(/^\d+\/3$/, { timeout: 3000 });
     } else if (secondSelectedText.includes("Arrow sync one")) {
-      expect(counter.total).toBe(1);
+      await expect(counter).toHaveText(/^\d+\/1$/, { timeout: 3000 });
     } else {
-      expect(counter.total).toBeGreaterThan(0);
+      await expect(counter).toHaveText(/^\d+\/[1-9]\d*$/, { timeout: 3000 });
     }
   });
 

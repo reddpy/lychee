@@ -102,7 +102,7 @@ test.describe('Settings Modal', () => {
     const dialog = window.locator('[data-slot="dialog-content"]');
     await expect(dialog).toBeVisible();
 
-    await expect(dialog.getByText('General settings will appear here.')).toBeVisible();
+    await expect(dialog.getByText('App-wide preferences and startup options.')).toBeVisible();
   });
 
   test('left nav switches between sections', async ({ window }) => {
@@ -114,15 +114,15 @@ test.describe('Settings Modal', () => {
 
     // Switch to Appearance
     await dialog.getByText('Appearance', { exact: true }).click();
-    await expect(dialog.getByText('Choose how Lychee looks.')).toBeVisible();
+    await expect(dialog.getByText('Customize how Lychee looks on your screen.')).toBeVisible();
 
     // Switch to Editor
     await dialog.getByText('Editor', { exact: true }).click();
-    await expect(dialog.getByText('Editor settings will appear here.')).toBeVisible();
+    await expect(dialog.getByText('Tune writing behavior, shortcuts, and editor defaults.')).toBeVisible();
 
     // Switch back to General
     await dialog.getByText('General', { exact: true }).click();
-    await expect(dialog.getByText('General settings will appear here.')).toBeVisible();
+    await expect(dialog.getByText('App-wide preferences and startup options.')).toBeVisible();
   });
 
   test('resets to General section on reopen', async ({ window }) => {
@@ -134,7 +134,7 @@ test.describe('Settings Modal', () => {
 
     // Switch to Editor
     await dialog.getByText('Editor', { exact: true }).click();
-    await expect(dialog.getByText('Editor settings will appear here.')).toBeVisible();
+    await expect(dialog.getByText('Tune writing behavior, shortcuts, and editor defaults.')).toBeVisible();
 
     // Close and reopen
     await window.keyboard.press('Escape');
@@ -145,7 +145,7 @@ test.describe('Settings Modal', () => {
     await expect(dialog).toBeVisible();
 
     // Should be back on General
-    await expect(dialog.getByText('General settings will appear here.')).toBeVisible();
+    await expect(dialog.getByText('App-wide preferences and startup options.')).toBeVisible();
   });
 
   test('shows all three section nav buttons', async ({ window }) => {
@@ -230,7 +230,7 @@ test.describe('Settings Modal — responsive sizing', () => {
     expect(dialogBox!.y + dialogBox!.height).toBeLessThanOrEqual(viewport!.height);
   });
 
-  test('dialog uses full height (32rem) when viewport is large', async ({ electronApp, window }) => {
+  test('dialog uses full height (34rem) when viewport is large', async ({ electronApp, window }) => {
     await resizeWindow(electronApp, window, 1200, 900);
 
     const dialog = await openSettingsDialog(window);
@@ -238,9 +238,9 @@ test.describe('Settings Modal — responsive sizing', () => {
 
     expect(dialogBox).toBeTruthy();
 
-    // 32rem = 512px at default 16px root font size
-    expect(dialogBox!.height).toBeGreaterThanOrEqual(500);
-    expect(dialogBox!.height).toBeLessThanOrEqual(520);
+    // 34rem = 544px at default 16px root font size
+    expect(dialogBox!.height).toBeGreaterThanOrEqual(530);
+    expect(dialogBox!.height).toBeLessThanOrEqual(555);
   });
 
   test('nav and content remain visible at small viewport', async ({ electronApp, window }) => {
@@ -254,7 +254,7 @@ test.describe('Settings Modal — responsive sizing', () => {
     await expect(nav.getByText('Appearance', { exact: true })).toBeVisible();
     await expect(nav.getByText('Editor', { exact: true })).toBeVisible();
 
-    await expect(dialog.getByText('General settings will appear here.')).toBeVisible();
+    await expect(dialog.getByText('App-wide preferences and startup options.')).toBeVisible();
   });
 
   test('section switching works at small viewport', async ({ electronApp, window }) => {
@@ -263,10 +263,10 @@ test.describe('Settings Modal — responsive sizing', () => {
     const dialog = await openSettingsDialog(window);
 
     await dialog.getByText('Appearance', { exact: true }).click();
-    await expect(dialog.getByText('Choose how Lychee looks.')).toBeVisible();
+    await expect(dialog.getByText('Customize how Lychee looks on your screen.')).toBeVisible();
 
     await dialog.getByText('Editor', { exact: true }).click();
-    await expect(dialog.getByText('Editor settings will appear here.')).toBeVisible();
+    await expect(dialog.getByText('Tune writing behavior, shortcuts, and editor defaults.')).toBeVisible();
   });
 
   test('dialog width respects viewport margins', async ({ electronApp, window }) => {
