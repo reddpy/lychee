@@ -1,15 +1,26 @@
-import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { AppSidebar } from '../components/app-sidebar';
-import { CollapsedSidebarWidget } from '../components/collapsed-sidebar-widget';
-import { LexicalEditor } from '../components/lexical-editor';
-import { MediaPlaybackPill } from '../components/media-playback-pill';
-import { SettingsDialog } from '../components/settings/settings-dialog';
-import { LycheeLogoHorizontal } from '../components/sidebar/lychee-logo';
-import { TabStrip } from '../components/tab-strip';
-import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '../components/ui/sidebar';
-import { useDocumentStore } from '../renderer/document-store';
+import { AppSidebar } from "../components/app-sidebar";
+import { CollapsedSidebarWidget } from "../components/collapsed-sidebar-widget";
+import { LexicalEditor } from "../components/lexical-editor";
+import { MediaPlaybackPill } from "../components/media-playback-pill";
+import { SettingsDialog } from "../components/settings/settings-dialog";
+import { LycheeLogoHorizontal } from "../components/sidebar/lychee-logo";
+import { TabStrip } from "../components/tab-strip";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "../components/ui/sidebar";
+import { useDocumentStore } from "../renderer/document-store";
+
+// Pulls inset-centered content left by half the sidebar width to land at the
+// viewport center, clamped so the ~320px horizontal logo never crosses the
+// sidebar boundary as the window narrows.
+const EMPTY_STATE_OFFSET_TRANSFORM =
+  "translateX(max(calc((100vw - var(--sidebar-width) - 320px) / -2), calc(var(--sidebar-width) / -2)))";
 
 /** Unified top bar: left section aligns with sidebar, right section holds tabs. */
 function TopBar() {
@@ -19,7 +30,8 @@ function TopBar() {
   const selectDocument = useDocumentStore((s) => s.selectDocument);
   const hasTabs = openTabs.length > 0;
 
-  const activeIndex = selectedId != null ? openTabs.findIndex((t) => t.tabId === selectedId) : -1;
+  const activeIndex =
+    selectedId != null ? openTabs.findIndex((t) => t.tabId === selectedId) : -1;
   const canGoLeft = activeIndex > 0;
   const canGoRight = activeIndex >= 0 && activeIndex < openTabs.length - 1;
 
@@ -39,7 +51,7 @@ function TopBar() {
     <div className="titlebar-drag relative flex h-10 w-full shrink-0 bg-[hsl(var(--sidebar-background))]">
       {/* Left section — matches sidebar width when open, shrinks when collapsed */}
       <div
-        className={`relative z-20 flex shrink-0 items-center overflow-hidden border-r border-r-[hsl(var(--border))] transition-[width] duration-200 ease-out ${sidebarOpen ? 'w-[var(--sidebar-width)]' : 'w-[184px]'}`}
+        className={`relative z-20 flex shrink-0 items-center overflow-hidden border-r border-r-[hsl(var(--border))] transition-[width] duration-200 ease-out ${sidebarOpen ? "w-[var(--sidebar-width)]" : "w-[184px]"}`}
       >
         {/* Traffic lights space — always reserved */}
         <div className="w-[76px] shrink-0" />
@@ -57,10 +69,10 @@ function TopBar() {
             disabled={!canGoLeft}
             aria-label="Previous tab"
             className={
-              'flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors ' +
+              "flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors " +
               (canGoLeft
-                ? 'hover:bg-[#C14B55]/15 hover:text-[#C14B55]'
-                : 'opacity-30')
+                ? "hover:bg-[#C14B55]/15 hover:text-[#C14B55]"
+                : "opacity-30")
             }
           >
             <ChevronLeft className="h-4 w-4" />
@@ -71,10 +83,10 @@ function TopBar() {
             disabled={!canGoRight}
             aria-label="Next tab"
             className={
-              'flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors ' +
+              "flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors " +
               (canGoRight
-                ? 'hover:bg-[#C14B55]/15 hover:text-[#C14B55]'
-                : 'opacity-30')
+                ? "hover:bg-[#C14B55]/15 hover:text-[#C14B55]"
+                : "opacity-30")
             }
           >
             <ChevronRight className="h-4 w-4" />
@@ -93,6 +105,7 @@ function TopBar() {
 }
 
 function EditorArea() {
+  const { open: sidebarOpen } = useSidebar();
   const selectedId = useDocumentStore((s) => s.selectedId);
   const openTabs = useDocumentStore((s) => s.openTabs);
   const documents = useDocumentStore((s) => s.documents);
@@ -116,24 +129,26 @@ function EditorArea() {
     return result;
   }, [openTabs]);
 
-  // The active docId: whichever tab is selected.
   const activeDocId = React.useMemo(
     () => openTabs.find((t) => t.tabId === selectedId)?.docId ?? null,
     [openTabs, selectedId],
   );
 
-  const hasActiveTab = activeDocId != null;
-
-  if (!hasActiveTab) {
+  if (activeDocId == null) {
     return (
-      <main className="flex h-full flex-1 items-start justify-center bg-[hsl(var(--background))] pt-[20vh]">
-        <div className="flex flex-col items-center gap-6 select-none">
+      <main className="flex h-full flex-1 items-start justify-center bg-[hsl(var(--background))] pt-[30vh]">
+        <div
+          className="flex flex-col items-center gap-6 select-none"
+          style={sidebarOpen ? { transform: EMPTY_STATE_OFFSET_TRANSFORM } : undefined}
+        >
           <LycheeLogoHorizontal className="h-20 opacity-15" />
           <div className="h-px w-36 bg-[hsl(var(--muted-foreground))]/10" />
           <p className="text-xl text-[hsl(var(--muted-foreground))]/40">
             Start writing
             <span className="inline-flex w-5">
-              <span className="animate-[ellipsis_1.5s_steps(4,end)_infinite] overflow-hidden whitespace-nowrap">...</span>
+              <span className="animate-[ellipsis_1.5s_steps(4,end)_infinite] overflow-hidden whitespace-nowrap">
+                ...
+              </span>
             </span>
           </p>
         </div>
@@ -146,14 +161,13 @@ function EditorArea() {
       {uniqueDocIds.map((docId) => {
         const doc = docById.get(docId);
         if (!doc) return null;
-        const activeTabId = openTabs.find((t) => t.tabId === selectedId && t.docId === docId)?.tabId ?? null;
         return (
           <LexicalEditor
             key={docId}
             documentId={doc.id}
             document={doc}
             hidden={docId !== activeDocId}
-            activeTabId={activeTabId}
+            activeTabId={docId === activeDocId ? selectedId : null}
           />
         );
       })}
