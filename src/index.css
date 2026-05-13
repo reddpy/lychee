@@ -3,6 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  /* Make bare `border` utilities resolve to the design token instead of currentColor (Tailwind v4 default). */
+  --default-border-color: hsl(var(--border));
+
   /* Map CSS variables to Tailwind theme */
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -66,38 +69,38 @@
 }
 
 .dark {
-  --background: 20 12% 10%;
-  --foreground: 20 10% 88%;
+  --background: 240 6% 10%;
+  --foreground: 0 0% 92%;
 
-  --muted: 20 10% 16%;
-  --muted-foreground: 20 8% 55%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 60%;
 
-  --border: 20 8% 20%;
-  --input: 20 8% 20%;
+  --border: 240 4% 22%;
+  --input: 240 4% 22%;
 
   --primary: 355 49% 53%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 20 10% 16%;
-  --secondary-foreground: 20 10% 88%;
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 0 0% 92%;
 
-  --ring: 20 10% 88%;
+  --ring: 0 0% 90%;
 
-  --popover: 20 12% 12%;
-  --popover-foreground: 20 10% 88%;
+  --popover: 240 6% 12%;
+  --popover-foreground: 0 0% 92%;
 
-  --accent: 20 8% 18%;
-  --accent-foreground: 20 10% 88%;
+  --accent: 240 4% 19%;
+  --accent-foreground: 0 0% 92%;
 
   --destructive: 0 84% 60%;
 
-  --sidebar-background: 20 12% 11%;
-  --sidebar-foreground: 20 8% 70%;
+  --sidebar-background: 240 6% 11%;
+  --sidebar-foreground: 240 4% 70%;
   --sidebar-primary: 355 49% 53%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 20 8% 16%;
-  --sidebar-accent-foreground: 20 8% 88%;
-  --sidebar-border: 20 8% 18%;
+  --sidebar-accent: 240 4% 17%;
+  --sidebar-accent-foreground: 0 0% 92%;
+  --sidebar-border: 240 4% 20%;
   --sidebar-ring: 355 49% 53%;
 }
 
@@ -177,7 +180,7 @@ body {
 }
 
 .dark .sidebar-panel {
-  background-color: hsl(20 10% 13%);
+  background-color: hsl(240 5% 13%);
   box-shadow:
     inset 0 8px 8px -8px rgba(0, 0, 0, 0.4),
     inset 0 -8px 8px -8px rgba(0, 0, 0, 0.35);

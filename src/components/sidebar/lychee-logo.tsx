@@ -1,4 +1,5 @@
 import horizontalLogoUrl from '../../assets/logos/lychee-logo-horizontal.svg';
+import horizontalLogoDarkUrl from '../../assets/logos/lychee-logo-horizontal-dark.svg';
 import iconLogoUrl from '../../assets/logos/lychee-icon.svg';
 
 export function LycheeLogoHorizontal({
@@ -7,13 +8,22 @@ export function LycheeLogoHorizontal({
   className?: string;
 }) {
   return (
-    <img
-      src={horizontalLogoUrl}
-      alt=""
-      aria-hidden="true"
-      draggable={false}
-      className={className}
-    />
+    <>
+      <img
+        src={horizontalLogoUrl}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className={`${className} dark:hidden`}
+      />
+      <img
+        src={horizontalLogoDarkUrl}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className={`${className} hidden dark:block`}
+      />
+    </>
   );
 }
 

@@ -314,7 +314,7 @@ export function TrashBinPopover() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className={cn(
-                    "h-8 border pl-8 border-transparent focus:border-[1.5px] focus:border-[hsl(var(--ring))] focus:ring-0 focus-visible:border-[1.5px] focus-visible:border-[hsl(var(--ring))] focus-visible:ring-0 focus-visible:outline-none",
+                    "h-8 border border-transparent pl-8 focus:border-[hsl(var(--border))] focus:ring-0 focus-visible:border-[hsl(var(--border))] focus-visible:ring-0 focus-visible:outline-none",
                     search.length > 0 && "pr-8",
                   )}
                 />

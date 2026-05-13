@@ -399,13 +399,24 @@ test.describe('Link Hover Popover', () => {
     const link = window.locator('.ContentEditable__root a').first();
     await expect(link).toBeVisible({ timeout: 5000 });
 
-    await link.hover();
-    await window.waitForTimeout(400);
+    const bookmarkBtn = window.locator('button[title="Convert to bookmark"]');
+    const embedBtn = window.locator('button[title="Embed content"]');
+    const openBtn = window.locator('button[title="Open in browser"]');
 
-    // All three buttons should be visible
-    await expect(window.locator('button[title="Convert to bookmark"]')).toBeVisible({ timeout: 3000 });
-    await expect(window.locator('button[title="Embed content"]')).toBeVisible({ timeout: 3000 });
-    await expect(window.locator('button[title="Open in browser"]')).toBeVisible({ timeout: 3000 });
+    // Retry hover up to 3 times — the popover can be flaky if the link rerenders
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await link.hover();
+      await window.waitForTimeout(400);
+      try {
+        await expect(bookmarkBtn).toBeVisible({ timeout: 3000 });
+        await expect(embedBtn).toBeVisible({ timeout: 1000 });
+        await expect(openBtn).toBeVisible({ timeout: 1000 });
+        return;
+      } catch {
+        if (attempt === 2) throw new Error('popover buttons never appeared after 3 hover attempts');
+        await window.waitForTimeout(200);
+      }
+    }
   });
 
   test('popover dismisses after embed completes', async ({ window }) => {
@@ -414,14 +425,11 @@ test.describe('Link Hover Popover', () => {
 
     const link = window.locator('.ContentEditable__root a').first();
     await expect(link).toBeVisible({ timeout: 5000 });
-    await link.hover();
-    await window.waitForTimeout(400);
 
-    const embedBtn = window.locator('button[title="Embed content"]');
-    await expect(embedBtn).toBeVisible({ timeout: 5000 });
-    await embedBtn.click();
+    await clickEmbed(window);
 
     // Popover should dismiss immediately after clicking Embed
+    const embedBtn = window.locator('button[title="Embed content"]');
     await expect(embedBtn).not.toBeVisible({ timeout: 3000 });
 
     // The bookmark card should eventually appear

@@ -90,12 +90,12 @@ test.describe('Dark Mode', () => {
     const dialog = window.locator('[data-slot="dialog-content"]');
     await dialog.getByText('Appearance', { exact: true }).click();
 
-    const darkBtn = dialog.getByText('Dark', { exact: true });
+    const darkBtn = dialog.getByRole('button', { name: 'Dark' });
     await darkBtn.click();
-    await expect(darkBtn).toHaveClass(/font-medium/);
+    await expect(darkBtn).toHaveAttribute('aria-pressed', 'true');
 
-    const lightBtn = dialog.getByText('Light', { exact: true });
-    await expect(lightBtn).not.toHaveClass(/font-medium/);
+    const lightBtn = dialog.getByRole('button', { name: 'Light' });
+    await expect(lightBtn).toHaveAttribute('aria-pressed', 'false');
   });
 
   // ────────────────────────────────────────────────────────
