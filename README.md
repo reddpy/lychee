@@ -1,7 +1,7 @@
 <br>
 
 <p align="center">
-  <img src="src/assets/logos/E-icon.svg" width="80" />
+  <img src="src/assets/logos/lychee-icon.svg" width="80" />
 </p>
 
 <h1 align="center">Lychee</h1>
@@ -93,5 +93,5 @@ Electron &middot; React &middot; Lexical &middot; TypeScript &middot; Zustand &m
 <br>
 
 <p align="center">
-  <img src="src/assets/logos/E-horizontal.svg" width="100" />
+  <img src="src/assets/logos/lychee-logo-horizontal.svg" width="100" />
 </p>
