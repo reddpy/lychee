@@ -365,24 +365,60 @@ export function LexicalEditor({
     };
   }, [saveContent, saveTitle, debouncedStoreUpdate]);
 
-  // Save/restore scroll position per tab so duplicate tabs have independent scroll state.
-  // Also close ephemeral popovers (TOC, emoji picker) on tab switch.
+  const isRestoringScroll = React.useRef(false);
+
+  // Per-tab scroll preservation.
+  //
+  // Save: a `scroll` listener stores el.scrollTop into scrollPositions[tabId]
+  // continuously. This avoids saving in the tab-switch useLayoutEffect, which
+  // would run AFTER display:none has been applied to the outgoing <main> —
+  // Chromium 41+ reports scrollTop=0 for display:none elements.
+  //
+  // Restore: on activeTabId change, set scrollTop synchronously, then re-apply
+  // across two animation frames to defeat TabSelectionPlugin's deferred
+  // editor.update — which can trigger scrollIntoView toward the caret on a
+  // different node. `isRestoringScroll` suppresses the save listener during
+  // that window so the caret-driven scroll can't poison the cache.
+  React.useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (isRestoringScroll.current) return;
+      const id = prevActiveTabId.current;
+      if (id != null) scrollPositions.current.set(id, el.scrollTop);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
   React.useLayoutEffect(() => {
     const el = mainRef.current;
     if (!el) return;
     const prev = prevActiveTabId.current;
     const curr = activeTabId;
-    if (prev !== curr) {
-      if (prev != null) scrollPositions.current.set(prev, el.scrollTop);
-      if (curr != null) el.scrollTop = scrollPositions.current.get(curr) ?? 0;
-      prevActiveTabId.current = curr;
+    if (prev === curr) return;
 
-      // Close all toolbar panels (TOC, breadcrumb, etc.)
-      emitToolbarExclusive("__tab-switch__");
-      // Close emoji pickers
-      setEmojiPickerOpen(false);
-      setAddIconPickerOpen(false);
-    }
+    prevActiveTabId.current = curr;
+    emitToolbarExclusive("__tab-switch__");
+    setEmojiPickerOpen(false);
+    setAddIconPickerOpen(false);
+
+    if (curr == null) return;
+    const target = scrollPositions.current.get(curr) ?? 0;
+    isRestoringScroll.current = true;
+    el.scrollTop = target;
+
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      el.scrollTop = target;
+      raf2 = requestAnimationFrame(() => {
+        isRestoringScroll.current = false;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
   }, [activeTabId]);
 
   const handleEditorStateChange = React.useCallback(
