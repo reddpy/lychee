@@ -110,6 +110,13 @@ export function KeyboardShortcutsPlugin(): null {
           return true
         }
 
+        // Cmd/Ctrl + Shift + H = Highlight
+        if (key === "h" && shiftKey) {
+          event.preventDefault()
+          editor.dispatchCommand(FORMAT_TEXT_COMMAND, "highlight")
+          return true
+        }
+
         // Cmd/Ctrl + E = Inline Code
         if (key === "e" && !shiftKey) {
           event.preventDefault()

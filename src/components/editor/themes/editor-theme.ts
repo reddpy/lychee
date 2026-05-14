@@ -105,6 +105,6 @@ export const editorTheme: EditorThemeClasses = {
   },
   hr: "",
   indent: "[--lexical-indent-base-value:40px]",
-  mark: "",
+  mark: "rounded-sm bg-[#C14B55]/18 text-[hsl(var(--foreground))]",
   markOverlap: "",
 }
