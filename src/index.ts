@@ -1,5 +1,13 @@
 import path from 'path';
-import { app, BrowserWindow, nativeTheme, net, protocol } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  type MenuItemConstructorOptions,
+  nativeTheme,
+  net,
+  protocol,
+} from 'electron';
 import { closeDatabase, initDatabase } from './main/db';
 import { registerIpcHandlers } from './main/ipc';
 import { getSetting } from './main/repos/settings';
@@ -20,6 +28,85 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
+}
+
+// Mirrors Electron's stock macOS menu but omits Edit > Find. Find's Cmd+F
+// accelerator re-injects a synthetic keydown into the renderer under
+// Playwright/CDP input, double-firing our in-note find toggle. Removing only
+// that submenu keeps Cmd+W/M/R/Opt+I/Q/Z/C/V/X/A working as before.
+function buildAppMenu(): Menu {
+  const isMac = process.platform === 'darwin';
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? ([
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' },
+            ],
+          } as MenuItemConstructorOptions,
+        ])
+      : []),
+    {
+      label: 'File',
+      submenu: [isMac ? { role: 'close' } : { role: 'quit' }],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...((isMac
+          ? [
+              { role: 'pasteAndMatchStyle' },
+              { role: 'delete' },
+              { role: 'selectAll' },
+            ]
+          : [
+              { role: 'delete' },
+              { type: 'separator' },
+              { role: 'selectAll' },
+            ]) as MenuItemConstructorOptions[]),
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...((isMac
+          ? [{ type: 'separator' }, { role: 'front' }]
+          : [{ role: 'close' }]) as MenuItemConstructorOptions[]),
+      ],
+    },
+  ];
+  return Menu.buildFromTemplate(template);
 }
 
 function resolveBackgroundColor(): string {
@@ -70,6 +157,8 @@ const createWindow = (): BrowserWindow => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(buildAppMenu());
+
   // Handle lychee-image:// protocol — serves files from userData/images/
   protocol.handle('lychee-image', (request) => {
     // URL format: lychee-image://image/<filename>
@@ -81,8 +170,11 @@ app.whenReady().then(() => {
   const { dbPath } = initDatabase();
   console.log(`[db] sqlite: ${dbPath}`);
 
-  createWindow();
+  // Must register IPC handlers before createWindow loads the renderer URL —
+  // the renderer can fire IPC during early hydration (e.g. theme/settings)
+  // and would otherwise hit "No handler registered" if the window is created first.
   registerIpcHandlers();
+  createWindow();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
