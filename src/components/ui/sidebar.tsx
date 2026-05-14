@@ -206,7 +206,7 @@ export function Sidebar({
         open && 'relative shrink-0 h-full border-r border-r-[hsl(var(--sidebar-border))]',
         // Collapsed: absolute overlay with transition
         !open && 'absolute transition-[transform,opacity] duration-200 ease-out',
-        isFloating && 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-[#C14B55] overflow-hidden translate-x-0 opacity-100 shadow-xl',
+        isFloating && 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-brand overflow-hidden translate-x-0 opacity-100 shadow-xl',
         !open && !isFloating && 'left-0 top-0 h-full border-r border-r-[hsl(var(--sidebar-border))] -translate-x-full opacity-0 shadow-none pointer-events-none',
         className,
       )}

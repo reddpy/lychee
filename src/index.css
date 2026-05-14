@@ -23,6 +23,9 @@
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-destructive: hsl(var(--destructive));
   --color-ring: hsl(var(--ring));
+
+  /* Brand color — lychee red (centralized from #C14B55) */
+  --color-brand: #C14B55;
 }
 
 /* shadcn-style design tokens — warm palette with lychee brand red */

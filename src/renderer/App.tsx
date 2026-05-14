@@ -57,7 +57,7 @@ function TopBar() {
         <div className="w-19 shrink-0" />
         {/* Sidebar toggle */}
         <div className="titlebar-nodrag flex shrink-0 items-center px-1 translate-y-0.5">
-          <SidebarTrigger className="h-7 w-7 rounded-md border border-transparent text-[hsl(var(--muted-foreground))] hover:bg-[#C14B55]/15 hover:border-[#C14B55]/30 hover:text-[#C14B55] transition-all" />
+          <SidebarTrigger className="h-7 w-7 rounded-md border border-transparent text-[hsl(var(--muted-foreground))] hover:bg-brand/15 hover:border-brand/30 hover:text-brand transition-all" />
         </div>
         {/* Spacer pushes chevrons to the right edge */}
         <div className="flex-1" />
@@ -71,7 +71,7 @@ function TopBar() {
             className={
               "flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors " +
               (canGoLeft
-                ? "hover:bg-[#C14B55]/15 hover:text-[#C14B55]"
+                ? "hover:bg-brand/15 hover:text-brand"
                 : "opacity-30")
             }
           >
@@ -85,7 +85,7 @@ function TopBar() {
             className={
               "flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors " +
               (canGoRight
-                ? "hover:bg-[#C14B55]/15 hover:text-[#C14B55]"
+                ? "hover:bg-brand/15 hover:text-brand"
                 : "opacity-30")
             }
           >
