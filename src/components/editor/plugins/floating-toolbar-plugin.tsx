@@ -48,6 +48,7 @@ import {
   Code2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FormatButton, type TextFormat } from "./format-button";
 import {
   Tooltip,
   TooltipContent,
@@ -384,7 +385,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   }, []);
 
   const handleFormat = useCallback(
-    (format: "bold" | "italic" | "underline" | "strikethrough" | "code" | "highlight") => {
+    (format: TextFormat) => {
       editor.focus();
       editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
     },
@@ -417,59 +418,17 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
         </>
       )}
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("bold")} className={btnClass(state.isBold)} aria-label="Bold">
-            <Bold className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Bold <kbd className="ml-1.5 opacity-60">⌘B</kbd></TooltipContent>
-      </Tooltip>
+      <FormatButton format="bold" icon={<Bold className="h-4 w-4" />} label="Bold" shortcut="⌘B" active={state.isBold} onClick={handleFormat} />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("italic")} className={btnClass(state.isItalic)} aria-label="Italic">
-            <Italic className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Italic <kbd className="ml-1.5 opacity-60">⌘I</kbd></TooltipContent>
-      </Tooltip>
+      <FormatButton format="italic" icon={<Italic className="h-4 w-4" />} label="Italic" shortcut="⌘I" active={state.isItalic} onClick={handleFormat} />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("underline")} className={btnClass(state.isUnderline)} aria-label="Underline">
-            <Underline className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Underline <kbd className="ml-1.5 opacity-60">⌘U</kbd></TooltipContent>
-      </Tooltip>
+      <FormatButton format="underline" icon={<Underline className="h-4 w-4" />} label="Underline" shortcut="⌘U" active={state.isUnderline} onClick={handleFormat} />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("strikethrough")} className={btnClass(state.isStrikethrough)} aria-label="Strikethrough">
-            <Strikethrough className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Strikethrough <kbd className="ml-1.5 opacity-60">⌘⇧S</kbd></TooltipContent>
-      </Tooltip>
+      <FormatButton format="strikethrough" icon={<Strikethrough className="h-4 w-4" />} label="Strikethrough" shortcut="⌘⇧S" active={state.isStrikethrough} onClick={handleFormat} />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("code")} className={btnClass(state.isCode)} aria-label="Inline code">
-            <Code className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Inline code <kbd className="ml-1.5 opacity-60">⌘E</kbd></TooltipContent>
-      </Tooltip>
+      <FormatButton format="code" icon={<Code className="h-4 w-4" />} label="Inline code" shortcut="⌘E" active={state.isCode} onClick={handleFormat} />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("highlight")} className={btnClass(state.isHighlight)} aria-label="Highlight">
-            <Highlighter className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Highlight <kbd className="ml-1.5 opacity-60">⌘⇧H</kbd></TooltipContent>
-      </Tooltip>
+      <FormatButton format="highlight" icon={<Highlighter className="h-4 w-4" />} label="Highlight" shortcut="⌘⇧H" active={state.isHighlight} onClick={handleFormat} />
 
       <div className="mx-1 h-6 w-px bg-border" />
 
