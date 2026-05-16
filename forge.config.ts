@@ -1,36 +1,54 @@
-import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerZIP } from '@electron-forge/maker-zip';
-import { MakerDMG } from '@electron-forge/maker-dmg';
-import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
-import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
-import { WebpackPlugin } from '@electron-forge/plugin-webpack';
-import { FusesPlugin } from '@electron-forge/plugin-fuses';
-import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import type { ForgeConfig } from "@electron-forge/shared-types";
+import { MakerSquirrel } from "@electron-forge/maker-squirrel";
+import { MakerZIP } from "@electron-forge/maker-zip";
+import { MakerDMG } from "@electron-forge/maker-dmg";
+import { MakerDeb } from "@electron-forge/maker-deb";
+import { MakerRpm } from "@electron-forge/maker-rpm";
+import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
+import { WebpackPlugin } from "@electron-forge/plugin-webpack";
+import { FusesPlugin } from "@electron-forge/plugin-fuses";
+import { FuseV1Options, FuseVersion } from "@electron/fuses";
 
-import path from 'path';
+import path from "path";
 
-import { mainConfig } from './webpack.main.config';
-import { rendererConfig } from './webpack.renderer.config';
+import { mainConfig } from "./webpack.main.config";
+import { rendererConfig } from "./webpack.renderer.config";
 
 // When building for E2E tests, relax fuses so Playwright can connect
-const isE2E = process.env.E2E === '1';
-const devServerPort = Number.parseInt(process.env.LYCHEE_DEV_SERVER_PORT ?? '3001', 10);
+const isE2E = process.env.E2E === "1";
+const devServerPort = Number.parseInt(
+  process.env.LYCHEE_DEV_SERVER_PORT ?? "3001",
+  10,
+);
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    icon: path.resolve(__dirname, 'build', 'icon'),
+    icon: path.resolve(__dirname, "build", "icon"),
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
-      setupIcon: path.resolve(__dirname, 'build', 'icon.ico'),
-      iconUrl: 'https://raw.githubusercontent.com/reddpy/lychee/main/build/icon.ico',
+      setupIcon: path.resolve(__dirname, "build", "icon.ico"),
+      iconUrl:
+        "https://raw.githubusercontent.com/reddpy/lychee/main/build/icon.ico",
     }),
-    new MakerZIP({}, ['darwin']),
-    new MakerDMG({}),
+    new MakerZIP({}, ["darwin"]),
+    new MakerDMG({
+      title: "Install Lychee",
+      background: path.resolve(__dirname, "build", "dmg-background.png"),
+      icon: path.resolve(__dirname, "build", "icon.icns"),
+      iconSize: 120,
+      contents: (opts: { appPath: string }) => [
+        { x: 140, y: 200, type: "file", path: opts.appPath },
+        { x: 400, y: 200, type: "link", path: "/Applications" },
+      ],
+      additionalDMGOptions: {
+        window: {
+          size: { width: 540, height: 360 },
+        },
+      },
+    }),
     new MakerRpm({}),
     new MakerDeb({}),
   ],
@@ -38,17 +56,18 @@ const config: ForgeConfig = {
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       port: Number.isNaN(devServerPort) ? 3001 : devServerPort,
-      devContentSecurityPolicy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com; img-src 'self' data: https: http: lychee-image:; connect-src 'self' ws:; frame-src https://www.youtube-nocookie.com https://www.youtube.com",
+      devContentSecurityPolicy:
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com; img-src 'self' data: https: http: lychee-image:; connect-src 'self' ws:; frame-src https://www.youtube-nocookie.com https://www.youtube.com",
       mainConfig,
       renderer: {
         config: rendererConfig,
         entryPoints: [
           {
-            html: './src/index.html',
-            js: './src/renderer.ts',
-            name: 'main_window',
+            html: "./src/index.html",
+            js: "./src/renderer.ts",
+            name: "main_window",
             preload: {
-              js: './src/preload.ts',
+              js: "./src/preload.ts",
             },
           },
         ],
