@@ -25,7 +25,10 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      setupIcon: path.resolve(__dirname, 'build', 'icon.ico'),
+      iconUrl: 'https://raw.githubusercontent.com/reddpy/lychee/main/build/icon.ico',
+    }),
     new MakerZIP({}, ['darwin']),
     new MakerDMG({}),
     new MakerRpm({}),
