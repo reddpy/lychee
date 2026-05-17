@@ -16,6 +16,7 @@ import { saveImage, getImagePath, deleteImage, downloadImage } from './repos/ima
 import { resolveUrl } from './repos/url-resolver';
 import { fetchUrlMetadata } from './repos/url-metadata';
 import { getSetting, setSetting, getAllSettings } from './repos/settings';
+import { isAllowedExternal } from './url-policy';
 
 type Handler<C extends IpcChannel> = (
   payload: IpcContract[C]['req'],
@@ -89,10 +90,8 @@ export function registerIpcHandlers() {
   });
 
   handle('shell.openExternal', async (payload) => {
-    const url = payload.url;
-    const scheme = url.split(':')[0]?.toLowerCase();
-    const allowedSchemes = ['http', 'https', 'mailto'];
-    if (!scheme || !allowedSchemes.includes(scheme)) {
+    if (!isAllowedExternal(payload.url)) {
+      const scheme = payload.url.split(':')[0]?.toLowerCase();
       throw new Error(`Blocked URL scheme: ${scheme}`);
     }
     await shell.openExternal(payload.url);
