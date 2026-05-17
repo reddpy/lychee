@@ -175,6 +175,7 @@ const createWindow = (): BrowserWindow => {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
 
