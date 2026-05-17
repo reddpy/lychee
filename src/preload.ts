@@ -1,7 +1,8 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
-import type { IpcInvoke, IpcOn } from './shared/ipc-types';
+import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
+import type { IpcInvoke, IpcOn } from "./shared/ipc-types";
 
-const invoke: IpcInvoke = (channel, payload) => ipcRenderer.invoke(channel, payload);
+const invoke: IpcInvoke = (channel, payload) =>
+  ipcRenderer.invoke(channel, payload);
 
 const on: IpcOn = (channel, callback) => {
   const handler = (_event: IpcRendererEvent, payload: unknown) => {
@@ -13,7 +14,7 @@ const on: IpcOn = (channel, callback) => {
   };
 };
 
-contextBridge.exposeInMainWorld('lychee', {
+contextBridge.exposeInMainWorld("lychee", {
   invoke,
   on,
 });
