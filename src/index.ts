@@ -9,6 +9,7 @@ import {
   protocol,
 } from 'electron';
 import { closeDatabase, initDatabase } from './main/db';
+import { resolveImagePath } from './main/image-protocol';
 import { registerIpcHandlers } from './main/ipc';
 import { getSetting } from './main/repos/settings';
 
@@ -159,12 +160,16 @@ const createWindow = (): BrowserWindow => {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(buildAppMenu());
 
-  // Handle lychee-image:// protocol — serves files from userData/images/
+  // Handle lychee-image:// protocol — serves files from userData/images/.
+  // resolveImagePath rejects path-traversal, absolute paths, null bytes, and
+  // malformed encoding; without it, a crafted URL could read arbitrary files.
   protocol.handle('lychee-image', (request) => {
-    // URL format: lychee-image://image/<filename>
-    const filePath = decodeURIComponent(request.url.replace('lychee-image://image/', ''));
-    const fullPath = path.join(app.getPath('userData'), 'images', filePath);
-    return net.fetch(`file://${fullPath}`);
+    const imagesDir = path.join(app.getPath('userData'), 'images');
+    const resolved = resolveImagePath(request.url, imagesDir);
+    if (!resolved.ok) {
+      return new Response(null, { status: 403 });
+    }
+    return net.fetch(`file://${resolved.path}`);
   });
 
   const { dbPath } = initDatabase();
