@@ -110,4 +110,15 @@ describe('Database Schema — Fresh Migration', () => {
     expect(row.emoji).toBeNull();
     expect(row.deletedAt).toBeNull();
   });
+
+  it('metadata column defaults to empty JSON object', () => {
+    db.prepare(
+      `INSERT INTO documents (id, title, content, createdAt, updatedAt)
+       VALUES ('metadata-test', 'Test', '', '2024-01-01', '2024-01-01')`,
+    ).run();
+    const row = db
+      .prepare(`SELECT metadata FROM documents WHERE id = 'metadata-test'`)
+      .get() as { metadata: string };
+    expect(row.metadata).toBe('{}');
+  });
 });
