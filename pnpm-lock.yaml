@@ -213,6 +213,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      copy-webpack-plugin:
+        specifier: ^14.0.0
+        version: 14.0.0(webpack@5.106.2(lightningcss@1.32.0)(postcss@8.5.14))
       css-loader:
         specifier: ^7.1.4
         version: 7.1.4(webpack@5.106.2(lightningcss@1.32.0)(postcss@8.5.14))
@@ -2682,6 +2685,12 @@ packages:
   cookie@1.1.1:
     resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
     engines: {node: '>=18'}
+
+  copy-webpack-plugin@14.0.0:
+    resolution: {integrity: sha512-3JLW90aBGeaTLpM7mYQKpnVdgsUZRExY55giiZgLuX/xTQRUs1dOCwbBnWnvY6Q6rfZoXMNwzOQJCSZPppfqXA==}
+    engines: {node: '>= 20.9.0'}
+    peerDependencies:
+      webpack: ^5.1.0
 
   core-util-is@1.0.3:
     resolution: {integrity: sha512-ZQBvi1DcpJ4GDqanjucZ2Hj3wEO5pZDS89BWbkcrvdxksJorwUDDZamX9ldFkp9aw2lmBDLgkObEA4DWNJ9FYQ==}
@@ -5284,6 +5293,10 @@ packages:
   serialize-error@7.0.1:
     resolution: {integrity: sha512-8I8TjW5KMOKsZQTvoxjuSIa7foAwPWGOts+6o7sgjz41/qMD9VQHEDxi6PBvK2l0MXUmqZyNpUK+T2tQaaElvw==}
     engines: {node: '>=10'}
+
+  serialize-javascript@7.0.5:
+    resolution: {integrity: sha512-F4LcB0UqUl1zErq+1nYEEzSHJnIwb3AF2XWB94b+afhrekOUijwooAYqFyRbjYkm2PAKBabx6oYv/xDxNi8IBw==}
+    engines: {node: '>=20.0.0'}
 
   serve-index@1.9.2:
     resolution: {integrity: sha512-KDj11HScOaLmrPxl70KYNW1PksP4Nb/CLL2yvC+Qd2kHMPEEpfc4Re2e4FOay+bC/+XQl/7zAcWON3JVo5v3KQ==}
@@ -9178,6 +9191,15 @@ snapshots:
 
   cookie@1.1.1: {}
 
+  copy-webpack-plugin@14.0.0(webpack@5.106.2(lightningcss@1.32.0)(postcss@8.5.14)):
+    dependencies:
+      glob-parent: 6.0.2
+      normalize-path: 3.0.0
+      schema-utils: 4.3.3
+      serialize-javascript: 7.0.5
+      tinyglobby: 0.2.16
+      webpack: 5.106.2(lightningcss@1.32.0)(postcss@8.5.14)
+
   core-util-is@1.0.3: {}
 
   cors@2.8.6:
@@ -12026,6 +12048,8 @@ snapshots:
     dependencies:
       type-fest: 0.13.1
     optional: true
+
+  serialize-javascript@7.0.5: {}
 
   serve-index@1.9.2:
     dependencies:
