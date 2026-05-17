@@ -1,5 +1,6 @@
 import type { Configuration } from 'webpack';
 import path from 'path';
+import CopyPlugin from 'copy-webpack-plugin';
 
 import { rules } from './webpack.rules';
 import { plugins } from './webpack.plugins';
@@ -23,7 +24,22 @@ export const rendererConfig: Configuration = {
       message: /Critical dependency: the request of a dependency is an expression/,
     },
   ],
-  plugins,
+  plugins: [
+    ...plugins,
+    // Emit theme-bootstrap.js alongside index.html so <head> can load it
+    // synchronously pre-paint without bundling it into the main renderer chunk.
+    new CopyPlugin({
+      patterns: [
+        {
+          from: path.resolve(__dirname, 'src/theme-bootstrap.js'),
+          // Forge emits the renderer entry under <output>/main_window/, so the
+          // bootstrap has to land in the same dir for index.html's relative
+          // <script src> to resolve.
+          to: 'main_window/theme-bootstrap.js',
+        },
+      ],
+    }),
+  ],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css'],
     alias: {

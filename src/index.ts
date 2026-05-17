@@ -7,11 +7,46 @@ import {
   nativeTheme,
   net,
   protocol,
+  session,
 } from 'electron';
 import { closeDatabase, initDatabase } from './main/db';
 import { resolveImagePath } from './main/image-protocol';
 import { registerIpcHandlers } from './main/ipc';
 import { getSetting } from './main/repos/settings';
+
+// CSP applies to packaged builds. Dev runs through webpack-dev-server which sets
+// its own (looser) CSP via WebpackPlugin.devContentSecurityPolicy — HMR needs
+// 'unsafe-eval', which we deliberately drop here.
+//
+// All renderer scripts are loaded from 'self' (the renderer bundle and
+// theme-bootstrap.js, both emitted to the renderer output dir). YouTube's
+// IFrame API loads from https://www.youtube.com.
+const RENDERER_CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://www.youtube.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: lychee-image: https:",
+  "media-src 'self' lychee-image: https:",
+  "connect-src 'self' https:",
+  'frame-src https://www.youtube-nocookie.com https://www.youtube.com',
+  "object-src 'none'",
+  "base-uri 'self'",
+].join('; ');
+
+function registerContentSecurityPolicy(): void {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (details.resourceType !== 'mainFrame') {
+      callback({});
+      return;
+    }
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [RENDERER_CSP],
+      },
+    });
+  });
+}
 
 // Register custom protocol for serving local image files
 protocol.registerSchemesAsPrivileged([
@@ -161,9 +196,11 @@ const createWindow = (): BrowserWindow => {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(buildAppMenu());
 
-  // Handle lychee-image:// protocol — serves files from userData/images/.
-  // resolveImagePath rejects path-traversal, absolute paths, null bytes, and
-  // malformed encoding; without it, a crafted URL could read arbitrary files.
+  if (app.isPackaged) {
+    registerContentSecurityPolicy();
+  }
+
+  // Handle lychee-image:// protocol — serves files from userData/images/
   protocol.handle('lychee-image', (request) => {
     const imagesDir = path.join(app.getPath('userData'), 'images');
     const resolved = resolveImagePath(request.url, imagesDir);
