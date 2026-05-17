@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 
+// node scripts/seed.mjs  | sqlite3 ~/Library/Application\ Support/Lychee/lychee.sqlite3
 // ── helpers ──────────────────────────────────────────────────
 
 const text = (t, format = 0) => ({
@@ -77,7 +78,11 @@ const doc = (...rawChildren) => {
     if (child.__marker === LIST_ITEM_MARKER) {
       const group = [];
       const listType = child.listType;
-      while (i < rawChildren.length && rawChildren[i].__marker === LIST_ITEM_MARKER && rawChildren[i].listType === listType) {
+      while (
+        i < rawChildren.length &&
+        rawChildren[i].__marker === LIST_ITEM_MARKER &&
+        rawChildren[i].listType === listType
+      ) {
         group.push(rawChildren[i]);
         i++;
       }
@@ -117,7 +122,13 @@ const insert = (
   noteId,
   noteTitle,
   content,
-  { emoji = null, parentId = null, sortOrder = 0, daysAgo = 0, hoursAgo = 0 } = {}
+  {
+    emoji = null,
+    parentId = null,
+    sortOrder = 0,
+    daysAgo = 0,
+    hoursAgo = 0,
+  } = {},
 ) => {
   notes.push({
     id: noteId,
@@ -157,18 +168,15 @@ insert(
     bullet("Plugin system for custom blocks"),
     bullet("Version history & snapshots"),
   ),
-  { emoji: "🗺️", sortOrder: 0, daysAgo: 1 }
+  { emoji: "🗺️", sortOrder: 0, daysAgo: 1 },
 );
 
 // 2. Meeting Notes (parent)
 const meetingId = insert(
   id(),
   "Meeting Notes",
-  doc(
-    title("Meeting Notes"),
-    p("Running archive of team syncs and 1:1s."),
-  ),
-  { emoji: "📋", sortOrder: 1, daysAgo: 0, hoursAgo: 2 }
+  doc(title("Meeting Notes"), p("Running archive of team syncs and 1:1s.")),
+  { emoji: "📋", sortOrder: 1, daysAgo: 0, hoursAgo: 2 },
 );
 
 insert(
@@ -188,9 +196,11 @@ insert(
     bullet("SQLite for storage, no server until v2"),
     bullet("Weekly demo every Friday 3 PM"),
     p(""),
-    quote("\"Keep it simple. If Notion 2019 wouldn't have it, we don't need it yet.\" — KJ"),
+    quote(
+      "\"Keep it simple. If Notion 2019 wouldn't have it, we don't need it yet.\" — KJ",
+    ),
   ),
-  { parentId: meetingId, sortOrder: 0, daysAgo: 18 }
+  { parentId: meetingId, sortOrder: 0, daysAgo: 18 },
 );
 
 insert(
@@ -208,7 +218,7 @@ insert(
     bullet("Nested pages in sidebar"),
     bullet("Emoji picker for note icons"),
   ),
-  { parentId: meetingId, sortOrder: 1, daysAgo: 11 }
+  { parentId: meetingId, sortOrder: 1, daysAgo: 11 },
 );
 
 insert(
@@ -229,7 +239,7 @@ insert(
     check("Add shortcut cheat sheet (Cmd+/)", false),
     check("Fix drag handle z-index inside lists", true),
   ),
-  { parentId: meetingId, sortOrder: 2, daysAgo: 7 }
+  { parentId: meetingId, sortOrder: 2, daysAgo: 7 },
 );
 
 // 3. Design System
@@ -253,14 +263,18 @@ insert(
     bullet("Code — Berkeley Mono, 13.5px"),
     p(""),
     h("h2", "Spacing"),
-    p("Base unit: 4px. Most gaps are 8, 12, 16, or 24px. Editor content width maxes out at 720px."),
+    p(
+      "Base unit: 4px. Most gaps are 8, 12, 16, or 24px. Editor content width maxes out at 720px.",
+    ),
     p(""),
     h("h2", "Principles"),
     numbered("Content first — UI should disappear while writing"),
-    numbered("No chrome until hover — toolbars, handles, menus appear on interaction"),
+    numbered(
+      "No chrome until hover — toolbars, handles, menus appear on interaction",
+    ),
     numbered("Instant feedback — every action < 16ms"),
   ),
-  { emoji: "🎨", sortOrder: 2, daysAgo: 5 }
+  { emoji: "🎨", sortOrder: 2, daysAgo: 5 },
 );
 
 // 4. Reading List
@@ -284,18 +298,15 @@ insert(
     check("How Notion cloned the OS", false),
     check("CRDT primer by Martin Kleppmann", false),
   ),
-  { emoji: "📚", sortOrder: 3, daysAgo: 3 }
+  { emoji: "📚", sortOrder: 3, daysAgo: 3 },
 );
 
 // 5. Architecture (parent)
 const archId = insert(
   id(),
   "Architecture",
-  doc(
-    title("Architecture"),
-    p("Technical decisions and system design docs."),
-  ),
-  { emoji: "🏗️", sortOrder: 4, daysAgo: 14 }
+  doc(title("Architecture"), p("Technical decisions and system design docs.")),
+  { emoji: "🏗️", sortOrder: 4, daysAgo: 14 },
 );
 
 insert(
@@ -303,7 +314,9 @@ insert(
   "Data Model",
   doc(
     title("Data Model"),
-    p("All data lives in a single SQLite file. No migrations needed for users — we handle schema versioning internally."),
+    p(
+      "All data lives in a single SQLite file. No migrations needed for users — we handle schema versioning internally.",
+    ),
     p(""),
     h("h2", "Tables"),
     bullet("documents — notes, with parent_id for nesting"),
@@ -316,9 +329,11 @@ insert(
     bullet("WAL mode — fast concurrent reads"),
     bullet("Perfect for local-first"),
     p(""),
-    quote("\"SQLite is not a toy database. It's the most deployed database engine in the world.\""),
+    quote(
+      '"SQLite is not a toy database. It\'s the most deployed database engine in the world."',
+    ),
   ),
-  { parentId: archId, sortOrder: 0, daysAgo: 14 }
+  { parentId: archId, sortOrder: 0, daysAgo: 14 },
 );
 
 insert(
@@ -326,10 +341,14 @@ insert(
   "IPC Contract",
   doc(
     title("IPC Contract"),
-    p("Communication between main and renderer uses typed IPC channels via the preload bridge."),
+    p(
+      "Communication between main and renderer uses typed IPC channels via the preload bridge.",
+    ),
     p(""),
     h("h2", "Pattern"),
-    p("Renderer calls window.lychee.invoke(channel, payload) which maps to ipcMain.handle() in the main process. Fully typed end-to-end."),
+    p(
+      "Renderer calls window.lychee.invoke(channel, payload) which maps to ipcMain.handle() in the main process. Fully typed end-to-end.",
+    ),
     p(""),
     h("h2", "Channels"),
     bullet("documents.create / get / list / update / delete"),
@@ -337,7 +356,7 @@ insert(
     bullet("images.save / get"),
     bullet("app.getPath"),
   ),
-  { parentId: archId, sortOrder: 1, daysAgo: 12 }
+  { parentId: archId, sortOrder: 1, daysAgo: 12 },
 );
 
 insert(
@@ -347,10 +366,16 @@ insert(
     title("Editor Architecture"),
     p("Built on Lexical (Meta's framework). Key decisions:"),
     p(""),
-    bullet("Flat list model — list items are direct children of root, not nested <ul>/<li>. Indent level is a property on the node."),
+    bullet(
+      "Flat list model — list items are direct children of root, not nested <ul>/<li>. Indent level is a property on the node.",
+    ),
     bullet("Custom TitleNode — always the first child, never deletable"),
-    bullet("NodeViews for drag handles — each block wrapped with a handle that appears on hover"),
-    bullet("Slash commands — custom plugin that intercepts / at the start of a line"),
+    bullet(
+      "NodeViews for drag handles — each block wrapped with a handle that appears on hover",
+    ),
+    bullet(
+      "Slash commands — custom plugin that intercepts / at the start of a line",
+    ),
     p(""),
     h("h2", "Why Lexical over ProseMirror"),
     bullet("React-native — plays well with our component tree"),
@@ -358,7 +383,7 @@ insert(
     bullet("Active development by Meta"),
     bullet("Great TypeScript support"),
   ),
-  { parentId: archId, sortOrder: 2, daysAgo: 10 }
+  { parentId: archId, sortOrder: 2, daysAgo: 10 },
 );
 
 // 6. Ideas
@@ -369,7 +394,7 @@ insert(
     title("Ideas"),
     p("Random thoughts, features, and shower ideas."),
     p(""),
-    bullet("What if notes could have a \"mood\" — color tint based on content?"),
+    bullet('What if notes could have a "mood" — color tint based on content?'),
     bullet("Vim keybindings mode for power users"),
     bullet("Template system — start a note from a template"),
     bullet("Backlinks — see which notes reference this one"),
@@ -380,18 +405,15 @@ insert(
     p(""),
     quote("The best notes app is the one you actually open."),
   ),
-  { emoji: "💡", sortOrder: 5, daysAgo: 2 }
+  { emoji: "💡", sortOrder: 5, daysAgo: 2 },
 );
 
 // 7. Journal (parent)
 const journalId = insert(
   id(),
   "Journal",
-  doc(
-    title("Journal"),
-    p("Weekly reflections on building Lychee."),
-  ),
-  { emoji: "✏️", sortOrder: 6, daysAgo: 0, hoursAgo: 5 }
+  doc(title("Journal"), p("Weekly reflections on building Lychee.")),
+  { emoji: "✏️", sortOrder: 6, daysAgo: 0, hoursAgo: 5 },
 );
 
 insert(
@@ -399,15 +421,23 @@ insert(
   "Week 1 — Starting from scratch",
   doc(
     title("Week 1 — Starting from scratch"),
-    p("Set up Electron Forge with webpack, React, and Tailwind. Got a basic window rendering with hot reload."),
+    p(
+      "Set up Electron Forge with webpack, React, and Tailwind. Got a basic window rendering with hot reload.",
+    ),
     p(""),
-    p("The hardest part was getting better-sqlite3 to work as a webpack external. Electron's node integration + native modules is always a maze."),
+    p(
+      "The hardest part was getting better-sqlite3 to work as a webpack external. Electron's node integration + native modules is always a maze.",
+    ),
     p(""),
-    p("By Friday, I had a blank editor that could save to SQLite. Nothing fancy, but it felt like a real app."),
+    p(
+      "By Friday, I had a blank editor that could save to SQLite. Nothing fancy, but it felt like a real app.",
+    ),
     p(""),
-    quote("You don't need a plan for everything. Sometimes you just need to start typing."),
+    quote(
+      "You don't need a plan for everything. Sometimes you just need to start typing.",
+    ),
   ),
-  { parentId: journalId, sortOrder: 0, daysAgo: 20 }
+  { parentId: journalId, sortOrder: 0, daysAgo: 20 },
 );
 
 insert(
@@ -415,13 +445,19 @@ insert(
   "Week 2 — The editor takes shape",
   doc(
     title("Week 2 — The editor takes shape"),
-    p("Added headings, lists, checkboxes, quotes, code blocks. Lexical makes this surprisingly clean — each node type is a self-contained class."),
+    p(
+      "Added headings, lists, checkboxes, quotes, code blocks. Lexical makes this surprisingly clean — each node type is a self-contained class.",
+    ),
     p(""),
-    p("The slash command menu took most of the week. Filtering, keyboard navigation, positioning the popover — lots of small details."),
+    p(
+      "The slash command menu took most of the week. Filtering, keyboard navigation, positioning the popover — lots of small details.",
+    ),
     p(""),
-    p("Drag and drop was a rabbit hole. Ended up using native drag events with custom serialization. It works, but needs polish."),
+    p(
+      "Drag and drop was a rabbit hole. Ended up using native drag events with custom serialization. It works, but needs polish.",
+    ),
   ),
-  { parentId: journalId, sortOrder: 1, daysAgo: 13 }
+  { parentId: journalId, sortOrder: 1, daysAgo: 13 },
 );
 
 insert(
@@ -429,16 +465,24 @@ insert(
   "Week 3 — Sidebar & navigation",
   doc(
     title("Week 3 — Sidebar & navigation"),
-    p("Built the sidebar note tree with nested pages up to 5 levels deep. Drag to reorder, drag to nest."),
+    p(
+      "Built the sidebar note tree with nested pages up to 5 levels deep. Drag to reorder, drag to nest.",
+    ),
     p(""),
-    p("Added tabs — you can open multiple notes side by side. The tab bar scrolls horizontally if you have too many."),
+    p(
+      "Added tabs — you can open multiple notes side by side. The tab bar scrolls horizontally if you have too many.",
+    ),
     p(""),
-    p("Emoji picker for note icons. This small touch makes the sidebar feel alive. People love picking emojis."),
+    p(
+      "Emoji picker for note icons. This small touch makes the sidebar feel alive. People love picking emojis.",
+    ),
     p(""),
     h("h2", "Screenshot moment"),
-    p("For the first time, it feels like a real app. Not a demo, not a prototype — something I'd actually use daily."),
+    p(
+      "For the first time, it feels like a real app. Not a demo, not a prototype — something I'd actually use daily.",
+    ),
   ),
-  { parentId: journalId, sortOrder: 2, daysAgo: 6 }
+  { parentId: journalId, sortOrder: 2, daysAgo: 6 },
 );
 
 // 8. Recipes
@@ -466,7 +510,7 @@ insert(
     bullet("Green onions, chili flakes"),
     p("Cook noodles. Brown garlic in butter. Toss with sauces. Top and serve."),
   ),
-  { emoji: "🍳", sortOrder: 7, daysAgo: 4 }
+  { emoji: "🍳", sortOrder: 7, daysAgo: 4 },
 );
 
 // 9. Travel — Tokyo
@@ -497,7 +541,7 @@ insert(
     bullet("Get Suica card on arrival"),
     bullet("Pocket wifi vs eSIM — eSIM is easier"),
   ),
-  { emoji: "✈️", sortOrder: 8, daysAgo: 6 }
+  { emoji: "✈️", sortOrder: 8, daysAgo: 6 },
 );
 
 // 10. Bookmarks
@@ -526,7 +570,7 @@ insert(
     bullet("SQLite documentation"),
     bullet("Tailwind CSS v4 docs"),
   ),
-  { emoji: "🔖", sortOrder: 9, daysAgo: 8 }
+  { emoji: "🔖", sortOrder: 9, daysAgo: 8 },
 );
 
 // 11. Fitness Log
@@ -552,7 +596,7 @@ insert(
     bullet("5K: 24:30"),
     bullet("V5 boulder (sent!)"),
   ),
-  { emoji: "💪", sortOrder: 10, daysAgo: 0, hoursAgo: 8 }
+  { emoji: "💪", sortOrder: 10, daysAgo: 0, hoursAgo: 8 },
 );
 
 // 12. Project Brief
@@ -561,14 +605,22 @@ insert(
   "Why Lychee Exists",
   doc(
     title("Why Lychee Exists"),
-    p("Notion got slow. It got complicated. It became an \"all-in-one workspace\" when all I wanted was a place to think."),
+    p(
+      'Notion got slow. It got complicated. It became an "all-in-one workspace" when all I wanted was a place to think.',
+    ),
     p(""),
-    p("Lychee is the notes app I wanted to open every day — fast, local, no login, no sync delay. Just you and your thoughts."),
+    p(
+      "Lychee is the notes app I wanted to open every day — fast, local, no login, no sync delay. Just you and your thoughts.",
+    ),
     p(""),
     h("h2", "Principles"),
-    numbered("Local-first — your data lives on your machine, in a single SQLite file"),
+    numbered(
+      "Local-first — your data lives on your machine, in a single SQLite file",
+    ),
     numbered("Fast by default — no spinners, no skeletons, no loading states"),
-    numbered("No feature creep — if Notion circa 2019 wouldn't have had it, think twice"),
+    numbered(
+      "No feature creep — if Notion circa 2019 wouldn't have had it, think twice",
+    ),
     numbered("Opinionated — fewer options, better defaults"),
     p(""),
     h("h2", "Non-goals"),
@@ -581,7 +633,7 @@ insert(
     p(""),
     p("Built with Electron, React, Lexical, SQLite, and a lot of opinions.", 2),
   ),
-  { emoji: "🍋", sortOrder: 11, daysAgo: 21 }
+  { emoji: "🍋", sortOrder: 11, daysAgo: 21 },
 );
 
 // 13. Research (3-level nesting)
@@ -590,9 +642,11 @@ const researchId = insert(
   "Research",
   doc(
     title("Research"),
-    p("Deep dives on topics I keep coming back to. Each area gets its own sub-pages."),
+    p(
+      "Deep dives on topics I keep coming back to. Each area gets its own sub-pages.",
+    ),
   ),
-  { emoji: "🔬", sortOrder: 12, daysAgo: 10 }
+  { emoji: "🔬", sortOrder: 12, daysAgo: 10 },
 );
 
 const distSysId = insert(
@@ -600,22 +654,31 @@ const distSysId = insert(
   "Distributed Systems",
   doc(
     title("Distributed Systems"),
-    p("Notes on consensus, replication, and everything that makes networking hard."),
+    p(
+      "Notes on consensus, replication, and everything that makes networking hard.",
+    ),
     p(""),
     h("h2", "Core Papers"),
     check("Lamport — Time, Clocks, and the Ordering of Events (1978)", true),
     check("Fischer, Lynch, Paterson — FLP Impossibility (1985)", true),
-    check("Ongaro & Ousterhout — In Search of an Understandable Consensus Algorithm (Raft)", true),
+    check(
+      "Ongaro & Ousterhout — In Search of an Understandable Consensus Algorithm (Raft)",
+      true,
+    ),
     check("Brewer — CAP Theorem (2000)", true),
     check("Shapiro et al. — CRDTs (2011)", false),
     p(""),
     h("h2", "Key Takeaways"),
-    bullet("You can't have consistency and availability during a partition — pick two"),
+    bullet(
+      "You can't have consistency and availability during a partition — pick two",
+    ),
     bullet("Consensus is solvable but expensive; avoid it when you can"),
-    bullet("CRDTs trade coordination for mathematical guarantees — perfect for local-first"),
+    bullet(
+      "CRDTs trade coordination for mathematical guarantees — perfect for local-first",
+    ),
     bullet("Real systems are rarely purely CP or AP — they're a spectrum"),
   ),
-  { parentId: researchId, sortOrder: 0, daysAgo: 9 }
+  { parentId: researchId, sortOrder: 0, daysAgo: 9 },
 );
 
 insert(
@@ -623,32 +686,50 @@ insert(
   "CAP Theorem Deep Dive",
   doc(
     title("CAP Theorem Deep Dive"),
-    p("Eric Brewer's conjecture (2000), formally proved by Gilbert & Lynch (2002). Every distributed data store can provide at most two of three guarantees:"),
+    p(
+      "Eric Brewer's conjecture (2000), formally proved by Gilbert & Lynch (2002). Every distributed data store can provide at most two of three guarantees:",
+    ),
     p(""),
     h("h2", "The Three Properties"),
-    numbered("Consistency — every read receives the most recent write or an error"),
-    numbered("Availability — every request receives a non-error response (no guarantee it's the most recent write)"),
-    numbered("Partition tolerance — the system continues to operate despite network partitions"),
+    numbered(
+      "Consistency — every read receives the most recent write or an error",
+    ),
+    numbered(
+      "Availability — every request receives a non-error response (no guarantee it's the most recent write)",
+    ),
+    numbered(
+      "Partition tolerance — the system continues to operate despite network partitions",
+    ),
     p(""),
     h("h2", "In Practice"),
-    p("Partitions are inevitable in any real network. So the real choice is between C and A during a partition."),
+    p(
+      "Partitions are inevitable in any real network. So the real choice is between C and A during a partition.",
+    ),
     p(""),
     bullet("CP systems: HBase, MongoDB (in certain configs), Spanner"),
     bullet("AP systems: Cassandra, DynamoDB, CouchDB"),
-    bullet("CA systems: single-node databases (PostgreSQL, SQLite) — no partition to tolerate"),
+    bullet(
+      "CA systems: single-node databases (PostgreSQL, SQLite) — no partition to tolerate",
+    ),
     p(""),
     h("h2", "The PACELC Extension"),
-    p("Daniel Abadi (2012) extended CAP: if there's a Partition, choose A or C; Else, choose Latency or Consistency."),
+    p(
+      "Daniel Abadi (2012) extended CAP: if there's a Partition, choose A or C; Else, choose Latency or Consistency.",
+    ),
     p(""),
-    bullet("PA/EL — Cassandra, DynamoDB (available during partition, low latency otherwise)"),
+    bullet(
+      "PA/EL — Cassandra, DynamoDB (available during partition, low latency otherwise)",
+    ),
     bullet("PC/EC — HBase, BigTable (consistent always, higher latency)"),
     bullet("PA/EC — rare, but some hybrid systems"),
     p(""),
     hr(),
     p(""),
-    quote("\"The CAP theorem is not about choosing two out of three. It's about understanding what you lose when the network fails.\" — Martin Kleppmann"),
+    quote(
+      '"The CAP theorem is not about choosing two out of three. It\'s about understanding what you lose when the network fails." — Martin Kleppmann',
+    ),
   ),
-  { parentId: distSysId, sortOrder: 0, daysAgo: 8 }
+  { parentId: distSysId, sortOrder: 0, daysAgo: 8 },
 );
 
 insert(
@@ -656,33 +737,51 @@ insert(
   "Raft vs Paxos",
   doc(
     title("Raft vs Paxos"),
-    p("Raft was designed to be understandable. Paxos was designed to be correct. Both achieve the same thing — replicated consensus — but they get there very differently."),
+    p(
+      "Raft was designed to be understandable. Paxos was designed to be correct. Both achieve the same thing — replicated consensus — but they get there very differently.",
+    ),
     p(""),
     h("h2", "Paxos"),
     bullet("Leslie Lamport, 1989 (published 1998)"),
-    bullet("Notoriously hard to understand — even Lamport's colleagues rejected the first paper"),
+    bullet(
+      "Notoriously hard to understand — even Lamport's colleagues rejected the first paper",
+    ),
     bullet("Two-phase: prepare/promise, then accept/accepted"),
-    bullet("Multi-Paxos extends it for a log of commands, but the paper doesn't specify this clearly"),
-    bullet("Most real implementations (Chubby, Spanner) use heavily modified versions"),
+    bullet(
+      "Multi-Paxos extends it for a log of commands, but the paper doesn't specify this clearly",
+    ),
+    bullet(
+      "Most real implementations (Chubby, Spanner) use heavily modified versions",
+    ),
     p(""),
     h("h2", "Raft"),
     bullet("Diego Ongaro & John Ousterhout, 2013"),
-    bullet("Designed for understandability — the paper includes a user study proving students learn it faster"),
+    bullet(
+      "Designed for understandability — the paper includes a user study proving students learn it faster",
+    ),
     bullet("Strong leader model — all writes go through the leader"),
     bullet("Three sub-problems: leader election, log replication, safety"),
     bullet("Used in etcd, CockroachDB, TiKV, Consul"),
     p(""),
     h("h2", "Key Differences"),
     p(""),
-    bullet("Paxos allows any node to propose → more flexible but harder to reason about"),
-    bullet("Raft requires a single leader → simpler but leader becomes a bottleneck"),
-    bullet("Paxos handles membership changes awkwardly; Raft has a clean joint-consensus approach"),
+    bullet(
+      "Paxos allows any node to propose → more flexible but harder to reason about",
+    ),
+    bullet(
+      "Raft requires a single leader → simpler but leader becomes a bottleneck",
+    ),
+    bullet(
+      "Paxos handles membership changes awkwardly; Raft has a clean joint-consensus approach",
+    ),
     bullet("Raft's log is always contiguous; Paxos can have gaps"),
     p(""),
     h("h2", "My Take"),
-    p("Use Raft if you're building something new. Use Paxos if you're reading papers. In practice, the distinction barely matters — most people use etcd or ZooKeeper and never touch raw consensus."),
+    p(
+      "Use Raft if you're building something new. Use Paxos if you're reading papers. In practice, the distinction barely matters — most people use etcd or ZooKeeper and never touch raw consensus.",
+    ),
   ),
-  { parentId: distSysId, sortOrder: 1, daysAgo: 7 }
+  { parentId: distSysId, sortOrder: 1, daysAgo: 7 },
 );
 
 const plId = insert(
@@ -696,15 +795,23 @@ const plId = insert(
     bullet("Rust — ownership model, borrow checker, zero-cost abstractions"),
     bullet("OCaml — algebraic data types, pattern matching, modules"),
     bullet("Zig — manual memory management done right, comptime"),
-    bullet("Gleam — Erlang VM + ML-family types, built for distributed systems"),
+    bullet(
+      "Gleam — Erlang VM + ML-family types, built for distributed systems",
+    ),
     p(""),
     h("h2", "Open Questions"),
     bullet("Why haven't dependent types gone mainstream?"),
-    bullet("Is the Rust borrow checker fundamentally at odds with prototyping speed?"),
-    bullet("Could we get Hindley-Milner inference with subtyping? (TypeScript sort of does this)"),
-    bullet("What would a language look like if it was designed for local-first apps?"),
+    bullet(
+      "Is the Rust borrow checker fundamentally at odds with prototyping speed?",
+    ),
+    bullet(
+      "Could we get Hindley-Milner inference with subtyping? (TypeScript sort of does this)",
+    ),
+    bullet(
+      "What would a language look like if it was designed for local-first apps?",
+    ),
   ),
-  { parentId: researchId, sortOrder: 1, daysAgo: 6 }
+  { parentId: researchId, sortOrder: 1, daysAgo: 6 },
 );
 
 insert(
@@ -712,32 +819,59 @@ insert(
   "Type Systems Comparison",
   doc(
     title("Type Systems Comparison"),
-    p("Mapping out the landscape of type systems across languages I use or study."),
+    p(
+      "Mapping out the landscape of type systems across languages I use or study.",
+    ),
     p(""),
     h("h2", "Structural vs Nominal"),
-    bullet("Structural (TypeScript, Go interfaces) — types are compatible if their shape matches"),
-    bullet("Nominal (Java, Rust, Haskell) — types are compatible only if explicitly declared"),
-    bullet("TypeScript is the most interesting case: fully structural with discriminated unions"),
+    bullet(
+      "Structural (TypeScript, Go interfaces) — types are compatible if their shape matches",
+    ),
+    bullet(
+      "Nominal (Java, Rust, Haskell) — types are compatible only if explicitly declared",
+    ),
+    bullet(
+      "TypeScript is the most interesting case: fully structural with discriminated unions",
+    ),
     p(""),
     h("h2", "Type Inference"),
-    bullet("Hindley-Milner (ML, Haskell, Rust) — infers types globally, principal types"),
-    bullet("Local inference (TypeScript, Kotlin, Swift) — infers within expressions, needs annotations at boundaries"),
+    bullet(
+      "Hindley-Milner (ML, Haskell, Rust) — infers types globally, principal types",
+    ),
+    bullet(
+      "Local inference (TypeScript, Kotlin, Swift) — infers within expressions, needs annotations at boundaries",
+    ),
     bullet("No inference (Java < 10, C) — you annotate everything manually"),
     p(""),
     h("h2", "Generics"),
-    bullet("Parametric polymorphism (Haskell, Rust) — type variables, no runtime overhead"),
-    bullet("Bounded generics (Java, TypeScript) — constraints on type parameters"),
-    bullet("Monomorphization (Rust, C++) — compile-time specialization, generates specific code"),
-    bullet("Type erasure (Java, TypeScript) — generics exist only at compile time"),
+    bullet(
+      "Parametric polymorphism (Haskell, Rust) — type variables, no runtime overhead",
+    ),
+    bullet(
+      "Bounded generics (Java, TypeScript) — constraints on type parameters",
+    ),
+    bullet(
+      "Monomorphization (Rust, C++) — compile-time specialization, generates specific code",
+    ),
+    bullet(
+      "Type erasure (Java, TypeScript) — generics exist only at compile time",
+    ),
     p(""),
     h("h2", "Effect Systems"),
-    p("The next frontier. Algebraic effects (Koka, Unison, Effekt) let you track side effects in the type system without monads."),
+    p(
+      "The next frontier. Algebraic effects (Koka, Unison, Effekt) let you track side effects in the type system without monads.",
+    ),
     p(""),
-    codeblock("effect ask : () -> string\neffect fail : (msg: string) -> a\n\nfun greet() : <ask, fail> string\n  val name = ask()\n  if name == \"\" then fail(\"empty name\")\n  \"Hello, \" ++ name", ""),
+    codeblock(
+      'effect ask : () -> string\neffect fail : (msg: string) -> a\n\nfun greet() : <ask, fail> string\n  val name = ask()\n  if name == "" then fail("empty name")\n  "Hello, " ++ name',
+      "",
+    ),
     p(""),
-    p("This is cleaner than Haskell's monad transformers and more explicit than just throwing exceptions."),
+    p(
+      "This is cleaner than Haskell's monad transformers and more explicit than just throwing exceptions.",
+    ),
   ),
-  { parentId: plId, sortOrder: 0, daysAgo: 4 }
+  { parentId: plId, sortOrder: 0, daysAgo: 4 },
 );
 
 insert(
@@ -745,7 +879,9 @@ insert(
   "Crafting Interpreters — Reading Notes",
   doc(
     title("Crafting Interpreters — Reading Notes"),
-    p("Working through Bob Nystrom's book. Building both a tree-walk interpreter (jlox) and a bytecode VM (clox)."),
+    p(
+      "Working through Bob Nystrom's book. Building both a tree-walk interpreter (jlox) and a bytecode VM (clox).",
+    ),
     p(""),
     h("h2", "Part I — jlox (Java)"),
     check("Ch 4 — Scanning / lexing", true),
@@ -766,13 +902,19 @@ insert(
     check("Ch 17 — Compiling expressions", false),
     p(""),
     h("h2", "Key Insights"),
-    bullet("Pratt parsing is elegant — precedence as a number, recursive calls handle associativity"),
+    bullet(
+      "Pratt parsing is elegant — precedence as a number, recursive calls handle associativity",
+    ),
     bullet("Environment chains for scoping are simple but powerful"),
-    bullet("The jump from tree-walk to bytecode VM is huge in complexity but the perf gain is 10-100x"),
+    bullet(
+      "The jump from tree-walk to bytecode VM is huge in complexity but the perf gain is 10-100x",
+    ),
     p(""),
-    quote("\"I think language design is one of the most fascinating and creative acts in all of programming.\" — Bob Nystrom"),
+    quote(
+      '"I think language design is one of the most fascinating and creative acts in all of programming." — Bob Nystrom',
+    ),
   ),
-  { parentId: plId, sortOrder: 1, daysAgo: 3 }
+  { parentId: plId, sortOrder: 1, daysAgo: 3 },
 );
 
 // 14. Startup (3-level nesting)
@@ -781,11 +923,15 @@ const startupId = insert(
   "Startup",
   doc(
     title("Startup"),
-    p("Everything related to the side project that might become a company. Codename: Canopy."),
+    p(
+      "Everything related to the side project that might become a company. Codename: Canopy.",
+    ),
     p(""),
-    p("The idea: a local-first knowledge base for small engineering teams. Think Notion meets Obsidian, but designed for 5-15 person teams with shared SQLite replicas via S3."),
+    p(
+      "The idea: a local-first knowledge base for small engineering teams. Think Notion meets Obsidian, but designed for 5-15 person teams with shared SQLite replicas via S3.",
+    ),
   ),
-  { emoji: "🚀", sortOrder: 13, daysAgo: 15 }
+  { emoji: "🚀", sortOrder: 13, daysAgo: 15 },
 );
 
 const marketId = insert(
@@ -811,7 +957,7 @@ const marketId = insert(
     bullet("$12/user/month for teams (shared workspaces, sync, permissions)"),
     bullet("$20/user/month for enterprise (SSO, audit logs, on-prem)"),
   ),
-  { parentId: startupId, sortOrder: 0, daysAgo: 14 }
+  { parentId: startupId, sortOrder: 0, daysAgo: 14 },
 );
 
 insert(
@@ -828,24 +974,34 @@ insert(
     p(""),
     h("h2", "Obsidian"),
     bullet("Strengths: local-first, Markdown, plugin ecosystem, graph view"),
-    bullet("Weaknesses: team features are bolted on, sync costs extra, ugly by default"),
-    bullet("Why we win: real-time team sync, polished out-of-box, structured data"),
+    bullet(
+      "Weaknesses: team features are bolted on, sync costs extra, ugly by default",
+    ),
+    bullet(
+      "Why we win: real-time team sync, polished out-of-box, structured data",
+    ),
     p(""),
     h("h2", "Coda"),
     bullet("Strengths: docs that feel like apps, great formulas, integrations"),
-    bullet("Weaknesses: slow, cloud-only, complex pricing, steep learning curve"),
+    bullet(
+      "Weaknesses: slow, cloud-only, complex pricing, steep learning curve",
+    ),
     bullet("Why we win: simplicity, speed, no vendor lock-in"),
     p(""),
     h("h2", "Linear (as inspiration)"),
-    bullet("Not a direct competitor, but the gold standard for opinionated tools"),
-    bullet("Linear proved that \"less is more\" works for teams"),
+    bullet(
+      "Not a direct competitor, but the gold standard for opinionated tools",
+    ),
+    bullet('Linear proved that "less is more" works for teams'),
     bullet("We should emulate their focus and polish"),
     p(""),
     hr(),
     p(""),
-    quote("\"The best product isn't the one with the most features. It's the one people actually want to open.\""),
+    quote(
+      "\"The best product isn't the one with the most features. It's the one people actually want to open.\"",
+    ),
   ),
-  { parentId: marketId, sortOrder: 0, daysAgo: 13 }
+  { parentId: marketId, sortOrder: 0, daysAgo: 13 },
 );
 
 insert(
@@ -853,33 +1009,45 @@ insert(
   "User Interviews",
   doc(
     title("User Interviews"),
-    p("Conversations with potential users. 8 interviews completed, 4 more scheduled."),
+    p(
+      "Conversations with potential users. 8 interviews completed, 4 more scheduled.",
+    ),
     p(""),
     h("h2", "Interview 1 — Sarah (Eng Lead, 8-person startup)"),
-    quote("\"We use Notion but half the team has switched back to Apple Notes because Notion is just too slow for quick notes.\""),
+    quote(
+      '"We use Notion but half the team has switched back to Apple Notes because Notion is just too slow for quick notes."',
+    ),
     bullet("Pain: Notion lag, especially on larger docs"),
     bullet("Want: something fast that still supports structured docs"),
     bullet("Would pay: $10-15/user/month"),
     p(""),
     h("h2", "Interview 2 — Marcus (Solo founder, fintech)"),
-    quote("\"I can't put client data in Notion. Full stop. I need something that stays on my machine.\""),
+    quote(
+      '"I can\'t put client data in Notion. Full stop. I need something that stays on my machine."',
+    ),
     bullet("Pain: compliance requirements make cloud tools risky"),
     bullet("Want: local storage with optional encrypted sync"),
     bullet("Would pay: $25/month for peace of mind"),
     p(""),
     h("h2", "Interview 3 — Priya (Design Lead, agency)"),
-    quote("\"Our Notion workspace has 2000 pages. Nobody can find anything. Search is broken.\""),
+    quote(
+      '"Our Notion workspace has 2000 pages. Nobody can find anything. Search is broken."',
+    ),
     bullet("Pain: information sprawl, poor search"),
     bullet("Want: better organization, maybe AI-powered search"),
     bullet("Would pay: depends on team features"),
     p(""),
     h("h2", "Patterns So Far"),
-    numbered("Speed is the #1 complaint about Notion — every single interviewee mentioned it"),
+    numbered(
+      "Speed is the #1 complaint about Notion — every single interviewee mentioned it",
+    ),
     numbered("Privacy/compliance is a strong secondary driver"),
-    numbered("People want simplicity but not at the expense of rich formatting"),
+    numbered(
+      "People want simplicity but not at the expense of rich formatting",
+    ),
     numbered("Search needs to be excellent from day one"),
   ),
-  { parentId: marketId, sortOrder: 1, daysAgo: 11 }
+  { parentId: marketId, sortOrder: 1, daysAgo: 11 },
 );
 
 const techSpecId = insert(
@@ -893,7 +1061,9 @@ const techSpecId = insert(
     numbered("Desktop app (Electron) — primary interface"),
     numbered("SQLite per workspace — all data lives locally"),
     numbered("S3 sync layer — encrypted SQLite WAL shipping for team sync"),
-    numbered("Auth service — lightweight, handles team invites and key exchange"),
+    numbered(
+      "Auth service — lightweight, handles team invites and key exchange",
+    ),
     p(""),
     h("h2", "Key Constraints"),
     bullet("Must work fully offline — sync is eventual, not required"),
@@ -901,7 +1071,7 @@ const techSpecId = insert(
     bullet("Sub-100ms for any user action — no loading spinners ever"),
     bullet("Single binary distribution — no installer dependencies"),
   ),
-  { parentId: startupId, sortOrder: 1, daysAgo: 12 }
+  { parentId: startupId, sortOrder: 1, daysAgo: 12 },
 );
 
 insert(
@@ -912,31 +1082,48 @@ insert(
     p("How we replicate SQLite across team members without a central server."),
     p(""),
     h("h2", "Approach: WAL Shipping + CRDTs"),
-    p("Each client maintains a full SQLite replica. Changes are captured as WAL frames, encrypted, and shipped to an S3 bucket. Other clients pull and apply frames."),
+    p(
+      "Each client maintains a full SQLite replica. Changes are captured as WAL frames, encrypted, and shipped to an S3 bucket. Other clients pull and apply frames.",
+    ),
     p(""),
     h("h2", "Conflict Resolution"),
     bullet("Document-level: last-writer-wins with vector clocks"),
-    bullet("Block-level (future): Yjs CRDT for real-time collaborative editing"),
-    bullet("Tree structure: operational transform for move operations (prevent cycles)"),
+    bullet(
+      "Block-level (future): Yjs CRDT for real-time collaborative editing",
+    ),
+    bullet(
+      "Tree structure: operational transform for move operations (prevent cycles)",
+    ),
     p(""),
     h("h2", "Sync Flow"),
     numbered("User edits a document locally → writes to SQLite"),
     numbered("Background worker detects WAL changes → extracts frames"),
     numbered("Frames encrypted with workspace key → uploaded to S3"),
-    numbered("Other clients poll S3 → download new frames → decrypt → apply to local DB"),
+    numbered(
+      "Other clients poll S3 → download new frames → decrypt → apply to local DB",
+    ),
     numbered("Conflict detected? → resolve per-field using vector clocks"),
     p(""),
     h("h2", "Encryption"),
-    p("Every workspace has a symmetric key (AES-256-GCM). The key is exchanged during team invite via X25519 key agreement. S3 never sees plaintext."),
+    p(
+      "Every workspace has a symmetric key (AES-256-GCM). The key is exchanged during team invite via X25519 key agreement. S3 never sees plaintext.",
+    ),
     p(""),
-    codeblock("workspace_key = random(32 bytes)\nencrypted_frame = AES-256-GCM(workspace_key, wal_frame)\ns3_object = nonce || encrypted_frame || tag", ""),
+    codeblock(
+      "workspace_key = random(32 bytes)\nencrypted_frame = AES-256-GCM(workspace_key, wal_frame)\ns3_object = nonce || encrypted_frame || tag",
+      "",
+    ),
     p(""),
     h("h2", "Open Questions"),
-    bullet("How do we handle schema migrations across clients on different app versions?"),
-    bullet("What's the maximum practical sync lag? Target: < 5 seconds on decent internet"),
+    bullet(
+      "How do we handle schema migrations across clients on different app versions?",
+    ),
+    bullet(
+      "What's the maximum practical sync lag? Target: < 5 seconds on decent internet",
+    ),
     bullet("Should we support selective sync (only sync certain pages)?"),
   ),
-  { parentId: techSpecId, sortOrder: 0, daysAgo: 10 }
+  { parentId: techSpecId, sortOrder: 0, daysAgo: 10 },
 );
 
 insert(
@@ -944,16 +1131,27 @@ insert(
   "API Design",
   doc(
     title("API Design"),
-    p("REST API for the auth/sync service. Minimal surface area — the client does most of the work."),
+    p(
+      "REST API for the auth/sync service. Minimal surface area — the client does most of the work.",
+    ),
     p(""),
     h("h2", "Auth Endpoints"),
-    codeblock("POST   /auth/signup        { email, password }\nPOST   /auth/login         { email, password } → { token }\nPOST   /auth/refresh       { refresh_token } → { token }\nDELETE /auth/session       (logout)", ""),
+    codeblock(
+      "POST   /auth/signup        { email, password }\nPOST   /auth/login         { email, password } → { token }\nPOST   /auth/refresh       { refresh_token } → { token }\nDELETE /auth/session       (logout)",
+      "",
+    ),
     p(""),
     h("h2", "Workspace Endpoints"),
-    codeblock("POST   /workspaces              { name } → { id, invite_code }\nGET    /workspaces/:id          → { name, members, created_at }\nPOST   /workspaces/:id/invite   { email } → { invite_url }\nPOST   /workspaces/:id/join     { invite_code, public_key }", ""),
+    codeblock(
+      "POST   /workspaces              { name } → { id, invite_code }\nGET    /workspaces/:id          → { name, members, created_at }\nPOST   /workspaces/:id/invite   { email } → { invite_url }\nPOST   /workspaces/:id/join     { invite_code, public_key }",
+      "",
+    ),
     p(""),
     h("h2", "Sync Endpoints"),
-    codeblock("GET    /sync/:workspace/frames?after=<seq>  → { frames[], latest_seq }\nPOST   /sync/:workspace/frames               { encrypted_frames[] }\nGET    /sync/:workspace/status                → { latest_seq, member_seqs }", ""),
+    codeblock(
+      "GET    /sync/:workspace/frames?after=<seq>  → { frames[], latest_seq }\nPOST   /sync/:workspace/frames               { encrypted_frames[] }\nGET    /sync/:workspace/status                → { latest_seq, member_seqs }",
+      "",
+    ),
     p(""),
     h("h2", "Design Principles"),
     bullet("No document content ever passes through the API in plaintext"),
@@ -961,7 +1159,7 @@ insert(
     bullet("Rate limit: 100 req/min per user, 1000 req/min per workspace"),
     bullet("Versioned: /v1/ prefix, breaking changes get a new version"),
   ),
-  { parentId: techSpecId, sortOrder: 1, daysAgo: 9 }
+  { parentId: techSpecId, sortOrder: 1, daysAgo: 9 },
 );
 
 // 15. Home (3-level nesting)
@@ -972,7 +1170,7 @@ const homeId = insert(
     title("Home"),
     p("Apartment stuff, renovation plans, and household logistics."),
   ),
-  { emoji: "🏠", sortOrder: 14, daysAgo: 12 }
+  { emoji: "🏠", sortOrder: 14, daysAgo: 12 },
 );
 
 const kitchenId = insert(
@@ -1000,10 +1198,12 @@ const kitchenId = insert(
     p(""),
     h("h2", "Inspo"),
     bullet("Scandinavian minimal — white oak, white surfaces, brass hardware"),
-    bullet("Japanese kitchen vibes — clean lines, hidden storage, natural materials"),
+    bullet(
+      "Japanese kitchen vibes — clean lines, hidden storage, natural materials",
+    ),
     bullet("The Apartment Therapy kitchen reno series was helpful"),
   ),
-  { parentId: homeId, sortOrder: 0, daysAgo: 10 }
+  { parentId: homeId, sortOrder: 0, daysAgo: 10 },
 );
 
 insert(
@@ -1011,12 +1211,18 @@ insert(
   "Appliance Research",
   doc(
     title("Appliance Research"),
-    p("Comparing options for the kitchen remodel. Prioritizing reliability over fancy features."),
+    p(
+      "Comparing options for the kitchen remodel. Prioritizing reliability over fancy features.",
+    ),
     p(""),
     h("h2", "Refrigerator"),
     bullet("Bosch 800 Series (B36CL80ENS) — $2,400, counter-depth, quiet"),
-    bullet("LG InstaView (LRFXS2503S) — $1,800, good reviews, but LG reliability concerns"),
-    bullet("Winner: Bosch. More expensive but the compressor is top-mounted (lasts longer)."),
+    bullet(
+      "LG InstaView (LRFXS2503S) — $1,800, good reviews, but LG reliability concerns",
+    ),
+    bullet(
+      "Winner: Bosch. More expensive but the compressor is top-mounted (lasts longer).",
+    ),
     p(""),
     h("h2", "Range"),
     bullet("Samsung Slide-in Gas (NX60T8711SS) — $1,400, great reviews"),
@@ -1024,15 +1230,19 @@ insert(
     bullet("Winner: Samsung. Better value, same features that matter."),
     p(""),
     h("h2", "Dishwasher"),
-    bullet("Bosch 500 Series (SHPM65Z55N) — $950, 44 dB, legendary reliability"),
+    bullet(
+      "Bosch 500 Series (SHPM65Z55N) — $950, 44 dB, legendary reliability",
+    ),
     bullet("Miele G5006 — $1,100, slightly better cleaning, 46 dB"),
-    bullet("Winner: Bosch. The 500 Series is the consensus best dishwasher at any price."),
+    bullet(
+      "Winner: Bosch. The 500 Series is the consensus best dishwasher at any price.",
+    ),
     p(""),
     hr(),
     p(""),
     p("Total appliance spend: $4,750 (over budget by $750, need to adjust)"),
   ),
-  { parentId: kitchenId, sortOrder: 0, daysAgo: 8 }
+  { parentId: kitchenId, sortOrder: 0, daysAgo: 8 },
 );
 
 insert(
@@ -1061,9 +1271,11 @@ insert(
     bullet("Does not include plumbing — would need separate plumber"),
     p(""),
     h("h2", "Decision"),
-    p("Going with Rivera. Best balance of price, speed, and reliability. The Yelp reviews sealed it — multiple people mentioned he's clean and communicative."),
+    p(
+      "Going with Rivera. Best balance of price, speed, and reliability. The Yelp reviews sealed it — multiple people mentioned he's clean and communicative.",
+    ),
   ),
-  { parentId: kitchenId, sortOrder: 1, daysAgo: 6 }
+  { parentId: kitchenId, sortOrder: 1, daysAgo: 6 },
 );
 
 const gardenId = insert(
@@ -1071,11 +1283,15 @@ const gardenId = insert(
   "Garden",
   doc(
     title("Garden"),
-    p("Making the backyard actually usable this year. Small space (12x20 ft) but enough for raised beds and a sitting area."),
+    p(
+      "Making the backyard actually usable this year. Small space (12x20 ft) but enough for raised beds and a sitting area.",
+    ),
     p(""),
     h("h2", "Goals"),
     numbered("Build 2 raised beds (4x8 each)"),
-    numbered("Grow enough herbs and greens to cut grocery herb spending to zero"),
+    numbered(
+      "Grow enough herbs and greens to cut grocery herb spending to zero",
+    ),
     numbered("Create a seating area with string lights"),
     numbered("Install a drip irrigation timer"),
     p(""),
@@ -1086,7 +1302,7 @@ const gardenId = insert(
     bullet("1/3 vermiculite"),
     p("Cost: ~$80 per bed. $160 total."),
   ),
-  { parentId: homeId, sortOrder: 1, daysAgo: 5 }
+  { parentId: homeId, sortOrder: 1, daysAgo: 5 },
 );
 
 insert(
@@ -1094,7 +1310,9 @@ insert(
   "Spring Planting Plan",
   doc(
     title("Spring Planting Plan"),
-    p("Zone 10a. Last frost date is mid-February, so we're clear to plant most things now."),
+    p(
+      "Zone 10a. Last frost date is mid-February, so we're clear to plant most things now.",
+    ),
     p(""),
     h("h2", "Bed 1 — Herbs & Greens"),
     bullet("Basil (Genovese) — 4 plants, full sun"),
@@ -1119,9 +1337,11 @@ insert(
     check("April 15 — Install drip irrigation", false),
     check("May — First harvest (lettuce, herbs)", false),
     p(""),
-    quote("\"The best time to plant a garden was 20 years ago. The second best time is now.\""),
+    quote(
+      '"The best time to plant a garden was 20 years ago. The second best time is now."',
+    ),
   ),
-  { parentId: gardenId, sortOrder: 0, daysAgo: 2 }
+  { parentId: gardenId, sortOrder: 0, daysAgo: 2 },
 );
 
 // ── output SQL ───────────────────────────────────────────────
@@ -1131,7 +1351,7 @@ const esc = (s) => (s == null ? "NULL" : `'${s.replace(/'/g, "''")}'`);
 console.log("BEGIN;");
 for (const n of notes) {
   console.log(
-    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder) VALUES (${esc(n.id)}, ${esc(n.title)}, ${esc(n.content)}, ${esc(n.createdAt)}, ${esc(n.updatedAt)}, ${esc(n.parentId)}, ${esc(n.emoji)}, NULL, ${n.sortOrder});`
+    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder) VALUES (${esc(n.id)}, ${esc(n.title)}, ${esc(n.content)}, ${esc(n.createdAt)}, ${esc(n.updatedAt)}, ${esc(n.parentId)}, ${esc(n.emoji)}, NULL, ${n.sortOrder});`,
   );
 }
 console.log("COMMIT;");
