@@ -86,6 +86,12 @@ Electron &middot; React &middot; Lexical &middot; TypeScript &middot; Zustand &m
 
 <br>
 
+### Lychee won't open?
+
+If Lychee won't launch after an update, you can roll back to a recent backup. See **[docs/recovering-your-notes.md](docs/recovering-your-notes.md)** for step-by-step instructions (or a prompt to paste into your AI assistant).
+
+<br>
+
 ### License
 
 [MIT](LICENSE)
