@@ -711,8 +711,8 @@ test.describe('Editor — Edge Cases', () => {
   test('paste image inserts image node', async ({ window }) => {
     const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     await window.evaluate(async (base64: string) => {
-      const resp = await fetch(`data:image/png;base64,${base64}`);
-      const blob = await resp.blob();
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'image/png' });
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
     }, pngBase64);
 
@@ -888,8 +888,8 @@ test.describe('Editor — Focus Behavior', () => {
   /** Paste a 1×1 PNG into the editor from the clipboard. */
   async function pasteImage(window: any) {
     await window.evaluate(async (base64: string) => {
-      const resp = await fetch(`data:image/png;base64,${base64}`);
-      const blob = await resp.blob();
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'image/png' });
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
     }, PNG_1x1);
     await window.keyboard.press(`${mod}+v`);
