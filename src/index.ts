@@ -7,12 +7,14 @@ import {
   nativeTheme,
   net,
   protocol,
+  shell,
   session,
 } from 'electron';
 import { closeDatabase, initDatabase } from './main/db';
 import { resolveImagePath } from './main/image-protocol';
 import { registerIpcHandlers } from './main/ipc';
 import { getSetting } from './main/repos/settings';
+import { isAllowedExternal } from './main/url-policy';
 
 // CSP applies to packaged builds. Dev runs through webpack-dev-server which sets
 // its own (looser) CSP via WebpackPlugin.devContentSecurityPolicy — HMR needs
@@ -190,12 +192,34 @@ const createWindow = (): BrowserWindow => {
   return mainWindow;
 };
 
+// Block new BrowserWindow creation and unexpected top-level navigation. Allowed
+// external URLs are handed off to the OS so they open in the user's default
+// browser; everything else is denied. Registered before createWindow so the
+// listener fires for the main window's webContents on creation.
+function installNavigationGuards(): void {
+  app.on('web-contents-created', (_event, contents) => {
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isAllowedExternal(url)) {
+        void shell.openExternal(url);
+      }
+      return { action: 'deny' };
+    });
+
+    contents.on('will-navigate', (event, url) => {
+      if (url !== contents.getURL()) {
+        event.preventDefault();
+      }
+    });
+  });
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   Menu.setApplicationMenu(buildAppMenu());
 
+  installNavigationGuards();
   if (app.isPackaged) {
     registerContentSecurityPolicy();
   }
