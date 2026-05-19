@@ -80,6 +80,22 @@ export function KeyboardShortcutsPlugin(): null {
           }
         }
 
+        // End / Home — normalize macOS, which defaults to scroll-to-end-of-document
+        // instead of moving the caret. Selection.modify('lineboundary') handles
+        // visually-wrapped lines correctly on all platforms.
+        if ((key === "End" || key === "Home") && !isModifier) {
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection)) return false
+          event.preventDefault()
+          const domSelection = window.getSelection()
+          domSelection?.modify(
+            shiftKey ? "extend" : "move",
+            key === "End" ? "forward" : "backward",
+            "lineboundary"
+          )
+          return true
+        }
+
         if (!isModifier) return false
 
         // Cmd/Ctrl + B = Bold
