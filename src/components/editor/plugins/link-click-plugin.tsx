@@ -21,9 +21,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { onToolbarExclusive } from "@/components/lexical-editor"
 import { $createImageNode } from "@/components/editor/nodes/image-node"
 import { $createBookmarkNode } from "@/components/editor/nodes/bookmark-node"
-import { $createLoadingPlaceholderNode } from "@/components/editor/nodes/loading-placeholder-node"
-import { $createYouTubeNode } from "@/components/editor/nodes/youtube-node"
-import type { ResolvedUrlResult } from "@/shared/ipc-types"
+import { classifyUrl } from "@/shared/classify-url"
 
 function openExternalUrl(url: string) {
   window.lychee.invoke("shell.openExternal", { url }).catch((err) => {
@@ -232,111 +230,38 @@ export function LinkClickPlugin(): JSX.Element | null {
     [editor],
   )
 
-  /** Replace the link with a loading placeholder inline, run the async work,
-   *  then swap the placeholder for the real node. Popover dismisses immediately. */
-  const handleEmbed = useCallback(async () => {
+  /** Classify the URL synchronously and insert the final node in a partial
+   *  state. The node's component takes over hydration on mount — so the URL
+   *  is always durable from the moment the link is replaced, even if the
+   *  note is closed mid-hydration. */
+  const handleEmbed = useCallback(() => {
     if (!hoverState) return
     const { url, linkNodeKey } = hoverState
+    const classified = classifyUrl(url)
 
     snapshotAndFocusLink(linkNodeKey)
-
-    let placeholderKey: string | undefined
     editor.update(() => {
-      const placeholder = $createLoadingPlaceholderNode("Embedding…")
-      replaceLink(linkNodeKey, placeholder)
-      placeholderKey = placeholder.getKey()
+      const node: LexicalNode =
+        classified.kind === "image"
+          ? $createImageNode({ sourceUrl: url, loading: true })
+          : $createBookmarkNode({ url, autoResolve: true })
+      replaceLink(linkNodeKey, node)
     }, { tag: HISTORY_PUSH_TAG })
 
     dismiss(true)
-
-    try {
-      const result: ResolvedUrlResult = await window.lychee.invoke("url.resolve", { url })
-
-      editor.update(() => {
-        const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
-        if (!ph) return
-
-        let replacement: LexicalNode | null = null
-
-        switch (result.type) {
-          case "youtube":
-            replacement = $createYouTubeNode(result.videoId)
-            break
-          case "image":
-            replacement = $createImageNode({
-              imageId: result.id,
-              src: result.filePath,
-              sourceUrl: result.sourceUrl,
-              loading: false,
-            })
-            break
-          case "bookmark":
-            replacement = $createBookmarkNode({
-              url: result.url,
-              title: result.title,
-              description: result.description,
-              imageUrl: result.imageUrl,
-              faviconUrl: result.faviconUrl,
-            })
-            break
-          default:
-            ph.remove()
-            return
-        }
-
-        ph.replace(replacement)
-        const sel = $createNodeSelection()
-        sel.add(replacement.getKey())
-        $setSelection(sel)
-      }, { tag: "history-merge" })
-    } catch (err) {
-      console.error("Failed to embed URL:", err)
-      editor.update(() => {
-        const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
-        if (ph) ph.remove()
-      }, { tag: "history-merge" })
-    }
   }, [editor, hoverState, replaceLink, snapshotAndFocusLink, dismiss])
 
-  const handleBookmark = useCallback(async () => {
+  const handleBookmark = useCallback(() => {
     if (!hoverState) return
     const { url, linkNodeKey } = hoverState
 
     snapshotAndFocusLink(linkNodeKey)
-
-    let placeholderKey: string | undefined
     editor.update(() => {
-      const placeholder = $createLoadingPlaceholderNode("Creating bookmark…")
-      replaceLink(linkNodeKey, placeholder)
-      placeholderKey = placeholder.getKey()
+      const node = $createBookmarkNode({ url })
+      replaceLink(linkNodeKey, node)
     }, { tag: HISTORY_PUSH_TAG })
 
     dismiss(true)
-
-    try {
-      const meta = await window.lychee.invoke("url.fetchMetadata", { url })
-      editor.update(() => {
-        const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
-        if (!ph) return
-        const bm = $createBookmarkNode({
-          url: meta.url,
-          title: meta.title,
-          description: meta.description,
-          imageUrl: meta.imageUrl,
-          faviconUrl: meta.faviconUrl,
-        })
-        ph.replace(bm)
-        const sel = $createNodeSelection()
-        sel.add(bm.getKey())
-        $setSelection(sel)
-      }, { tag: "history-merge" })
-    } catch (err) {
-      console.error("Failed to create bookmark:", err)
-      editor.update(() => {
-        const ph = placeholderKey ? $getNodeByKey(placeholderKey) : null
-        if (ph) ph.remove()
-      }, { tag: "history-merge" })
-    }
   }, [editor, hoverState, replaceLink, snapshotAndFocusLink, dismiss])
 
   const handleOpen = useCallback(() => {

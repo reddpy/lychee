@@ -477,12 +477,9 @@ describe('IPC Payload Edge Cases', () => {
     expect(JSON.parse(received).root.children[0].children).toHaveLength(rowCount);
   });
 
-  // The loading-placeholder filter in lexical-editor.tsx removes loading nodes
-  // before sending. Verify the handler passes whatever content it receives
-  // (the filter happens on the renderer side, not in the handler).
-  it('documents.update with content that had loading placeholders filtered', async () => {
+  // The renderer serializes Lexical state directly — the handler is content-agnostic.
+  it('documents.update with minimal valid content payload', async () => {
     const handler = handlers.get('documents.update')!;
-    // After filtering, only the paragraph remains
     const content = JSON.stringify({
       root: { children: [{ type: 'paragraph', children: [] }], type: 'root', version: 1 },
     });

@@ -9,7 +9,6 @@ import { TitleNode } from "@/components/editor/nodes/title-node"
 import { ImageNode } from "@/components/editor/nodes/image-node"
 import { BookmarkNode } from "@/components/editor/nodes/bookmark-node"
 import { YouTubeNode } from "@/components/editor/nodes/youtube-node"
-import { LoadingPlaceholderNode } from "@/components/editor/nodes/loading-placeholder-node"
 
 export const nodes: Array<Klass<LexicalNode>> = [
   TitleNode,
@@ -28,5 +27,4 @@ export const nodes: Array<Klass<LexicalNode>> = [
   ImageNode,
   BookmarkNode,
   YouTubeNode,
-  LoadingPlaceholderNode,
 ]

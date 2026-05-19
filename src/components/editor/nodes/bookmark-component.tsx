@@ -1,10 +1,13 @@
-import { useCallback, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
+  $getNodeByKey,
   type NodeKey,
 } from "lexical"
-import { $isBookmarkNode } from "./bookmark-node"
+import { $isBookmarkNode, BookmarkNode } from "./bookmark-node"
+import { $createImageNode } from "./image-node"
 import { cn } from "@/lib/utils"
-import { Globe } from "lucide-react"
+import { Globe, Loader2 } from "lucide-react"
 import { useDecoratorBlock } from "@/components/editor/hooks/use-decorator-block"
 
 function getHostname(url: string): string {
@@ -18,23 +21,116 @@ interface BookmarkComponentProps {
   description: string
   imageUrl: string
   faviconUrl: string
+  autoResolve: boolean
 }
 
 export function BookmarkComponent({
   nodeKey,
   url,
-  title,
-  description,
-  imageUrl,
-  faviconUrl,
+  title: initialTitle,
+  description: initialDescription,
+  imageUrl: initialImageUrl,
+  faviconUrl: initialFaviconUrl,
+  autoResolve,
 }: BookmarkComponentProps) {
+  const [editor] = useLexicalComposerContext()
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const [title, setTitle] = useState(initialTitle)
+  const [description, setDescription] = useState(initialDescription)
+  const [imageUrl, setImageUrl] = useState(initialImageUrl)
+  const [faviconUrl, setFaviconUrl] = useState(initialFaviconUrl)
+  const [isHydrating, setIsHydrating] = useState(false)
 
   const { isSelected } = useDecoratorBlock({
     nodeKey,
     containerRef,
     isNodeType: $isBookmarkNode,
   })
+
+  // Mirror node state in component state so async updates re-render reliably.
+  const stateRef = useRef({ title, description, imageUrl, faviconUrl })
+  stateRef.current = { title, description, imageUrl, faviconUrl }
+
+  useEffect(() => {
+    return editor.registerMutationListener(BookmarkNode, (mutations) => {
+      if (!mutations.has(nodeKey)) return
+      editor.getEditorState().read(() => {
+        const node = $getNodeByKey(nodeKey)
+        if (!$isBookmarkNode(node)) return
+        const s = stateRef.current
+        if (node.__title !== s.title) setTitle(node.__title)
+        if (node.__description !== s.description) setDescription(node.__description)
+        if (node.__imageUrl !== s.imageUrl) setImageUrl(node.__imageUrl)
+        if (node.__faviconUrl !== s.faviconUrl) setFaviconUrl(node.__faviconUrl)
+      })
+    })
+  }, [editor, nodeKey])
+
+  // Hydrate metadata for newly-inserted bookmarks and for nodes that were
+  // saved mid-fetch (partial state persisted to disk). When autoResolve is
+  // true (bookmark inserted via Embed), ask the backend to discriminate —
+  // if the URL is actually an image, swap this node out for an ImageNode.
+  // Re-evaluates whenever metadata fields change; once any is populated, the
+  // effect short-circuits.
+  useEffect(() => {
+    const needsHydration = !title && !description && !imageUrl && !faviconUrl
+    if (!needsHydration) return
+    let cancelled = false
+    setIsHydrating(true)
+
+    if (autoResolve) {
+      window.lychee.invoke("url.resolve", { url }).then((result) => {
+        if (cancelled) return
+        editor.update(() => {
+          const node = $getNodeByKey(nodeKey)
+          if (!$isBookmarkNode(node)) return
+          if (result.type === "image") {
+            const img = $createImageNode({
+              imageId: result.id,
+              src: result.filePath,
+              sourceUrl: result.sourceUrl,
+              loading: false,
+            })
+            node.replace(img)
+          } else if (result.type === "bookmark") {
+            node.setMetadata({
+              title: result.title,
+              description: result.description,
+              imageUrl: result.imageUrl,
+              faviconUrl: result.faviconUrl,
+            })
+          }
+          // youtube / unsupported: leave as bare bookmark — URL still clickable.
+        }, { tag: "history-merge" })
+      }).catch((err) => {
+        console.error("Failed to resolve embed URL:", err)
+      }).finally(() => {
+        setIsHydrating(false)
+      })
+    } else {
+      window.lychee.invoke("url.fetchMetadata", { url }).then((meta) => {
+        if (cancelled) return
+        editor.update(() => {
+          const node = $getNodeByKey(nodeKey)
+          if ($isBookmarkNode(node)) {
+            node.setMetadata({
+              title: meta.title,
+              description: meta.description,
+              imageUrl: meta.imageUrl,
+              faviconUrl: meta.faviconUrl,
+            })
+          }
+        }, { tag: "history-merge" })
+      }).catch((err) => {
+        console.error("Failed to fetch bookmark metadata:", err)
+      }).finally(() => {
+        setIsHydrating(false)
+      })
+    }
+
+    return () => { cancelled = true }
+  }, [title, description, imageUrl, faviconUrl, autoResolve, nodeKey, url, editor])
 
   const handleClick = useCallback(() => {
     window.lychee.invoke("shell.openExternal", { url })
@@ -68,6 +164,9 @@ export function BookmarkComponent({
               <Globe className="bookmark-favicon-fallback" />
             )}
             <span>{getHostname(url)}</span>
+            {isHydrating && (
+              <Loader2 className="bookmark-hydrating-spinner size-3 animate-spin" />
+            )}
           </div>
         </div>
         {imageUrl && (

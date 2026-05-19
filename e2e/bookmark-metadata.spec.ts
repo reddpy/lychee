@@ -493,12 +493,13 @@ test.describe('Bookmark Metadata — Display Correctness', () => {
   });
 });
 
-// ── Loading Placeholders ──────────────────────────────────────────────
-// UI-driven: tests the async creation flow specifically.
+// ── Skeleton hydration ────────────────────────────────────────────────
+// UI-driven: the bookmark card is inserted synchronously in a skeleton state
+// (URL only) and metadata fills in from the background fetch.
 
-test.describe('Bookmark Metadata — Loading Placeholders', () => {
-  test('"Creating bookmark…" placeholder appears during Bookmark button fetch', async ({ window }) => {
-    await createNoteWithTitle(window, 'Loading Placeholder Bookmark');
+test.describe('Bookmark Metadata — Skeleton Hydration', () => {
+  test('Bookmark button inserts a card immediately, then fills metadata', async ({ window }) => {
+    await createNoteWithTitle(window, 'Skeleton Bookmark');
     await typeUrlInBody(window, 'https://example.com');
     await expect(window.locator('.ContentEditable__root a').first()).toBeVisible({ timeout: 5000 });
 
@@ -508,15 +509,13 @@ test.describe('Bookmark Metadata — Loading Placeholders', () => {
     await expect(window.locator('button[title="Convert to bookmark"]')).toBeVisible({ timeout: 3000 });
     await window.locator('button[title="Convert to bookmark"]').click();
 
-    // Either the placeholder is briefly visible or has already resolved
-    const placeholder = window.locator('.loading-placeholder-node');
     const card = window.locator('.bookmark-card');
-    await expect(placeholder.or(card)).toBeVisible({ timeout: 10000 });
-    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card).toBeVisible({ timeout: 3000 });
+    await expect(card.locator('.bookmark-title')).toContainText(/example/i, { timeout: 20000 });
   });
 
-  test('"Embedding…" placeholder appears during Embed fetch on HTML URL', async ({ window }) => {
-    await createNoteWithTitle(window, 'Loading Placeholder Embed');
+  test('Embed on HTML URL inserts a bookmark card immediately', async ({ window }) => {
+    await createNoteWithTitle(window, 'Skeleton Embed');
     await typeUrlInBody(window, 'https://example.com');
     await expect(window.locator('.ContentEditable__root a').first()).toBeVisible({ timeout: 5000 });
 
@@ -526,10 +525,9 @@ test.describe('Bookmark Metadata — Loading Placeholders', () => {
     await expect(window.locator('button[title="Embed content"]')).toBeVisible({ timeout: 3000 });
     await window.locator('button[title="Embed content"]').click();
 
-    const placeholder = window.locator('.loading-placeholder-node');
     const card = window.locator('.bookmark-card');
-    await expect(placeholder.or(card)).toBeVisible({ timeout: 10000 });
-    await expect(card).toBeVisible({ timeout: 20000 });
+    await expect(card).toBeVisible({ timeout: 3000 });
+    await expect(card.locator('.bookmark-title')).toContainText(/example/i, { timeout: 20000 });
   });
 });
 
