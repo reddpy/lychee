@@ -34,7 +34,11 @@ vi.mock('../../db', () => ({
 
 import { setupResolverDb, resolveUrl } from './setup';
 
-describe('URL Resolver — YouTube Handler', () => {
+// Skipped for alpha: the in-app YouTube player is hidden (see
+// src/main/repos/url-resolver.ts). YouTube URLs now flow through the
+// bookmark fallback path, so these handler-specific expectations no
+// longer reflect runtime behavior. Re-enable when the player ships.
+describe.skip('URL Resolver — YouTube Handler', () => {
   setupResolverDb();
 
   // ────────────────────────────────────────────────────────

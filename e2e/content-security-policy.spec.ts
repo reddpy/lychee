@@ -127,7 +127,7 @@ test.describe('Content Security Policy (packaged build)', () => {
     ).toBe(true);
   });
 
-  test("frame-src blocks non-YouTube iframes (guards the deliberate YouTube exception)", async ({ window }) => {
+  test("frame-src 'none' blocks all iframes", async ({ window }) => {
     const result = await window.evaluate(async () => {
       const violations: Violation[] = [];
       const handler = (e: SecurityPolicyViolationEvent) =>
@@ -147,7 +147,7 @@ test.describe('Content Security Policy (packaged build)', () => {
     ).toBe(true);
   });
 
-  test("script-src blocks external HTTPS scripts (only 'self' + youtube are allowed)", async ({ window }) => {
+  test("script-src blocks external HTTPS scripts (only 'self' is allowed)", async ({ window }) => {
     const result = await window.evaluate(async () => {
       const violations: Violation[] = [];
       const handler = (e: SecurityPolicyViolationEvent) =>

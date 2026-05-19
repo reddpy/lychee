@@ -21,16 +21,15 @@ import { isAllowedExternal } from './main/url-policy';
 // 'unsafe-eval', which we deliberately drop here.
 //
 // All renderer scripts are loaded from 'self' (the renderer bundle and
-// theme-bootstrap.js, both emitted to the renderer output dir). YouTube's
-// IFrame API loads from https://www.youtube.com.
+// theme-bootstrap.js, both emitted to the renderer output dir).
 const RENDERER_CSP = [
   "default-src 'self'",
-  "script-src 'self' https://www.youtube.com",
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: lychee-image: https:",
   "media-src 'self' lychee-image: https:",
   "connect-src 'self' https:",
-  'frame-src https://www.youtube-nocookie.com https://www.youtube.com',
+  "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",
 ].join('; ');
