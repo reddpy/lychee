@@ -16,19 +16,6 @@ const FETCH_HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/*,*/*;q=0.8',
 };
 
-const YOUTUBE_RE = /(?:^https?:\/\/(?:www\.|music\.)?youtube\.com\/watch\?.*v=|^https?:\/\/youtu\.be\/|^https?:\/\/(?:www\.)?youtube\.com\/embed\/|^https?:\/\/(?:www\.)?youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
-
-const youtubeHandler: UrlHandler = {
-  name: 'youtube',
-  test: (url) => YOUTUBE_RE.test(url),
-  resolve: async (url) => {
-    const match = url.match(YOUTUBE_RE);
-    return match
-      ? { type: 'youtube', videoId: match[1], url }
-      : { type: 'unsupported', url, reason: 'YouTube regex failed' };
-  },
-};
-
 const imageByExtensionHandler: UrlHandler = {
   name: 'image-by-extension',
   test: (url) => IMAGE_EXTENSIONS.test(new URL(url).pathname),
@@ -86,7 +73,6 @@ const contentTypeProbeHandler: UrlHandler = {
 // Handler registry — order matters, first match wins.
 // The fallback (content-type probe) must be last.
 const handlers: UrlHandler[] = [
-  youtubeHandler,
   imageByExtensionHandler,
   contentTypeProbeHandler,
 ];

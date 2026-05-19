@@ -47,7 +47,9 @@ describe('URL Resolver — Edge Cases', () => {
   // YouTube: music.youtube.com
   // ────────────────────────────────────────────────────────
 
-  it('detects music.youtube.com/watch URL', async () => {
+  // Skipped: in-app YouTube player is hidden for alpha; YouTube URLs now
+  // route through the bookmark fallback (see url-resolver.ts).
+  it.skip('detects music.youtube.com/watch URL', async () => {
     // YouTube Music shares the same watch?v= format
     const result = await resolveUrl('https://music.youtube.com/watch?v=dQw4w9WgXcQ');
     // The regex anchors to youtube.com — music subdomain should still match
@@ -92,7 +94,7 @@ describe('URL Resolver — Edge Cases', () => {
   });
 
   // YouTube live URLs use the same watch?v= format — should work
-  it('detects YouTube live stream URL (watch?v= format)', async () => {
+  it.skip('detects YouTube live stream URL (watch?v= format)', async () => {
     const result = await resolveUrl('https://www.youtube.com/watch?v=jfKfPfyJRdk&ab_channel=LofiGirl');
     expect(result.type).toBe('youtube');
     if (result.type === 'youtube') {
@@ -102,7 +104,7 @@ describe('URL Resolver — Edge Cases', () => {
 
   // Duplicate v= param — greedy `.*v=` picks the last one.
   // Both IDs are valid; the regex greedily consumes to the last v=.
-  it('extracts last video ID when v= appears multiple times (greedy match)', async () => {
+  it.skip('extracts last video ID when v= appears multiple times (greedy match)', async () => {
     const result = await resolveUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ&v=AAAAAAAAAA1');
     expect(result.type).toBe('youtube');
     if (result.type === 'youtube') {
@@ -136,7 +138,7 @@ describe('URL Resolver — Edge Cases', () => {
     expect(result.type).toBe('image');
   });
 
-  it('handles YouTube URL with fragment', async () => {
+  it.skip('handles YouTube URL with fragment', async () => {
     const result = await resolveUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ#t=30');
     expect(result.type).toBe('youtube');
     if (result.type === 'youtube') {
@@ -280,7 +282,7 @@ describe('URL Resolver — Edge Cases', () => {
   // Handler priority: URL that looks like both image and YouTube
   // ────────────────────────────────────────────────────────
 
-  it('YouTube handler wins over image extension for YouTube thumbnail URLs', async () => {
+  it.skip('YouTube handler wins over image extension for YouTube thumbnail URLs', async () => {
     // Unlikely but technically possible — a YouTube watch URL that
     // also ends with .jpg shouldn't happen, but let's verify priority
     const result = await resolveUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
@@ -351,7 +353,7 @@ describe('URL Resolver — Edge Cases', () => {
   // Concurrent resolution of same URL
   // ────────────────────────────────────────────────────────
 
-  it('handles concurrent resolution of the same YouTube URL', async () => {
+  it.skip('handles concurrent resolution of the same YouTube URL', async () => {
     const url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
     const [r1, r2, r3] = await Promise.all([
       resolveUrl(url),
@@ -378,7 +380,9 @@ describe('URL Resolver — Edge Cases', () => {
       resolveUrl('https://example.com/article'),
     ]);
 
-    expect(yt.type).toBe('youtube');
+    // YouTube URLs now route through the bookmark fallback for alpha
+    // (in-app player hidden — see url-resolver.ts).
+    expect(yt.type).toBe('bookmark');
     expect(img.type).toBe('image');
     expect(bm.type).toBe('bookmark');
   });

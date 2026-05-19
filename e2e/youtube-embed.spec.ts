@@ -108,7 +108,7 @@ async function getPauseCount(page: Page): Promise<number> {
 
 // ── Tests ────────────────────────────────────────────────────────────
 
-test.describe('YouTube Embed & Media Playback', () => {
+test.describe.skip('YouTube Embed & Media Playback', () => {
   test('pasting a YouTube URL and clicking Embed creates an iframe', async ({ window }) => {
     await createNoteWithTitle(window, 'Embed Test');
 
@@ -333,7 +333,7 @@ test.describe('YouTube Embed & Media Playback', () => {
 
 // ── Tab × Media Edge Cases (Stress Tests) ────────────────────────────
 
-test.describe('Tab × Media Pill Edge Cases', () => {
+test.describe.skip('Tab × Media Pill Edge Cases', () => {
   test('closing the media tab from tab bar while on a different tab auto-dismisses pill', async ({ window }) => {
     // Play in Note A
     const docA = await createNoteWithTitle(window, 'Media Tab');

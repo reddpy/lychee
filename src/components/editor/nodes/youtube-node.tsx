@@ -2,8 +2,6 @@ import type { ReactElement } from "react"
 import {
   $applyNodeReplacement,
   DecoratorNode,
-  DOMConversionMap,
-  DOMConversionOutput,
   DOMExportOutput,
   type EditorConfig,
   type LexicalEditor,
@@ -66,15 +64,6 @@ export class YouTubeNode extends DecoratorNode<ReactElement | null> {
     return false
   }
 
-  static importDOM(): DOMConversionMap | null {
-    return {
-      iframe: () => ({
-        conversion: convertYouTubeIframe,
-        priority: 0,
-      }),
-    }
-  }
-
   static importJSON(serializedNode: SerializedYouTubeNode): YouTubeNode {
     return $createYouTubeNode({
       videoId: serializedNode.videoId,
@@ -131,18 +120,6 @@ export class YouTubeNode extends DecoratorNode<ReactElement | null> {
       />
     )
   }
-}
-
-function convertYouTubeIframe(domNode: Node): DOMConversionOutput | null {
-  const iframe = domNode as HTMLIFrameElement
-  const src = iframe.src || ""
-  const match = src.match(
-    /youtube(?:-nocookie)?\.com\/embed\/([a-zA-Z0-9_-]{11})/,
-  )
-  if (match) {
-    return { node: $createYouTubeNode({ videoId: match[1] }) }
-  }
-  return null
 }
 
 export interface CreateYouTubeNodeParams {

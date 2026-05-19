@@ -214,7 +214,9 @@ describe('URL Resolver — Bookmark Fallback', () => {
     expect(result.type).toBe('image');
   });
 
-  it('YouTube URL takes priority over bookmark (no fetch needed)', async () => {
+  it.skip('YouTube URL takes priority over bookmark (no fetch needed)', async () => {
+    // Skipped: in-app YouTube player is hidden for alpha; YouTube URLs now
+    // route through the bookmark fallback (see url-resolver.ts).
     const result = await resolveUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
     expect(result.type).toBe('youtube');
     expect(mockFetch).not.toHaveBeenCalled();

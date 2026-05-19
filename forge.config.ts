@@ -57,7 +57,7 @@ const config: ForgeConfig = {
     new WebpackPlugin({
       port: Number.isNaN(devServerPort) ? 3001 : devServerPort,
       devContentSecurityPolicy:
-        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com; img-src 'self' data: https: http: lychee-image:; connect-src 'self' ws:; frame-src https://www.youtube-nocookie.com https://www.youtube.com",
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https: http: lychee-image:; connect-src 'self' ws:; frame-src 'none'",
       mainConfig,
       renderer: {
         config: rendererConfig,
