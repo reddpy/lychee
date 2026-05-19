@@ -1,3 +1,4 @@
+import { net } from 'electron';
 import type { ResolvedUrlResult } from '../../shared/ipc-types';
 import { downloadImage } from './images';
 import { fetchUrlMetadata } from './url-metadata';
@@ -34,7 +35,6 @@ const contentTypeProbeHandler: UrlHandler = {
   name: 'content-type-probe',
   test: () => true,
   resolve: async (url) => {
-    const { net } = await import('electron');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     const fetchOpts = { headers: FETCH_HEADERS, signal: controller.signal as never, redirect: 'follow' as const };
