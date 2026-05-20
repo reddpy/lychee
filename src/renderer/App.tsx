@@ -116,18 +116,28 @@ function EditorArea() {
     return map;
   }, [documents]);
 
-  // Collect unique docIds in tab order (first occurrence wins for stable ordering).
+  // Stable docId render order, independent of openTabs order.
+  //
+  // Why: each docId renders one persistent <main> sharing a parent. Re-ordering
+  // these via React's keyed reconciler calls insertBefore on whichever <main>
+  // it picks to move (smaller-old-index that lands later in the new order),
+  // which resets that element's scrollTop in Chromium. Keeping render order
+  // stable across openTabs reorders avoids the DOM move entirely.
+  const renderOrderRef = React.useRef<string[]>([]);
   const uniqueDocIds = React.useMemo(() => {
-    const seen = new Set<string>();
-    const result: string[] = [];
+    const present = new Set<string>();
+    for (const { docId } of openTabs) present.add(docId);
+    const next = renderOrderRef.current.filter((id) => present.has(id));
+    const inNext = new Set(next);
     for (const { docId } of openTabs) {
-      if (!seen.has(docId)) {
-        seen.add(docId);
-        result.push(docId);
+      if (!inNext.has(docId)) {
+        next.push(docId);
+        inNext.add(docId);
       }
     }
-    return result;
+    return next;
   }, [openTabs]);
+  renderOrderRef.current = uniqueDocIds;
 
   const activeDocId = React.useMemo(
     () => openTabs.find((t) => t.tabId === selectedId)?.docId ?? null,
