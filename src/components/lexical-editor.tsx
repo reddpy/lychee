@@ -365,10 +365,14 @@ export function LexicalEditor({
 
   // Per-tab scroll preservation.
   //
-  // Save: a `scroll` listener stores el.scrollTop into scrollPositions[tabId]
-  // continuously. This avoids saving in the tab-switch useLayoutEffect, which
-  // would run AFTER display:none has been applied to the outgoing <main> —
-  // Chromium 41+ reports scrollTop=0 for display:none elements.
+  // Save: a capture-phase `scroll` listener on `document` records el.scrollTop
+  // into scrollPositions[tabId] whenever scroll events target our <main>.
+  // We use document-capture instead of an element-level listener because
+  // element-bound scroll listeners on this specific <main> were observed not
+  // to fire under some conditions (post close+reopen mounts), even when the
+  // element clearly scrolled — capture-phase dispatch from document is more
+  // reliable. Saving continuously avoids reading from a hidden <main> in the
+  // useLayoutEffect: Chromium 41+ reports scrollTop=0 for display:none.
   //
   // Restore: on activeTabId change, set scrollTop synchronously, then re-apply
   // across two animation frames to defeat TabSelectionPlugin's deferred
@@ -378,13 +382,14 @@ export function LexicalEditor({
   React.useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
-    const onScroll = () => {
+    const onScroll = (e: Event) => {
+      if (e.target !== el) return;
       if (isRestoringScroll.current) return;
       const id = prevActiveTabId.current;
       if (id != null) scrollPositions.current.set(id, el.scrollTop);
     };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    globalThis.document.addEventListener("scroll", onScroll, true);
+    return () => globalThis.document.removeEventListener("scroll", onScroll, true);
   }, []);
 
   React.useLayoutEffect(() => {
@@ -400,7 +405,25 @@ export function LexicalEditor({
     setAddIconPickerOpen(false);
 
     if (curr == null) return;
-    const target = scrollPositions.current.get(curr) ?? 0;
+
+    // Target resolution:
+    //   - Saved value for curr → restore it.
+    //   - No saved value AND prev was null (initial mount or coming back from
+    //     a display:none background) → leave scrollTop alone. Chromium
+    //     preserves scrollTop across display:none; clobbering with 0 would
+    //     destroy that preserved position. (Fresh mount is also fine because
+    //     scrollTop is already 0.)
+    //   - No saved value AND prev was a different tabId → this is a new tab
+    //     view of the same doc (e.g. a duplicate tab). Reset to 0.
+    let target: number;
+    if (scrollPositions.current.has(curr)) {
+      target = scrollPositions.current.get(curr)!;
+    } else if (prev == null) {
+      return;
+    } else {
+      target = 0;
+    }
+
     isRestoringScroll.current = true;
     el.scrollTop = target;
 

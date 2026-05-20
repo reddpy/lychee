@@ -284,6 +284,465 @@ test.describe('Tab Scroll Retention — Cross-Document', () => {
   });
 });
 
+// ── Regression: close → reopen → scroll → switch → switch back ──────
+
+test.describe('Tab Scroll Retention — Reopen Closed Tab', () => {
+  /**
+   * Bug repro: scroll on tab A, close A, Cmd+Shift+T to reopen, scroll on the
+   * reopened A, switch to another tab, switch back — scroll resets to 0.
+   *
+   * After close+reopen, the LexicalEditor for docA is freshly mounted with a
+   * new tabId. The fresh scroll-after-reopen must be preserved through tab
+   * switches like any other scroll.
+   */
+  /** Reopen the most recently closed tab via the store action (Cmd+Shift+T code path). */
+  async function reopenLastClosed(window: Page): Promise<string | null> {
+    const before = await window.evaluate(
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.tabId),
+    );
+    await window.evaluate(() => {
+      (window as any).__documentStore.getState().reopenLastClosedTab();
+    });
+    await window.waitForTimeout(250);
+    const after = await window.evaluate(
+      () => (window as any).__documentStore.getState().openTabs.map((t: any) => t.tabId),
+    );
+    const beforeSet = new Set(before);
+    const newTabId = after.find((id: string) => !beforeSet.has(id)) ?? null;
+    return newTabId;
+  }
+
+  test('scroll preserved after close+reopen + tab-switch round trip', async ({ window }) => {
+    // Two tabs, both in the tab bar. Close the background one, reopen, scroll,
+    // round-trip via the other. Bug repro: scroll resets to top on final switch.
+    const { tabId: tabA1 } = await createAndOpenNote(window, 'Repro A');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Repro B');
+
+    // Scroll A while it's active, then go to B (A becomes background).
+    await selectTab(window, tabA1);
+    await setActiveScrollTop(window, 600);
+    await selectTab(window, tabB);
+
+    // Close A while it's background, then reopen.
+    await closeTab(window, tabA1);
+    const tabA2 = await reopenLastClosed(window);
+    expect(tabA2).toBeTruthy();
+    expect(tabA2).not.toBe(tabA1);
+
+    // Scroll the reopened A, then round-trip via B.
+    await setActiveScrollTop(window, 750);
+    const reopenedScroll = await getScrollTop(window);
+    expect(reopenedScroll).toBeGreaterThan(500);
+
+    await selectTab(window, tabB);
+    await selectTab(window, tabA2!);
+
+    expect(Math.abs((await getScrollTop(window)) - reopenedScroll)).toBeLessThan(100);
+  });
+
+  test('scroll preserved across multiple close+reopen cycles', async ({ window }) => {
+    const { tabId: initialA } = await createAndOpenNote(window, 'Cycle A');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Cycle B');
+
+    let currentA = initialA;
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const targetScroll = 200 + cycle * 150; // 200, 350, 500
+      await selectTab(window, currentA);
+      await setActiveScrollTop(window, targetScroll);
+      await selectTab(window, tabB);
+      await closeTab(window, currentA);
+      const reopened = await reopenLastClosed(window);
+      expect(reopened).toBeTruthy();
+      currentA = reopened!;
+
+      // Each cycle: scroll the reopened tab and verify round-trip preservation.
+      await setActiveScrollTop(window, targetScroll);
+      const before = await getScrollTop(window);
+      await selectTab(window, tabB);
+      await selectTab(window, currentA);
+      expect(Math.abs((await getScrollTop(window)) - before)).toBeLessThan(100);
+    }
+  });
+
+  test('close+reopen of doc with a duplicate tab: surviving duplicate keeps its scroll', async ({
+    window,
+  }) => {
+    // Tabs t1, t2 are duplicates of docA (same LexicalEditor instance).
+    // Close t1; t2 stays. Reopen — the reopened tab is a fresh view, but t2's
+    // saved scroll position must NOT have been disturbed by the close+reopen.
+    const { tabId: t1, docId: docA } = await createAndOpenNote(window, 'Dup Survive');
+    const t2 = await openDuplicateTab(window, docA);
+
+    await selectTab(window, t1);
+    await setActiveScrollTop(window, 500);
+
+    await selectTab(window, t2);
+    await setActiveScrollTop(window, 200);
+
+    // Close the background duplicate (t1), reopen it.
+    await selectTab(window, t2); // ensure t2 is active so t1 close is background
+    await closeTab(window, t1);
+    const t3 = await reopenLastClosed(window);
+    expect(t3).toBeTruthy();
+    expect(t3).not.toBe(t1);
+
+    // The reopened tab is a fresh duplicate view → scroll starts at 0.
+    await selectTab(window, t3!);
+    expect(await getScrollTop(window)).toBeLessThan(100);
+
+    // The pre-existing duplicate (t2) must still hold its scroll value (200).
+    await selectTab(window, t2);
+    expect(Math.abs((await getScrollTop(window)) - 200)).toBeLessThan(100);
+  });
+
+  test('opening a NEW duplicate after a close+reopen starts at 0 and does not clobber the reopened tab', async ({
+    window,
+  }) => {
+    // Close+reopen first, then open a fresh duplicate of the reopened doc.
+    const { tabId: tabA1, docId: docA } = await createAndOpenNote(window, 'Reopen+Dup');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Reopen+Dup B');
+
+    await selectTab(window, tabA1);
+    await setActiveScrollTop(window, 700);
+    await selectTab(window, tabB);
+    await closeTab(window, tabA1);
+
+    const tabA2 = await reopenLastClosed(window);
+    expect(tabA2).toBeTruthy();
+
+    // Scroll the reopened tab.
+    await selectTab(window, tabA2!);
+    await setActiveScrollTop(window, 650);
+    const a2Scroll = await getScrollTop(window);
+    expect(a2Scroll).toBeGreaterThan(400);
+
+    // Open a duplicate of docA — should be a fresh tab at 0 when selected.
+    const dup = await openDuplicateTab(window, docA);
+    await selectTab(window, dup);
+    expect(await getScrollTop(window)).toBeLessThan(100);
+
+    // Switching back to the reopened tab restores its scroll (not 0).
+    await selectTab(window, tabA2!);
+    expect(Math.abs((await getScrollTop(window)) - a2Scroll)).toBeLessThan(100);
+  });
+
+  test('close+reopen + caret-near-top + scroll-near-bottom: caret restore does not pull scroll to top', async ({
+    window,
+  }) => {
+    // The scroll-restore + selection-restore race that the 2-RAF defense
+    // exists to fix — verify it still holds for a freshly-mounted post-reopen
+    // editor (which has empty caret cache + empty scroll cache).
+    const { tabId: tabA1 } = await createAndOpenNote(window, 'Reopen Caret');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Reopen Caret B');
+
+    // Click paragraph near top (caret near top), then scroll near bottom.
+    await selectTab(window, tabA1);
+    await window
+      .locator('main:not([style*="display: none"]) .ContentEditable__root p')
+      .nth(2)
+      .click();
+    await window.waitForTimeout(100);
+    await setActiveScrollTop(window, 700);
+
+    // Background → close → reopen.
+    await selectTab(window, tabB);
+    await closeTab(window, tabA1);
+    const tabA2 = await reopenLastClosed(window);
+    expect(tabA2).toBeTruthy();
+
+    // Click caret near top on the reopened tab, scroll near bottom again.
+    await selectTab(window, tabA2!);
+    await window
+      .locator('main:not([style*="display: none"]) .ContentEditable__root p')
+      .nth(2)
+      .click();
+    await window.waitForTimeout(100);
+    await setActiveScrollTop(window, 700);
+    const aScroll = await getScrollTop(window);
+    expect(aScroll).toBeGreaterThan(500);
+
+    // Round-trip via B. Lexical's selection-restore should NOT pull scroll
+    // back toward the top-of-doc caret.
+    await selectTab(window, tabB);
+    await selectTab(window, tabA2!);
+    expect(Math.abs((await getScrollTop(window)) - aScroll)).toBeLessThan(150);
+  });
+
+  test('stress: 5 close+reopen cycles in succession across two docs', async ({ window }) => {
+    test.setTimeout(60_000);
+
+    const { tabId: initialA } = await createAndOpenNote(window, 'Stress A');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Stress B');
+
+    let currentA = initialA;
+    const scrollTargets = [300, 500, 700, 450, 600];
+
+    for (let i = 0; i < scrollTargets.length; i++) {
+      await selectTab(window, currentA);
+      await setActiveScrollTop(window, scrollTargets[i]);
+      const expected = await getScrollTop(window);
+
+      // Round-trip via B before the close to verify save+restore works on the current cycle.
+      await selectTab(window, tabB);
+      await selectTab(window, currentA);
+      expect(Math.abs((await getScrollTop(window)) - expected)).toBeLessThan(100);
+
+      // Close while background, reopen.
+      await selectTab(window, tabB);
+      await closeTab(window, currentA);
+      const reopened = await reopenLastClosed(window);
+      expect(reopened).toBeTruthy();
+      currentA = reopened!;
+    }
+  });
+
+  test('close+reopen of 3 different docs preserves each independently', async ({ window }) => {
+    test.setTimeout(60_000);
+
+    const { tabId: tabA } = await createAndOpenNote(window, 'Multi A');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Multi B');
+    const { tabId: tabC } = await createAndOpenNote(window, 'Multi C');
+
+    // Scroll all three to distinct positions.
+    await selectTab(window, tabA);
+    await setActiveScrollTop(window, 600);
+    await selectTab(window, tabB);
+    await setActiveScrollTop(window, 400);
+    await selectTab(window, tabC);
+    await setActiveScrollTop(window, 200);
+
+    // Stay on C — close A and B (both background), reopen each via the stack.
+    await closeTab(window, tabA);
+    await closeTab(window, tabB);
+    const tabB2 = await reopenLastClosed(window); // most-recent close = B
+    expect(tabB2).toBeTruthy();
+    const tabA2 = await reopenLastClosed(window); // next pop = A
+    expect(tabA2).toBeTruthy();
+
+    // Scroll each reopened tab to a distinct value, then verify round-trip independence.
+    await selectTab(window, tabA2!);
+    await setActiveScrollTop(window, 550);
+    const aScroll = await getScrollTop(window);
+
+    await selectTab(window, tabB2!);
+    await setActiveScrollTop(window, 350);
+    const bScroll = await getScrollTop(window);
+
+    await selectTab(window, tabC);
+    expect(Math.abs((await getScrollTop(window)) - 200)).toBeLessThan(100);
+
+    await selectTab(window, tabA2!);
+    expect(Math.abs((await getScrollTop(window)) - aScroll)).toBeLessThan(100);
+
+    await selectTab(window, tabB2!);
+    expect(Math.abs((await getScrollTop(window)) - bScroll)).toBeLessThan(100);
+  });
+
+  test('reopen restores scroll to ZERO correctly when the user scrolled all the way back to top', async ({
+    window,
+  }) => {
+    // After reopen, user explicitly scrolls to 0 (e.g. user wants to see top).
+    // The save listener should record 0, and a round-trip should not "restore"
+    // some stale browser-preserved non-zero value.
+    const { tabId: tabA1 } = await createAndOpenNote(window, 'Reopen To Zero');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Reopen To Zero B');
+
+    await selectTab(window, tabA1);
+    await setActiveScrollTop(window, 600);
+    await selectTab(window, tabB);
+    await closeTab(window, tabA1);
+    const tabA2 = await reopenLastClosed(window);
+    expect(tabA2).toBeTruthy();
+
+    // Scroll up to a known value, then back to 0.
+    await selectTab(window, tabA2!);
+    await setActiveScrollTop(window, 500);
+    await setActiveScrollTop(window, 0);
+
+    await selectTab(window, tabB);
+    await selectTab(window, tabA2!);
+    // Must be 0 — not the earlier 500.
+    expect(await getScrollTop(window)).toBeLessThan(50);
+  });
+
+  test('scroll persists across tab-switch after a close+reopen (DB-loaded notes, real interactions)', async ({
+    window,
+  }) => {
+    // Mirrors the real user repro: notes exist in the DB (not freshly created
+    // in this session), user opens them via the sidebar, scrolls via mouse
+    // wheel, and switches/closes via the tab strip — all real DOM interactions.
+
+    // Seed the DB with two docs and reload the store from it. No tabs are
+    // opened — the docs sit in the sidebar like any existing notes.
+    const { docAId, docBId } = await window.evaluate(async (bodies) => {
+      const lychee = (window as any).lychee;
+      const store = (window as any).__documentStore;
+      const { document: a } = await lychee.invoke('documents.create', {
+        title: 'DB A',
+        content: bodies.long,
+      });
+      const { document: b } = await lychee.invoke('documents.create', {
+        title: 'DB B',
+        content: bodies.short,
+      });
+      await store.getState().loadDocuments(true);
+      return { docAId: a.id as string, docBId: b.id as string };
+    }, { long: VERY_LONG_BODY, short: SCROLLABLE_BODY });
+
+    // Open both as separate tabs. Plain sidebar click would *replace* the
+    // active tab when the next doc isn't already a tab; the user has both in
+    // the tab bar, so use the same primitive a Cmd+click uses (openTab).
+    await window.evaluate(
+      (ids: { a: string; b: string }) => {
+        const store = (window as any).__documentStore.getState();
+        store.openTab(ids.a);
+        store.openTab(ids.b);
+      },
+      { a: docAId, b: docBId },
+    );
+    await window.waitForTimeout(200);
+
+    // After both clicks, the active tab is B (last clicked). Click A's tab to
+    // activate it, then wheel-scroll to bottom.
+    const tabA1 = await window.evaluate((id: string) => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.docId === id)?.tabId as string;
+    }, docAId);
+    expect(tabA1).toBeTruthy();
+    const tabB1 = await window.evaluate((id: string) => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.docId === id)?.tabId as string;
+    }, docBId);
+    expect(tabB1).toBeTruthy();
+
+    await window.locator(`[data-tab-id="${tabA1}"]`).click();
+    await window.waitForTimeout(150);
+
+    const wheelScroll = async () => {
+      const main = await window.locator('main:not([style*="display: none"])').boundingBox();
+      if (!main) throw new Error('No visible main');
+      await window.mouse.move(main.x + main.width / 2, main.y + main.height / 2);
+      for (let i = 0; i < 25; i++) {
+        await window.mouse.wheel(0, 400);
+        await window.waitForTimeout(20);
+      }
+      await window.waitForTimeout(250);
+    };
+
+    // Step 1: scroll A to bottom (via wheel)
+    await wheelScroll();
+    const aScrollFirst = await getScrollTop(window);
+    expect(aScrollFirst).toBeGreaterThan(1000);
+
+    // Step 2: click B's tab → A is now background
+    await window.locator(`[data-tab-id="${tabB1}"]`).click();
+    await window.waitForTimeout(200);
+
+    // Step 3: close A while it's the background tab (X button on A's tab)
+    await window
+      .locator(`[data-tab-id="${tabA1}"] [aria-label="Close tab"]`)
+      .click({ force: true });
+    await window.waitForTimeout(300);
+
+    // Step 4: reopen A via the Cmd+Shift+T code path
+    await window.evaluate(() => {
+      (window as any).__documentStore.getState().reopenLastClosedTab();
+    });
+    await window.waitForTimeout(400);
+
+    const tabA2 = await window.evaluate((id: string) => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.docId === id)?.tabId as string;
+    }, docAId);
+    expect(tabA2).toBeTruthy();
+    expect(tabA2).not.toBe(tabA1);
+
+    // Step 5: wheel-scroll the reopened A to bottom
+    await wheelScroll();
+    const aScrollAfterReopen = await getScrollTop(window);
+    expect(aScrollAfterReopen).toBeGreaterThan(1000);
+
+    // Step 6 + 7: click B, then click A
+    await window.locator(`[data-tab-id="${tabB1}"]`).click();
+    await window.waitForTimeout(200);
+    await window.locator(`[data-tab-id="${tabA2}"]`).click();
+    await window.waitForTimeout(300);
+
+    const finalScroll = await getScrollTop(window);
+    expect(Math.abs(finalScroll - aScrollAfterReopen)).toBeLessThan(150);
+  });
+
+  test('scroll persists across tab-switch after a close+reopen (close while background)', async ({
+    window,
+  }) => {
+    // Exact user repro:
+    //   1. Open long note A (and a second tab B exists)
+    //   2. Scroll A to bottom
+    //   3. Click B → A is now in the background
+    //   4. Close A while it's the background tab
+    //   5. Cmd+Shift+T → reopen A (becomes active)
+    //   6. Scroll A to bottom again
+    //   7. Click B
+    //   8. Click A → expected: at bottom. Bug: at top.
+    const { docId: docA } = await createAndOpenNote(window, 'Reopen Bg A');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Reopen Bg B');
+
+    const tabA1 = await window.evaluate((id: string) => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.docId === id)?.tabId as string;
+    }, docA);
+
+    // Click a paragraph near the top of A to establish a caret. This is what
+    // makes the bug fire — TabSelectionPlugin will save+restore this selection
+    // on tab switch, and Lexical's selection-restore triggers scrollIntoView
+    // toward the caret (which is at the top while we're scrolled to the bottom).
+    await selectTab(window, tabA1);
+    await window
+      .locator('main:not([style*="display: none"]) .ContentEditable__root p')
+      .nth(2)
+      .click();
+    await window.waitForTimeout(100);
+    await setActiveScrollTop(window, 600);
+
+    // Step 3: click B — A is now a background tab
+    await selectTab(window, tabB);
+
+    // Step 4: close A while it's in the background
+    await closeTab(window, tabA1);
+
+    // Step 5: reopen A via the Cmd+Shift+T path
+    await window.evaluate(() => {
+      (window as any).__documentStore.getState().reopenLastClosedTab();
+    });
+    await window.waitForTimeout(250);
+
+    const tabA2 = await window.evaluate((id: string) => {
+      const s = (window as any).__documentStore.getState();
+      return s.openTabs.find((t: any) => t.docId === id)?.tabId as string;
+    }, docA);
+    expect(tabA2).toBeTruthy();
+    expect(tabA2).not.toBe(tabA1);
+
+    // Step 6: click a paragraph near the top, scroll to bottom of the reopened tab
+    await window
+      .locator('main:not([style*="display: none"]) .ContentEditable__root p')
+      .nth(2)
+      .click();
+    await window.waitForTimeout(100);
+    await setActiveScrollTop(window, 750);
+    const scrolledAfterReopen = await getScrollTop(window);
+    expect(scrolledAfterReopen).toBeGreaterThan(500);
+
+    // Step 7 + 8: B, then back to A
+    await selectTab(window, tabB);
+    await selectTab(window, tabA2);
+    await window.waitForTimeout(150);
+
+    const finalScroll = await getScrollTop(window);
+    expect(Math.abs(finalScroll - scrolledAfterReopen)).toBeLessThan(100);
+  });
+});
+
 // ── Edge Cases ───────────────────────────────────────────────────────
 
 test.describe('Tab Scroll Retention — Edge Cases', () => {
