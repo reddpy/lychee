@@ -96,7 +96,7 @@ test.describe('Image Embed', () => {
     expect(src).toMatch(/^lychee-image:\/\/image\//);
   });
 
-  test('image shows loading placeholder before resolving', async ({ window }) => {
+  test('image container appears immediately and resolves to a local copy', async ({ window }) => {
     await createNoteWithTitle(window, 'Image Loading Test');
     await typeUrlInBody(window, 'https://placehold.co/100x100.png');
 
@@ -105,8 +105,9 @@ test.describe('Image Embed', () => {
 
     await clickEmbed(window);
 
-    // The loading placeholder should appear briefly
-    // (it may be too fast to catch reliably, so we just verify the final state)
+    // The image-container is inserted synchronously, so it should appear
+    // almost immediately — the remote URL renders while the local download
+    // finishes in the background.
     const imageContainer = window.locator('.image-container');
     await expect(imageContainer).toBeVisible({ timeout: 15000 });
   });
@@ -863,6 +864,13 @@ test.describe('Bookmark Edge Cases', () => {
 
     const bookmarkCard = window.locator('.bookmark-card');
     await expect(bookmarkCard).toBeVisible({ timeout: 15000 });
+
+    // Wait for hydration to complete before capturing the baseline — under
+    // the Notion-style flow the card appears synchronously with a hostname
+    // fallback ("example.com"), then morphs to the fetched title once
+    // url.fetchMetadata returns ("Example Domain"). Capturing before that
+    // settles makes titleBefore !== titleAfter spuriously.
+    await expect(bookmarkCard.locator('.bookmark-title')).toContainText('Example Domain', { timeout: 15000 });
     const titleBefore = await bookmarkCard.locator('.bookmark-title').textContent();
 
     // Switch away

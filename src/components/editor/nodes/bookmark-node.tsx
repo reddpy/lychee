@@ -19,6 +19,8 @@ export type SerializedBookmarkNode = Spread<
     description: string
     imageUrl: string
     faviconUrl: string
+    autoResolve?: boolean
+    hydrationAttempted?: boolean
     version: 1
   },
   SerializedLexicalNode
@@ -30,6 +32,14 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
   __description: string
   __imageUrl: string
   __faviconUrl: string
+  /** True when this bookmark was inserted via Embed and should ask the backend
+   *  to reclassify the URL on hydration (so non-obvious image URLs can swap
+   *  to an ImageNode instead of staying as a bookmark). */
+  __autoResolve: boolean
+  /** True once the component has finished a hydration attempt (success or
+   *  failure). Prevents refetch storms when a page returns no usable metadata —
+   *  without this flag, every reopen of the document would re-fire the IPC. */
+  __hydrationAttempted: boolean
 
   static getType(): string {
     return "bookmark"
@@ -42,6 +52,8 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
       node.__description,
       node.__imageUrl,
       node.__faviconUrl,
+      node.__autoResolve,
+      node.__hydrationAttempted,
       node.__key,
     )
   }
@@ -52,6 +64,8 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
     description: string = "",
     imageUrl: string = "",
     faviconUrl: string = "",
+    autoResolve: boolean = false,
+    hydrationAttempted: boolean = false,
     key?: NodeKey,
   ) {
     super(key)
@@ -60,6 +74,8 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
     this.__description = description
     this.__imageUrl = imageUrl
     this.__faviconUrl = faviconUrl
+    this.__autoResolve = autoResolve
+    this.__hydrationAttempted = hydrationAttempted
   }
 
   createDOM(_config: EditorConfig): HTMLElement {
@@ -79,6 +95,8 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
       description: serializedNode.description,
       imageUrl: serializedNode.imageUrl,
       faviconUrl: serializedNode.faviconUrl,
+      autoResolve: serializedNode.autoResolve ?? false,
+      hydrationAttempted: serializedNode.hydrationAttempted ?? false,
     })
   }
 
@@ -90,6 +108,8 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
       description: this.__description,
       imageUrl: this.__imageUrl,
       faviconUrl: this.__faviconUrl,
+      autoResolve: this.__autoResolve || undefined,
+      hydrationAttempted: this.__hydrationAttempted || undefined,
       version: 1,
     }
   }
@@ -122,6 +142,35 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
     writable.__faviconUrl = faviconUrl
   }
 
+  setMetadata(meta: {
+    title: string
+    description: string
+    imageUrl: string
+    faviconUrl: string
+  }): void {
+    const writable = this.getWritable()
+    writable.__title = meta.title
+    writable.__description = meta.description
+    writable.__imageUrl = meta.imageUrl
+    writable.__faviconUrl = meta.faviconUrl
+    writable.__hydrationAttempted = true
+  }
+
+  markHydrationAttempted(): void {
+    const writable = this.getWritable()
+    writable.__hydrationAttempted = true
+  }
+
+  getNeedsHydration(): boolean {
+    if (this.__hydrationAttempted) return false
+    return (
+      this.__title === "" &&
+      this.__description === "" &&
+      this.__imageUrl === "" &&
+      this.__faviconUrl === ""
+    )
+  }
+
   decorate(_editor: LexicalEditor, _config: EditorConfig): ReactElement | null {
     return (
       <BookmarkComponent
@@ -131,6 +180,8 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
         description={this.__description}
         imageUrl={this.__imageUrl}
         faviconUrl={this.__faviconUrl}
+        autoResolve={this.__autoResolve}
+        hydrationAttempted={this.__hydrationAttempted}
       />
     )
   }
@@ -142,6 +193,8 @@ export interface CreateBookmarkNodeParams {
   description?: string
   imageUrl?: string
   faviconUrl?: string
+  autoResolve?: boolean
+  hydrationAttempted?: boolean
 }
 
 export function $createBookmarkNode(params: CreateBookmarkNodeParams): BookmarkNode {
@@ -152,6 +205,8 @@ export function $createBookmarkNode(params: CreateBookmarkNodeParams): BookmarkN
       params.description ?? "",
       params.imageUrl ?? "",
       params.faviconUrl ?? "",
+      params.autoResolve ?? false,
+      params.hydrationAttempted ?? false,
     ),
   )
 }

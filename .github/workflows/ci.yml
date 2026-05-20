@@ -151,7 +151,11 @@ jobs:
         run: mkdir -p out && tar -xf electron-app.tar -C out
 
       - name: Run E2E tests
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" pnpm exec playwright test ${{ matrix.specs }}${{ matrix.workers && format(' --workers={0}', matrix.workers) || '' }}
+        # E2E=1 is required at runtime — not just at build — to enable the
+        # preload-side IPC mock layer (see src/preload.ts, e2e/ipc-mock.ts).
+        # Without it, mock-driven tests in bookmark-metadata.spec.ts throw
+        # "IPC mocks unavailable".
+        run: E2E=1 xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" pnpm exec playwright test ${{ matrix.specs }}${{ matrix.workers && format(' --workers={0}', matrix.workers) || '' }}
 
       - name: Upload blob report
         if: always()

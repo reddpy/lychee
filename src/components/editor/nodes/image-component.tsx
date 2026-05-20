@@ -6,6 +6,7 @@ import {
   type NodeKey,
 } from "lexical"
 import { $isImageNode, ImageNode, type ImageAlignment } from "./image-node"
+import { LYCHEE_SAVE_TAG } from "@/components/editor/editor"
 import { cn } from "@/lib/utils"
 import { Loader2, AlignLeft, AlignCenter, AlignRight, ImageOff, ExternalLink } from "lucide-react"
 import { useDecoratorBlock } from "@/components/editor/hooks/use-decorator-block"
@@ -103,10 +104,11 @@ export function ImageComponent({
     })
   }, [editor, nodeKey])
 
-  // Preload image via offscreen Image object — avoids hacky hidden <img> tricks
-  // Skip while isLoading (main process is downloading, src may be a remote URL)
+  // Preload image via offscreen Image object — avoids hacky hidden <img> tricks.
+  // Runs whenever we have a resolved src, including the loading-from-remote-URL
+  // state where src points at the sourceUrl while the local copy is being downloaded.
   useEffect(() => {
-    if (!resolvedSrc || isLoading) return
+    if (!resolvedSrc) return
     setHasError(false)
     setIsImageLoaded(false)
     const img = new Image()
@@ -114,16 +116,17 @@ export function ImageComponent({
     img.onload = () => setIsImageLoaded(true)
     img.onerror = () => setHasError(true)
     return () => { img.onload = null; img.onerror = null }
-  }, [resolvedSrc, isLoading])
+  }, [resolvedSrc])
 
-  // Resolve imageId → file path on mount (for nodes loaded from JSON that have imageId but no src)
+  // Resolve imageId → file path on mount (for nodes loaded from JSON that have imageId but no src).
+  // When no local image is available, fall back to rendering the remote sourceUrl directly.
   useEffect(() => {
     if (currentSrc) {
       setResolvedSrc(toImageUrl(currentSrc))
       return
     }
     if (!currentImageId) {
-      setResolvedSrc("")
+      setResolvedSrc(currentSourceUrl ? toImageUrl(currentSourceUrl) : "")
       return
     }
     let cancelled = false
@@ -140,7 +143,32 @@ export function ImageComponent({
       if (!cancelled) setHasError(true)
     })
     return () => { cancelled = true }
-  }, [currentImageId, currentSrc, nodeKey, editor])
+  }, [currentImageId, currentSrc, currentSourceUrl, nodeKey, editor])
+
+  // Hydration: download the remote image to a local file when the node is in
+  // loading-from-URL state. Runs both for newly-inserted embeds and for nodes
+  // that were saved mid-download (the partial state persisted to disk).
+  // On `.catch` we deliberately do NOT clear `loading`: an IPC rejection
+  // signals a transient failure (network down, rate-limit), so leaving the
+  // node in loading state lets the next mount retry. The spinner doesn't get
+  // stuck visually because `<img src={sourceUrl}>` still renders from the
+  // remote URL while waiting.
+  useEffect(() => {
+    if (!isLoading) return
+    if (currentImageId) return
+    if (!currentSourceUrl) return
+    let cancelled = false
+    window.lychee.invoke("images.download", { url: currentSourceUrl }).then(({ id, filePath }) => {
+      if (cancelled) return
+      editor.update(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isImageNode(node)) node.setLocalImage(id, filePath)
+      }, { tag: ["history-merge", LYCHEE_SAVE_TAG] })
+    }).catch((err) => {
+      console.error("Failed to download image:", err)
+    })
+    return () => { cancelled = true }
+  }, [isLoading, currentImageId, currentSourceUrl, nodeKey, editor])
 
   // ── Alignment ──
   const onAlignmentChange = useCallback(
@@ -153,9 +181,9 @@ export function ImageComponent({
     [editor, nodeKey],
   )
 
-  const showError = !isLoading && (hasError || !resolvedSrc)
-  const showImage = !isLoading && resolvedSrc && !hasError && isImageLoaded
-  const showSpinner = isLoading || (!showImage && !showError)
+  const showImage = !!(resolvedSrc && !hasError && isImageLoaded)
+  const showError = hasError || (!isLoading && !resolvedSrc)
+  const showSpinner = !showImage && !showError
 
   return (
     <div ref={containerRef} className={cn("image-container", isSelected && "selected", isResizing && "resizing")}>
@@ -184,8 +212,9 @@ export function ImageComponent({
         </div>
       )}
 
-      {/* Toolbar — always available when not loading */}
-      {!isLoading && (
+      {/* Toolbar — available once the image is visible (including while a local
+          copy is still being downloaded in the background). */}
+      {showImage && (
         <div className="image-toolbar">
           <button
             className={cn("image-toolbar-btn", currentAlignment === "left" && "active")}

@@ -25,6 +25,7 @@ export type SerializedImageNode = Spread<
     height?: number
     alignment?: ImageAlignment
     sourceUrl?: string
+    loading?: boolean
     version: 1
   },
   SerializedLexicalNode
@@ -111,6 +112,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
       height: serializedNode.height,
       alignment: serializedNode.alignment,
       sourceUrl: serializedNode.sourceUrl,
+      loading: serializedNode.loading ?? false,
     })
   }
 
@@ -123,6 +125,7 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
       height: this.__height,
       alignment: this.__alignment,
       sourceUrl: this.__sourceUrl || undefined,
+      loading: this.__loading || undefined,
       version: 1,
     }
   }
@@ -178,6 +181,15 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
   setSourceUrl(sourceUrl: string): void {
     const writable = this.getWritable()
     writable.__sourceUrl = sourceUrl
+  }
+
+  setLocalImage(imageId: string, src: string, width?: number, height?: number): void {
+    const writable = this.getWritable()
+    writable.__imageId = imageId
+    writable.__src = src
+    if (width !== undefined) writable.__width = width
+    if (height !== undefined) writable.__height = height
+    writable.__loading = false
   }
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): ReactElement | null {
