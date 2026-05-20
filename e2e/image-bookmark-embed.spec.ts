@@ -864,6 +864,13 @@ test.describe('Bookmark Edge Cases', () => {
 
     const bookmarkCard = window.locator('.bookmark-card');
     await expect(bookmarkCard).toBeVisible({ timeout: 15000 });
+
+    // Wait for hydration to complete before capturing the baseline — under
+    // the Notion-style flow the card appears synchronously with a hostname
+    // fallback ("example.com"), then morphs to the fetched title once
+    // url.fetchMetadata returns ("Example Domain"). Capturing before that
+    // settles makes titleBefore !== titleAfter spuriously.
+    await expect(bookmarkCard.locator('.bookmark-title')).toContainText('Example Domain', { timeout: 15000 });
     const titleBefore = await bookmarkCard.locator('.bookmark-title').textContent();
 
     // Switch away

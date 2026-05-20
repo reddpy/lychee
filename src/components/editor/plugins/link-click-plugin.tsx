@@ -29,6 +29,20 @@ function openExternalUrl(url: string) {
   })
 }
 
+/** Build the initial (partial-state) node for an Embed action. Each branch
+ *  hands the URL to a node type that knows how to hydrate itself on mount.
+ *  Adding a new embed kind: extend `UrlKind` in classify-url.ts and add a
+ *  case here — TypeScript will flag the missing branch. */
+function createEmbedNode(url: string): LexicalNode {
+  const { kind } = classifyUrl(url)
+  switch (kind) {
+    case "image":
+      return $createImageNode({ sourceUrl: url, loading: true })
+    case "bookmark":
+      return $createBookmarkNode({ url, autoResolve: true })
+  }
+}
+
 function $isAnyLinkNode(node: LexicalNode | null): boolean {
   return $isAutoLinkNode(node) || $isLinkNode(node)
 }
@@ -237,15 +251,10 @@ export function LinkClickPlugin(): JSX.Element | null {
   const handleEmbed = useCallback(() => {
     if (!hoverState) return
     const { url, linkNodeKey } = hoverState
-    const classified = classifyUrl(url)
 
     snapshotAndFocusLink(linkNodeKey)
     editor.update(() => {
-      const node: LexicalNode =
-        classified.kind === "image"
-          ? $createImageNode({ sourceUrl: url, loading: true })
-          : $createBookmarkNode({ url, autoResolve: true })
-      replaceLink(linkNodeKey, node)
+      replaceLink(linkNodeKey, createEmbedNode(url))
     }, { tag: HISTORY_PUSH_TAG })
 
     dismiss(true)

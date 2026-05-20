@@ -186,6 +186,12 @@ export function Editor({
 
         <OnChangePlugin
           ignoreSelectionChange={true}
+          // Don't ignore history-merge updates: async hydration (BookmarkNode
+          // setMetadata, ImageNode setLocalImage) uses `tag: "history-merge"`
+          // so undo collapses the embed and its metadata into one step.
+          // Without this flag those mutations would be silently dropped from
+          // the save path and the hydrated state would never reach the DB.
+          ignoreHistoryMergeTagChange={false}
           onChange={(editorState: EditorState) => {
             onEditorStateChange?.(editorState)
           }}

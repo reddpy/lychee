@@ -192,11 +192,6 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
     writable.__loading = false
   }
 
-  markDownloadFailed(): void {
-    const writable = this.getWritable()
-    writable.__loading = false
-  }
-
   decorate(_editor: LexicalEditor, _config: EditorConfig): ReactElement | null {
     return (
       <ImageComponent

@@ -147,6 +147,11 @@ export function ImageComponent({
   // Hydration: download the remote image to a local file when the node is in
   // loading-from-URL state. Runs both for newly-inserted embeds and for nodes
   // that were saved mid-download (the partial state persisted to disk).
+  // On `.catch` we deliberately do NOT clear `loading`: an IPC rejection
+  // signals a transient failure (network down, rate-limit), so leaving the
+  // node in loading state lets the next mount retry. The spinner doesn't get
+  // stuck visually because `<img src={sourceUrl}>` still renders from the
+  // remote URL while waiting.
   useEffect(() => {
     if (!isLoading) return
     if (currentImageId) return
@@ -158,12 +163,8 @@ export function ImageComponent({
         const node = $getNodeByKey(nodeKey)
         if ($isImageNode(node)) node.setLocalImage(id, filePath)
       }, { tag: "history-merge" })
-    }).catch(() => {
-      if (cancelled) return
-      editor.update(() => {
-        const node = $getNodeByKey(nodeKey)
-        if ($isImageNode(node)) node.markDownloadFailed()
-      }, { tag: "history-merge" })
+    }).catch((err) => {
+      console.error("Failed to download image:", err)
     })
     return () => { cancelled = true }
   }, [isLoading, currentImageId, currentSourceUrl, nodeKey, editor])

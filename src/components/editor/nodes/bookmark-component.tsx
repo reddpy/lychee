@@ -22,6 +22,7 @@ interface BookmarkComponentProps {
   imageUrl: string
   faviconUrl: string
   autoResolve: boolean
+  hydrationAttempted: boolean
 }
 
 export function BookmarkComponent({
@@ -32,6 +33,7 @@ export function BookmarkComponent({
   imageUrl: initialImageUrl,
   faviconUrl: initialFaviconUrl,
   autoResolve,
+  hydrationAttempted: initialHydrationAttempted,
 }: BookmarkComponentProps) {
   const [editor] = useLexicalComposerContext()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -40,6 +42,7 @@ export function BookmarkComponent({
   const [description, setDescription] = useState(initialDescription)
   const [imageUrl, setImageUrl] = useState(initialImageUrl)
   const [faviconUrl, setFaviconUrl] = useState(initialFaviconUrl)
+  const [hydrationAttempted, setHydrationAttempted] = useState(initialHydrationAttempted)
   const [isHydrating, setIsHydrating] = useState(false)
 
   const { isSelected } = useDecoratorBlock({
@@ -49,8 +52,8 @@ export function BookmarkComponent({
   })
 
   // Mirror node state in component state so async updates re-render reliably.
-  const stateRef = useRef({ title, description, imageUrl, faviconUrl })
-  stateRef.current = { title, description, imageUrl, faviconUrl }
+  const stateRef = useRef({ title, description, imageUrl, faviconUrl, hydrationAttempted })
+  stateRef.current = { title, description, imageUrl, faviconUrl, hydrationAttempted }
 
   useEffect(() => {
     return editor.registerMutationListener(BookmarkNode, (mutations) => {
@@ -63,6 +66,7 @@ export function BookmarkComponent({
         if (node.__description !== s.description) setDescription(node.__description)
         if (node.__imageUrl !== s.imageUrl) setImageUrl(node.__imageUrl)
         if (node.__faviconUrl !== s.faviconUrl) setFaviconUrl(node.__faviconUrl)
+        if (node.__hydrationAttempted !== s.hydrationAttempted) setHydrationAttempted(node.__hydrationAttempted)
       })
     })
   }, [editor, nodeKey])
@@ -71,14 +75,21 @@ export function BookmarkComponent({
   // saved mid-fetch (partial state persisted to disk). When autoResolve is
   // true (bookmark inserted via Embed), ask the backend to discriminate —
   // if the URL is actually an image, swap this node out for an ImageNode.
-  // Re-evaluates whenever metadata fields change; once any is populated, the
-  // effect short-circuits.
+  // Marks the node as attempted on settle (success OR failure) so reopening a
+  // doc with metadata-less bookmarks doesn't refetch on every mount.
   useEffect(() => {
+    if (hydrationAttempted) return
     const needsHydration = !title && !description && !imageUrl && !faviconUrl
     if (!needsHydration) return
     let cancelled = false
     setIsHydrating(true)
 
+    // On `.catch` we deliberately do NOT mark hydration as attempted: IPC
+    // rejection signals a transient failure (network down, backend hiccup),
+    // not a definitive "no metadata exists." Leaving hydrationAttempted=false
+    // lets the next mount retry — recovering when the user comes back online.
+    // Definitive negative answers from the backend (youtube/unsupported below)
+    // DO mark attempted because they describe the resource, not the network.
     if (autoResolve) {
       window.lychee.invoke("url.resolve", { url }).then((result) => {
         if (cancelled) return
@@ -93,15 +104,20 @@ export function BookmarkComponent({
               loading: false,
             })
             node.replace(img)
-          } else if (result.type === "bookmark") {
+            return
+          }
+          if (result.type === "bookmark") {
             node.setMetadata({
               title: result.title,
               description: result.description,
               imageUrl: result.imageUrl,
               faviconUrl: result.faviconUrl,
             })
+            return
           }
-          // youtube / unsupported: leave as bare bookmark — URL still clickable.
+          // youtube / unsupported: leave as bare bookmark — the backend gave
+          // us a definitive answer about the resource type, so mark attempted.
+          node.markHydrationAttempted()
         }, { tag: "history-merge" })
       }).catch((err) => {
         console.error("Failed to resolve embed URL:", err)
@@ -130,7 +146,7 @@ export function BookmarkComponent({
     }
 
     return () => { cancelled = true }
-  }, [title, description, imageUrl, faviconUrl, autoResolve, nodeKey, url, editor])
+  }, [hydrationAttempted, title, description, imageUrl, faviconUrl, autoResolve, nodeKey, url, editor])
 
   const handleClick = useCallback(() => {
     window.lychee.invoke("shell.openExternal", { url })
