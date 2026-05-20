@@ -119,6 +119,10 @@ export type IpcContract = {
     req: { resolvedTheme: 'light' | 'dark' };
     res: { ok: true };
   };
+  'app.setOverlayDimmed': {
+    req: { dimmed: boolean };
+    res: { ok: true };
+  };
 };
 
 // Actions the hamburger menu (Win/Linux) dispatches to main — covers View

@@ -11,6 +11,11 @@ const DARK = { color: '#1B1B1F', symbolColor: '#B0B0B6', bg: '#1d1816' } as cons
 
 export const TITLEBAR_HEIGHT = 40;
 
+// WCO is 1px shorter than the title bar so the renderer's bottom border at
+// the title bar's bottom edge remains visible under the min/max/close gutter
+// (the OS paints the overlay's color opaquely across its full height).
+export const TITLEBAR_OVERLAY_HEIGHT = TITLEBAR_HEIGHT - 1;
+
 export function resolveTheme(): ResolvedTheme {
   try {
     const mode = getSetting('theme');
@@ -26,12 +31,37 @@ export function chromeFor(theme: ResolvedTheme) {
   return theme === 'dark' ? DARK : LIGHT;
 }
 
+// Renderer dim overlay is bg-black/50 (Radix dialog backdrop). The WCO is painted
+// by the OS above the web content and can't be dimmed by anything in the DOM, so
+// we mirror the dim by blending the chrome hex toward black by the same alpha.
+function blendTowardBlack(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = Math.round(((n >> 16) & 0xff) * (1 - alpha));
+  const g = Math.round(((n >> 8) & 0xff) * (1 - alpha));
+  const b = Math.round((n & 0xff) * (1 - alpha));
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// Tracks whether a renderer overlay (dialog backdrop) is currently visible.
+// Persists across theme changes so applyChromeToWindow stays in sync.
+let overlayDimmed = false;
+
+export function setOverlayDimmed(dimmed: boolean): void {
+  if (overlayDimmed === dimmed) return;
+  overlayDimmed = dimmed;
+  applyChromeToAllWindows();
+}
+
 export function applyChromeToWindow(win: BrowserWindow, theme: ResolvedTheme = resolveTheme()): void {
   if (process.platform === 'darwin') return;
   const c = chromeFor(theme);
   win.setBackgroundColor(c.bg);
+  const color = overlayDimmed ? blendTowardBlack(c.color, 0.5) : c.color;
+  const symbolColor = overlayDimmed ? blendTowardBlack(c.symbolColor, 0.5) : c.symbolColor;
   try {
-    win.setTitleBarOverlay({ color: c.color, symbolColor: c.symbolColor, height: TITLEBAR_HEIGHT });
+    win.setTitleBarOverlay({ color, symbolColor, height: TITLEBAR_OVERLAY_HEIGHT });
   } catch {
     // Only valid when window was created with titleBarStyle: 'hidden' + titleBarOverlay
   }

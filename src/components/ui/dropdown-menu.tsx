@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
+import { ChevronRight } from 'lucide-react';
 
 import { cn } from '../../lib/utils';
 
@@ -21,13 +22,14 @@ const DropdownMenuSubTrigger = React.forwardRef<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      'flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-[hsl(var(--accent))] data-[state=open]:bg-[hsl(var(--accent))]',
+      'flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none focus:bg-[hsl(var(--accent))] data-[state=open]:bg-[hsl(var(--accent))]',
       inset && 'pl-8',
       className,
     )}
     {...props}
   >
     {children}
+    <ChevronRight className="ml-auto h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
   </DropdownMenuPrimitive.SubTrigger>
 ));
 DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName;

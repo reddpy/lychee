@@ -19,7 +19,7 @@ import {
   applyChromeToAllWindows,
   chromeFor,
   resolveTheme,
-  TITLEBAR_HEIGHT,
+  TITLEBAR_OVERLAY_HEIGHT,
 } from './main/window-chrome';
 
 // CSP applies to packaged builds. Dev runs through webpack-dev-server which sets
@@ -241,7 +241,7 @@ const createWindow = (): BrowserWindow => {
     // own the rest of the title bar. Renderer hosts a hamburger menu in its place.
     titleBarOverlay: isMac
       ? undefined
-      : { color: chrome.color, symbolColor: chrome.symbolColor, height: TITLEBAR_HEIGHT },
+      : { color: chrome.color, symbolColor: chrome.symbolColor, height: TITLEBAR_OVERLAY_HEIGHT },
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,

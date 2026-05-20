@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import type { IpcContract, IpcChannel } from '../shared/ipc-types';
-import { applyChromeToAllWindows } from './window-chrome';
+import { applyChromeToAllWindows, setOverlayDimmed } from './window-chrome';
 import {
   createDocument,
   deleteDocument,
@@ -178,6 +178,11 @@ export function registerIpcHandlers() {
 
   handle('app.updateChrome', (payload) => {
     applyChromeToAllWindows(payload.resolvedTheme);
+    return { ok: true };
+  });
+
+  handle('app.setOverlayDimmed', (payload) => {
+    setOverlayDimmed(payload.dimmed);
     return { ok: true };
   });
 }
