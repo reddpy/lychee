@@ -218,11 +218,12 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
   reopenLastClosedTab() {
     set((state) => {
-      const stack = [...state.recentlyClosed];
-      while (stack.length > 0) {
-        const entry = stack.pop()!;
-        const exists = state.documents.some((d) => d.id === entry.docId);
-        if (!exists) continue;
+      // Walk the stack from the top, skipping stale entries. When we find a
+      // valid one, splice the consumed portion (entry + any stale entries above
+      // it) and reopen at the saved index. If everything's stale, drop the lot.
+      for (let i = state.recentlyClosed.length - 1; i >= 0; i--) {
+        const entry = state.recentlyClosed[i];
+        if (!state.documents.some((d) => d.id === entry.docId)) continue;
         const tabId = newTabId();
         const insertAt = Math.min(entry.index, state.openTabs.length);
         const nextTabs = [
@@ -230,9 +231,13 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
           { tabId, docId: entry.docId },
           ...state.openTabs.slice(insertAt),
         ];
-        return { openTabs: nextTabs, selectedId: tabId, recentlyClosed: stack };
+        return {
+          openTabs: nextTabs,
+          selectedId: tabId,
+          recentlyClosed: state.recentlyClosed.slice(0, i),
+        };
       }
-      return { recentlyClosed: stack };
+      return state.recentlyClosed.length > 0 ? { recentlyClosed: [] } : state;
     });
   },
 

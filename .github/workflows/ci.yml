@@ -103,6 +103,8 @@ jobs:
           - name: text-formats
             specs: e2e/text-formats.spec.ts
             workers: 1
+          - name: menu-shortcuts
+            specs: e2e/menu-shortcuts.spec.ts
           - name: misc
             specs: e2e/youtube-embed.spec.ts e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts e2e/content-security-policy.spec.ts
             workers: 1
