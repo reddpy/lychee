@@ -123,6 +123,10 @@ export type IpcInvoke = <C extends IpcChannel>(
 // ── Event-based IPC (main → renderer push) ─────────────────────────
 
 export type IpcEvents = {
+  'menu:new-note': void;
+  'menu:open-settings': void;
+  'menu:close-tab': void;
+  'menu:reopen-closed-tab': void;
 };
 
 export type IpcEventChannel = keyof IpcEvents;

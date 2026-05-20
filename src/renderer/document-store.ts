@@ -9,6 +9,8 @@ function newTabId(): string {
 /** A single open tab instance. tabId is unique per instance; docId is the document being shown. */
 export type TabEntry = { tabId: string; docId: string };
 
+type ClosedTab = { docId: string; index: number };
+
 type DocumentState = {
   documents: DocumentRow[];
   /** Trashed documents (deletedAt set), for trash bin UI. */
@@ -21,6 +23,8 @@ type DocumentState = {
   error: string | null;
   /** ID of the most recently created document (used to auto-expand parent when a nested note is added). */
   lastCreatedId: string | null;
+  /** LIFO stack of closed tabs for this session (most-recent last). Uncapped — session naturally bounds it. Stale entries skipped at reopen time. */
+  recentlyClosed: ClosedTab[];
 };
 
 type DocumentActions = {
@@ -36,7 +40,9 @@ type DocumentActions = {
   openOrCreateTab: (docId: string) => void;
   /** Navigate the current tab to docId (replaces content, remounts editor). If no tabs open, opens first tab. */
   navigateCurrentTab: (docId: string) => void;
-  closeTab: (tabId: string) => void;
+  closeTab: (tabId: string, opts?: { skipHistory?: boolean }) => void;
+  /** Pop the most recent user-closed tab and reopen at its original index. No-op if stack is empty or top entries are stale. */
+  reopenLastClosedTab: () => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   createDocument: (parentId?: string | null) => Promise<void>;
   /** Move document to trash (soft delete). Closes all tabs for this doc. */
@@ -63,6 +69,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   loading: false,
   error: null,
   lastCreatedId: null,
+  recentlyClosed: [],
 
   async loadDocuments(silent = false) {
     try {
@@ -181,10 +188,12 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     }
   },
 
-  closeTab(tabId) {
+  closeTab(tabId, opts) {
+    const skipHistory = opts?.skipHistory === true;
     set((state) => {
       const idx = state.openTabs.findIndex((t) => t.tabId === tabId);
       if (idx === -1) return state;
+      const closed = state.openTabs[idx];
       const nextTabs = state.openTabs.filter((_, i) => i !== idx);
       const wasSelected = state.selectedId === tabId;
       let nextSelected = state.selectedId;
@@ -198,10 +207,38 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
           nextSelected = nextTabs[0]?.tabId ?? null;
         }
       }
-      return { openTabs: nextTabs, selectedId: nextSelected };
+      const nextRecentlyClosed = skipHistory
+        ? state.recentlyClosed
+        : [...state.recentlyClosed, { docId: closed.docId, index: idx }];
+      return { openTabs: nextTabs, selectedId: nextSelected, recentlyClosed: nextRecentlyClosed };
     });
     // Clean up per-tab search state to prevent stale accumulation.
     useSearchHighlightStore.getState().removeTabState(tabId);
+  },
+
+  reopenLastClosedTab() {
+    set((state) => {
+      // Walk the stack from the top, skipping stale entries. When we find a
+      // valid one, splice the consumed portion (entry + any stale entries above
+      // it) and reopen at the saved index. If everything's stale, drop the lot.
+      for (let i = state.recentlyClosed.length - 1; i >= 0; i--) {
+        const entry = state.recentlyClosed[i];
+        if (!state.documents.some((d) => d.id === entry.docId)) continue;
+        const tabId = newTabId();
+        const insertAt = Math.min(entry.index, state.openTabs.length);
+        const nextTabs = [
+          ...state.openTabs.slice(0, insertAt),
+          { tabId, docId: entry.docId },
+          ...state.openTabs.slice(insertAt),
+        ];
+        return {
+          openTabs: nextTabs,
+          selectedId: tabId,
+          recentlyClosed: state.recentlyClosed.slice(0, i),
+        };
+      }
+      return state.recentlyClosed.length > 0 ? { recentlyClosed: [] } : state;
+    });
   },
 
   reorderTabs(fromIndex, toIndex) {
@@ -240,7 +277,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       set({ error: null });
       // Optimistically close all tabs showing this document before the async IPC call.
       const tabsToClose = get().openTabs.filter((t) => t.docId === id).map((t) => t.tabId);
-      for (const tabId of tabsToClose) get().closeTab(tabId);
+      for (const tabId of tabsToClose) get().closeTab(tabId, { skipHistory: true });
       const { trashedIds } = await window.lychee.invoke('documents.trash', { id });
       const trashedSet = new Set(trashedIds);
       set((state) => {
