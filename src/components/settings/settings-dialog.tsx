@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Check,
   Monitor,
@@ -165,6 +165,7 @@ export function SettingsDialog() {
   const isOpen = useSettingsStore((s) => s.isSettingsOpen);
   const closeSettings = useSettingsStore((s) => s.closeSettings);
   const [activeSection, setActiveSection] = useState<SectionKey>('general');
+  const firstNavRef = useRef<HTMLButtonElement>(null);
 
   return (
     <Dialog
@@ -179,6 +180,10 @@ export function SettingsDialog() {
       <DialogContent
         className="sm:max-w-[min(44rem,calc(100vw-10rem))] h-[min(34rem,calc(100vh-6rem))] gap-0 overflow-hidden rounded-2xl border border-[hsl(var(--border))]/60 bg-[hsl(var(--popover))]/95 p-0 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.4),0_10px_20px_-8px_rgba(0,0,0,0.15),inset_0_1px_0_0_rgba(255,255,255,0.06)] ring-1 ring-black/5 backdrop-blur-xl flex flex-col"
         showCloseButton={false}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          firstNavRef.current?.focus();
+        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/40 px-5 py-3">
@@ -201,11 +206,12 @@ export function SettingsDialog() {
         <div className="flex min-h-0 flex-1">
           {/* Left nav */}
           <nav className="flex w-44 shrink-0 flex-col gap-0.5 border-r border-[hsl(var(--border))] bg-[hsl(var(--background))]/30 px-2 py-3">
-            {sections.map(({ key, label, icon: Icon }) => {
+            {sections.map(({ key, label, icon: Icon }, index) => {
               const isActive = key === activeSection;
               return (
                 <button
                   key={key}
+                  ref={index === 0 ? firstNavRef : undefined}
                   type="button"
                   onClick={() => setActiveSection(key)}
                   className={cn(

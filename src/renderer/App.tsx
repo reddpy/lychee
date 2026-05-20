@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from "../components/ui/sidebar";
 import { useDocumentStore } from "../renderer/document-store";
+import { useSettingsStore } from "../renderer/settings-store";
 
 // Pulls inset-centered content left by half the sidebar width to land at the
 // viewport center, clamped so the ~320px horizontal logo never crosses the
@@ -189,7 +190,32 @@ function EditorArea() {
   );
 }
 
+function useMenuEventSubscriptions() {
+  React.useEffect(() => {
+    const offNewNote = window.lychee.on('menu:new-note', () => {
+      void useDocumentStore.getState().createDocument(null);
+    });
+    const offOpenSettings = window.lychee.on('menu:open-settings', () => {
+      useSettingsStore.getState().openSettings();
+    });
+    const offCloseTab = window.lychee.on('menu:close-tab', () => {
+      const { selectedId, closeTab } = useDocumentStore.getState();
+      if (selectedId) closeTab(selectedId);
+    });
+    const offReopenClosedTab = window.lychee.on('menu:reopen-closed-tab', () => {
+      useDocumentStore.getState().reopenLastClosedTab();
+    });
+    return () => {
+      offNewNote();
+      offOpenSettings();
+      offCloseTab();
+      offReopenClosedTab();
+    };
+  }, []);
+}
+
 export function App() {
+  useMenuEventSubscriptions();
   return (
     <SidebarProvider defaultOpen>
       <div className="flex h-full w-full flex-col">
