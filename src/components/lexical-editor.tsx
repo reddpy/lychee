@@ -224,8 +224,8 @@ function SearchBar({ tabId }: { tabId: string }) {
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all duration-200 cursor-pointer",
           isOpen
-            ? "bg-[#C14B55]/15 text-[#C14B55] border-[#C14B55]/30"
-            : "border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 hover:bg-[#C14B55]/15 hover:text-[#C14B55] hover:border-[#C14B55]/30",
+            ? "bg-brand/15 text-brand border-brand/30"
+            : "border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 hover:bg-brand/15 hover:text-brand hover:border-brand/30",
         )}
       >
         <Search className="h-4 w-4" />

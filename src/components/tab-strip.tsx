@@ -233,7 +233,7 @@ function SortableTab({
         className={cn(
           "flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm opacity-0 group-hover:opacity-50 hover:!opacity-100 focus-visible:opacity-100 focus-visible:ring-1",
           isActive
-            ? "hover:bg-[#C14B55]/10 hover:text-[#C14B55] focus-visible:ring-[hsl(var(--ring))]"
+            ? "hover:bg-brand/10 hover:text-brand focus-visible:ring-[hsl(var(--ring))]"
             : "hover:bg-foreground/5 hover:text-[hsl(var(--foreground))] focus-visible:ring-foreground/20",
         )}
       >
