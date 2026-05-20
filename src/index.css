@@ -23,10 +23,14 @@
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-destructive: hsl(var(--destructive));
   --color-ring: hsl(var(--ring));
+  --color-brand: hsl(var(--brand));
 }
 
 /* shadcn-style design tokens — warm palette with lychee brand red */
 :root {
+  /* Brand red (#C14B55). Constant across light/dark; opacity variants via `bg-brand/<n>` etc. */
+  --brand: 355 49% 53%;
+
   --background: 30 25% 99.5%;
   --foreground: 20 15% 8%;
 
@@ -69,6 +73,8 @@
 }
 
 .dark {
+  --brand: 355 49% 53%;
+
   --background: 240 6% 10%;
   --foreground: 0 0% 92%;
 
@@ -206,7 +212,7 @@ body {
 
 /* In-editor find highlights (Custom Highlight API). */
 .ContentEditable__root::highlight(lychee-find-all) {
-  background: rgba(193, 75, 85, 0.14);
+  background: hsl(var(--brand) / 0.14);
 }
 
 .ContentEditable__root::highlight(lychee-find-active) {
@@ -216,7 +222,7 @@ body {
 
 /* Transient jump highlight when opening from search palette preview. */
 .ContentEditable__root::highlight(lychee-find-transient-all) {
-  background: rgba(193, 75, 85, 0.16);
+  background: hsl(var(--brand) / 0.16);
 }
 
 .ContentEditable__root::highlight(lychee-find-transient-active) {

@@ -132,14 +132,14 @@ export function SectionIndicatorPlugin({ documentId }: { documentId: string }): 
         aria-expanded={isOpen}
         className={`flex h-8 w-8 items-center justify-center cursor-pointer rounded-full border transition-all duration-200 group select-none ${
           isOpen
-            ? "border-[#C14B55]/30 bg-[#C14B55]/15 text-[#C14B55]"
-            : "border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 hover:bg-[#C14B55]/15 hover:text-[#C14B55] hover:border-[#C14B55]/30"
+            ? "border-brand/30 bg-brand/15 text-brand"
+            : "border-transparent bg-transparent text-[hsl(var(--muted-foreground))]/65 hover:bg-brand/15 hover:text-brand hover:border-brand/30"
         }`}
       >
         <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-          <rect width="14" height="2" rx="1" className={`${isOpen ? "fill-[#C14B55]" : "fill-muted-foreground/60 group-hover:fill-[#C14B55]"} transition-colors duration-200`} />
-          <rect y="4" width="9" height="2" rx="1" className={`${isOpen ? "fill-[#C14B55]" : "fill-muted-foreground/60 group-hover:fill-[#C14B55]"} transition-colors duration-200`} />
-          <rect y="8" width="12" height="2" rx="1" className={`${isOpen ? "fill-[#C14B55]" : "fill-muted-foreground/60 group-hover:fill-[#C14B55]"} transition-colors duration-200`} />
+          <rect width="14" height="2" rx="1" className={`${isOpen ? "fill-brand" : "fill-muted-foreground/60 group-hover:fill-brand"} transition-colors duration-200`} />
+          <rect y="4" width="9" height="2" rx="1" className={`${isOpen ? "fill-brand" : "fill-muted-foreground/60 group-hover:fill-brand"} transition-colors duration-200`} />
+          <rect y="8" width="12" height="2" rx="1" className={`${isOpen ? "fill-brand" : "fill-muted-foreground/60 group-hover:fill-brand"} transition-colors duration-200`} />
         </svg>
       </button>
       {isOpen && (

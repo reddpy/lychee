@@ -85,7 +85,7 @@ export function DraggableBlockPlugin({
         <div
           ref={targetLineRef}
           className="pointer-events-none absolute top-0 left-0 h-1 rounded-full bg-primary opacity-0 will-change-transform"
-          style={{ boxShadow: "0 0 8px hsl(355 49% 53% / 0.5)" }}
+          style={{ boxShadow: "0 0 8px hsl(var(--brand) / 0.5)" }}
         />
       }
       isOnMenu={isOnMenu}

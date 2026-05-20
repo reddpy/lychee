@@ -90,7 +90,7 @@ export function MediaPlaybackPill() {
       <button
         type="button"
         onClick={handleToggle}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#C14B55] text-white hover:bg-[#a83f48] transition-colors"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-white hover:bg-[#a83f48] transition-colors"
         aria-label={isPlaying ? "Pause" : "Play"}
       >
         {isPlaying ? (

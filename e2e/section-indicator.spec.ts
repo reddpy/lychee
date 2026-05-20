@@ -37,7 +37,7 @@ test.describe('Section Indicator', () => {
 
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(trigger).toHaveClass(/bg-\[#C14B55\]\/15/);
+    await expect(trigger).toHaveClass(/bg-brand\/15/);
     await expect(window.getByRole('button', { name: 'First', exact: true })).toBeVisible();
     await expect(window.getByRole('button', { name: 'Second', exact: true })).toBeVisible();
 

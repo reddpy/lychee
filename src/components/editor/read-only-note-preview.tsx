@@ -90,12 +90,12 @@ export const ReadOnlyNotePreview = React.forwardRef<
   const applyActiveMatch = React.useCallback((index: number, shouldScroll = true) => {
     const elements = matchElementsRef.current;
     elements.forEach((el) => {
-      el.classList.remove('!bg-[#C14B55]', '!text-white', 'ring-1', 'ring-[#C14B55]/50');
+      el.classList.remove('!bg-brand', '!text-white', 'ring-1', 'ring-brand/50');
     });
     if (elements.length === 0) return;
     const normalized = clampIndex(index, elements.length);
     const active = elements[normalized];
-    active.classList.add('!bg-[#C14B55]', '!text-white', 'ring-1', 'ring-[#C14B55]/50');
+    active.classList.add('!bg-brand', '!text-white', 'ring-1', 'ring-brand/50');
     if (shouldScroll) {
       active.scrollIntoView({ block: 'center', inline: 'nearest' });
     }
@@ -124,7 +124,7 @@ export const ReadOnlyNotePreview = React.forwardRef<
   React.useEffect(() => {
     if (!query?.trim()) {
       matchElementsRef.current.forEach((el) => {
-        el.classList.remove('!bg-[#C14B55]', '!text-white', 'ring-1', 'ring-[#C14B55]/50');
+        el.classList.remove('!bg-brand', '!text-white', 'ring-1', 'ring-brand/50');
       });
       matchElementsRef.current = [];
       setMatchCount(0);
@@ -174,7 +174,7 @@ export const ReadOnlyNotePreview = React.forwardRef<
   );
 
   return (
-    <div className="relative [&_mark]:rounded-sm [&_mark]:bg-[#C14B55]/18 [&_mark]:text-[hsl(var(--foreground))]">
+    <div className="relative [&_mark]:rounded-sm [&_mark]:bg-brand/18 [&_mark]:text-[hsl(var(--foreground))]">
       {isPositioningPreview ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-[hsl(var(--background))]/75">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-[hsl(var(--border))] border-t-[hsl(var(--muted-foreground))]" />
