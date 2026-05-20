@@ -894,9 +894,9 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
   // ────────────────────────────────────────────────────────
 
   it('calling registerIpcHandlers twice overwrites handlers (no duplicates)', () => {
-    expect(handlers.size).toBe(20);
+    expect(handlers.size).toBe(22);
     registerIpcHandlers();
-    expect(handlers.size).toBe(20);
+    expect(handlers.size).toBe(22);
   });
 
   // ────────────────────────────────────────────────────────

@@ -14,8 +14,13 @@ import {
 import { closeDatabase, initDatabase } from './main/db';
 import { resolveImagePath } from './main/image-protocol';
 import { registerIpcHandlers } from './main/ipc';
-import { getSetting } from './main/repos/settings';
 import { isAllowedExternal } from './main/url-policy';
+import {
+  applyChromeToAllWindows,
+  chromeFor,
+  resolveTheme,
+  TITLEBAR_HEIGHT,
+} from './main/window-chrome';
 
 // CSP applies to packaged builds. Dev runs through webpack-dev-server which sets
 // its own (looser) CSP via WebpackPlugin.devContentSecurityPolicy — HMR needs
@@ -217,21 +222,11 @@ function buildAppMenu(): Menu {
   return Menu.buildFromTemplate(template);
 }
 
-function resolveBackgroundColor(): string {
-  try {
-    const mode = getSetting('theme');
-    const dark =
-      mode === 'dark' ||
-      (mode === 'system' && nativeTheme.shouldUseDarkColors);
-    return dark ? '#1d1816' : '#fefefd';
-  } catch {
-    // DB not initialized or table missing (e.g. hot-reload before migration)
-    return '#fefefd';
-  }
-}
-
 const createWindow = (): BrowserWindow => {
-  // Create the browser window.
+  const isMac = process.platform === 'darwin';
+  const theme = resolveTheme();
+  const chrome = chromeFor(theme);
+
   const mainWindow = new BrowserWindow({
     height: 600,
     width: 800,
@@ -239,10 +234,14 @@ const createWindow = (): BrowserWindow => {
     minWidth: 680,
     icon: windowIconPath,
     show: false,
-    backgroundColor: resolveBackgroundColor(),
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition:
-      process.platform === 'darwin' ? { x: 12, y: 14 } : undefined,
+    backgroundColor: chrome.bg,
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    trafficLightPosition: isMac ? { x: 12, y: 14 } : undefined,
+    // Win/Linux: paint native min/max/close as an overlay on the right while we
+    // own the rest of the title bar. Renderer hosts a hamburger menu in its place.
+    titleBarOverlay: isMac
+      ? undefined
+      : { color: chrome.color, symbolColor: chrome.symbolColor, height: TITLEBAR_HEIGHT },
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
@@ -250,6 +249,14 @@ const createWindow = (): BrowserWindow => {
       sandbox: true,
     },
   });
+
+  if (!isMac) {
+    // Keep Menu.setApplicationMenu registered so accelerators (Ctrl+N etc.) still
+    // fire; just hide the menu strip — hamburger replaces it. Alt-toggle is left
+    // disabled to avoid the strip flashing in over our custom title bar.
+    mainWindow.setMenuBarVisibility(false);
+    mainWindow.setAutoHideMenuBar(true);
+  }
 
   // Show window once the renderer has painted — prevents white flash
   mainWindow.once('ready-to-show', () => {
@@ -296,6 +303,11 @@ app.whenReady().then(() => {
   });
 
   Menu.setApplicationMenu(buildAppMenu());
+
+  // Repaint title bar overlay (Win/Linux) when OS theme flips while mode='system'.
+  nativeTheme.on('updated', () => {
+    applyChromeToAllWindows();
+  });
 
   installNavigationGuards();
   if (app.isPackaged) {

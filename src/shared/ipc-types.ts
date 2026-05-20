@@ -111,7 +111,31 @@ export type IpcContract = {
     req: Record<string, never>;
     res: { settings: Record<string, string> };
   };
+  'window.action': {
+    req: { action: WindowAction };
+    res: { ok: true };
+  };
+  'app.updateChrome': {
+    req: { resolvedTheme: 'light' | 'dark' };
+    res: { ok: true };
+  };
 };
+
+// Actions the hamburger menu (Win/Linux) dispatches to main — covers View
+// (reload / zoom / devtools / fullscreen), Window (minimize / close), and
+// File > Quit. Edit roles are intentionally omitted; native accelerators and
+// the in-editor context menu handle them, matching Chrome/VS Code.
+export type WindowAction =
+  | 'minimize'
+  | 'close'
+  | 'toggleFullscreen'
+  | 'reload'
+  | 'forceReload'
+  | 'toggleDevTools'
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'resetZoom'
+  | 'quit';
 
 export type IpcChannel = keyof IpcContract;
 
