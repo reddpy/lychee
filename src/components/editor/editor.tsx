@@ -1,12 +1,38 @@
 "use client"
 
+import { useEffect } from "react"
 import { InitialConfigType, LexicalComposer } from "@lexical/react/LexicalComposer"
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin"
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import { EditorState, SerializedEditorState } from "lexical"
 
 import { editorTheme } from "@/components/editor/themes/editor-theme"
 import { nodes } from "@/components/editor/nodes"
 import { Plugins } from "@/components/editor/plugins"
+
+/** Custom save tag for async hydration mutations. Paired with `history-merge`
+ *  on the same editor.update call so undo bundles the conversion + the
+ *  metadata fill into a single step, while still triggering a save via the
+ *  HydrationSaveListener below. OnChangePlugin's default
+ *  `ignoreHistoryMergeTagChange: true` would otherwise drop those updates. */
+export const LYCHEE_SAVE_TAG = "lychee-save"
+
+/** Fires `onChange` for editor updates tagged with `LYCHEE_SAVE_TAG`. Sits
+ *  alongside OnChangePlugin so hydration writes reach saveContent without
+ *  flipping OnChangePlugin's global history-merge filter (which other
+ *  plugins like TabSelectionPlugin depend on to NOT trigger saves on their
+ *  own history-merge updates). */
+function HydrationSaveListener({ onChange }: { onChange: (state: EditorState) => void }): null {
+  const [editor] = useLexicalComposerContext()
+  useEffect(() => {
+    return editor.registerUpdateListener(({ editorState, tags }) => {
+      if (tags.has(LYCHEE_SAVE_TAG)) {
+        onChange(editorState)
+      }
+    })
+  }, [editor, onChange])
+  return null
+}
 
 const editorConfig: InitialConfigType = {
   namespace: "Editor",
@@ -186,12 +212,18 @@ export function Editor({
 
         <OnChangePlugin
           ignoreSelectionChange={true}
-          // Don't ignore history-merge updates: async hydration (BookmarkNode
-          // setMetadata, ImageNode setLocalImage) uses `tag: "history-merge"`
-          // so undo collapses the embed and its metadata into one step.
-          // Without this flag those mutations would be silently dropped from
-          // the save path and the hydrated state would never reach the DB.
-          ignoreHistoryMergeTagChange={false}
+          onChange={(editorState: EditorState) => {
+            onEditorStateChange?.(editorState)
+          }}
+        />
+        {/* Hydration-save listener: fires onChange for editor.update calls
+            tagged with 'lychee-save' (paired with 'history-merge' on async
+            hydration mutations). This routes our hydration saves to the DB
+            without disabling OnChangePlugin's default history-merge filter —
+            which other plugins (TabSelectionPlugin, table resizer, image
+            paste) rely on to NOT trigger spurious saves on their own
+            history-merge updates. */}
+        <HydrationSaveListener
           onChange={(editorState: EditorState) => {
             onEditorStateChange?.(editorState)
           }}

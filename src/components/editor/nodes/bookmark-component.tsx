@@ -6,6 +6,7 @@ import {
 } from "lexical"
 import { $isBookmarkNode, BookmarkNode } from "./bookmark-node"
 import { $createImageNode } from "./image-node"
+import { LYCHEE_SAVE_TAG } from "@/components/editor/editor"
 import { cn } from "@/lib/utils"
 import { Globe, Loader2 } from "lucide-react"
 import { useDecoratorBlock } from "@/components/editor/hooks/use-decorator-block"
@@ -118,7 +119,7 @@ export function BookmarkComponent({
           // youtube / unsupported: leave as bare bookmark — the backend gave
           // us a definitive answer about the resource type, so mark attempted.
           node.markHydrationAttempted()
-        }, { tag: "history-merge" })
+        }, { tag: ["history-merge", LYCHEE_SAVE_TAG] })
       }).catch((err) => {
         console.error("Failed to resolve embed URL:", err)
       }).finally(() => {
@@ -137,7 +138,7 @@ export function BookmarkComponent({
               faviconUrl: meta.faviconUrl,
             })
           }
-        }, { tag: "history-merge" })
+        }, { tag: ["history-merge", LYCHEE_SAVE_TAG] })
       }).catch((err) => {
         console.error("Failed to fetch bookmark metadata:", err)
       }).finally(() => {

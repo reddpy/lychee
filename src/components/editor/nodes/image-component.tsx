@@ -6,6 +6,7 @@ import {
   type NodeKey,
 } from "lexical"
 import { $isImageNode, ImageNode, type ImageAlignment } from "./image-node"
+import { LYCHEE_SAVE_TAG } from "@/components/editor/editor"
 import { cn } from "@/lib/utils"
 import { Loader2, AlignLeft, AlignCenter, AlignRight, ImageOff, ExternalLink } from "lucide-react"
 import { useDecoratorBlock } from "@/components/editor/hooks/use-decorator-block"
@@ -162,7 +163,7 @@ export function ImageComponent({
       editor.update(() => {
         const node = $getNodeByKey(nodeKey)
         if ($isImageNode(node)) node.setLocalImage(id, filePath)
-      }, { tag: "history-merge" })
+      }, { tag: ["history-merge", LYCHEE_SAVE_TAG] })
     }).catch((err) => {
       console.error("Failed to download image:", err)
     })
