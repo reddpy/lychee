@@ -367,12 +367,20 @@ export function LexicalEditor({
   //
   // Save: a capture-phase `scroll` listener on `document` records el.scrollTop
   // into scrollPositions[tabId] whenever scroll events target our <main>.
-  // We use document-capture instead of an element-level listener because
-  // element-bound scroll listeners on this specific <main> were observed not
-  // to fire under some conditions (post close+reopen mounts), even when the
-  // element clearly scrolled — capture-phase dispatch from document is more
-  // reliable. Saving continuously avoids reading from a hidden <main> in the
-  // useLayoutEffect: Chromium 41+ reports scrollTop=0 for display:none.
+  // We use document-capture instead of `el.addEventListener("scroll", ...)`
+  // because an element-bound bubble listener was observed missing fires in one
+  // specific session (Mac dev mode, post close+reopen) even though the element
+  // clearly scrolled and a sibling document-capture listener on the same target
+  // fired. A subsequent diagnostic build with both listeners attached could not
+  // reproduce the miss — element-fires matched capture-fires 1:1 across many
+  // scrolls and multiple close+reopen cycles, with stable DOM identity. The
+  // original miss was likely a Heisenbug (HMR state / Chromium dispatch glitch)
+  // that we cannot reliably re-trigger. Capture-phase dispatch from document is
+  // robust regardless and matches the convention used by other scroll listeners
+  // in this codebase (floating-toolbar, link-click, table-action-menu all use
+  // window/document capture). Saving continuously also avoids reading from a
+  // hidden <main> in the useLayoutEffect: Chromium 41+ reports scrollTop=0 for
+  // display:none.
   //
   // Restore: on activeTabId change, set scrollTop synchronously, then re-apply
   // across two animation frames to defeat TabSelectionPlugin's deferred

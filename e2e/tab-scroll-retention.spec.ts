@@ -538,6 +538,88 @@ test.describe('Tab Scroll Retention — Reopen Closed Tab', () => {
     expect(Math.abs((await getScrollTop(window)) - bScroll)).toBeLessThan(100);
   });
 
+  test('save listener fires after EVERY close+reopen cycle (duplicate-tab proof, 5x)', async ({
+    window,
+  }) => {
+    // Stress version of the save-listener proof: 5 close+reopen cycles, each
+    // proving the listener works via the duplicate-tab path (which can't be
+    // saved by Chromium's display:none preservation). If the bubble-listener
+    // mystery resurfaces in some specific cycle, this should catch it.
+    test.setTimeout(90_000);
+
+    const { tabId: initialA, docId: docA } = await createAndOpenNote(window, 'Cyc Proof');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Cyc Proof B');
+
+    let currentA = initialA;
+    for (let cycle = 0; cycle < 5; cycle++) {
+      // Close+reopen.
+      await selectTab(window, currentA);
+      await selectTab(window, tabB);
+      await closeTab(window, currentA);
+      const reopened = await reopenLastClosed(window);
+      expect(reopened, `cycle ${cycle}: reopen failed`).toBeTruthy();
+      currentA = reopened!;
+
+      // Scroll the reopened tab to a cycle-specific value.
+      const target = 300 + cycle * 80; // 300, 380, 460, 540, 620
+      await selectTab(window, currentA);
+      await setActiveScrollTop(window, target);
+      const scrolled = await getScrollTop(window);
+      expect(scrolled, `cycle ${cycle}: did not scroll`).toBeGreaterThan(target - 100);
+
+      // Duplicate-tab proof: open dup, select it, switch back to original.
+      // If save listener didn't fire, the switch-back would reset to 0.
+      const dup = await openDuplicateTab(window, docA);
+      await selectTab(window, dup);
+      await selectTab(window, currentA);
+      const restored = await getScrollTop(window);
+      expect(
+        Math.abs(restored - scrolled),
+        `cycle ${cycle}: scroll not preserved (expected ~${scrolled}, got ${restored})`,
+      ).toBeLessThan(100);
+
+      // Cleanup: close the duplicate so the next cycle starts clean.
+      await closeTab(window, dup);
+    }
+  });
+
+  test('save listener fires after close+reopen (duplicate-tab proof)', async ({ window }) => {
+    // Most of the close+reopen tests pass even when the save listener is
+    // broken, because Chromium's display:none preservation does the right
+    // thing across hide/show round-trips. The duplicate-tab path doesn't toggle
+    // display:none (one <main>, just activeTabId switching), so preservation
+    // depends on the save listener actually firing and the restore reading
+    // the saved value. This test proves the listener works after close+reopen.
+    const { tabId: tabA1, docId: docA } = await createAndOpenNote(window, 'Save Proof');
+    const { tabId: tabB } = await createAndOpenNote(window, 'Save Proof B');
+
+    // Close+reopen so we're operating on a fresh LexicalEditor instance.
+    await selectTab(window, tabA1);
+    await selectTab(window, tabB);
+    await closeTab(window, tabA1);
+    const tabA2 = await reopenLastClosed(window);
+    expect(tabA2).toBeTruthy();
+
+    // Scroll the reopened tab.
+    await selectTab(window, tabA2!);
+    await setActiveScrollTop(window, 650);
+    const reopenedScroll = await getScrollTop(window);
+    expect(reopenedScroll).toBeGreaterThan(400);
+
+    // Open a duplicate. Switching to it shares the same <main>; the only way
+    // to "preserve" the reopened tab's scroll is via the save/restore path.
+    const dup = await openDuplicateTab(window, docA);
+    await selectTab(window, dup);
+    expect(await getScrollTop(window)).toBeLessThan(100); // duplicate starts at 0
+
+    // Switch back to the reopened tab. If the save listener fired on the
+    // earlier scroll, scrollPositions[tabA2] holds reopenedScroll and we
+    // restore to it. If it didn't fire, the restore defaults to 0 (via the
+    // prev != null branch) and this assertion fails.
+    await selectTab(window, tabA2!);
+    expect(Math.abs((await getScrollTop(window)) - reopenedScroll)).toBeLessThan(100);
+  });
+
   test('reopen restores scroll to ZERO correctly when the user scrolled all the way back to top', async ({
     window,
   }) => {
