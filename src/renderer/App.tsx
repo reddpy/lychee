@@ -89,6 +89,13 @@ function TopBar() {
 
   const overlayInset = useWindowControlsOverlayInset();
 
+  // Hide the WCO divider when the rightmost tab is active so the divider
+  // doesn't visually crash into the active tab's edge — mirrors how
+  // inactive-tab dividers hide next to the active tab.
+  const lastTabActive =
+    openTabs.length > 0 &&
+    selectedId === openTabs[openTabs.length - 1].tabId;
+
   return (
     <div className="titlebar-drag relative flex h-10 w-full shrink-0 bg-[hsl(var(--sidebar-background))]">
       {/* Left section — matches sidebar width when open, shrinks when collapsed */}
@@ -147,9 +154,19 @@ function TopBar() {
       <div className="relative flex min-w-0 flex-1 items-stretch bg-[hsl(var(--sidebar-background))]">
         {hasTabs ? <TabStrip /> : null}
       </div>
-      {/* Reserved gutter for OS-painted window controls overlay (Win/Linux). */}
+      {/* Reserved gutter for OS-painted window controls overlay (Win/Linux).
+          A short, vertically-centered divider sits just left of the gutter so
+          tabs never visually touch the min/max/close buttons — matches the
+          inactive-tab divider style so it doesn't crash into the content area. */}
       {overlayInset > 0 ? (
-        <div className="shrink-0" style={{ width: overlayInset }} aria-hidden />
+        <>
+          <div className="shrink-0 relative w-px" aria-hidden>
+            {!lastTabActive && (
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-px bg-[hsl(var(--border))]" />
+            )}
+          </div>
+          <div className="shrink-0" style={{ width: overlayInset }} aria-hidden />
+        </>
       ) : null}
       {/* Bottom border — last child so it paints above inactive tabs; active tab z-10 breaks through */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-foreground/8" />
