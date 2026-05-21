@@ -21,10 +21,33 @@ const devServerPort = Number.parseInt(
   10,
 );
 
+const entitlements = path.resolve(__dirname, "build", "entitlements.mac.plist");
+
+// Sign + notarize only when an identity is present (skip for local dev/E2E builds).
+const shouldSignMac = !isE2E && !!process.env.APPLE_TEAM_ID;
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     icon: path.resolve(__dirname, "build", "icon"),
+    ...(shouldSignMac
+      ? {
+          osxSign: {
+            optionsForFile: () => ({
+              entitlements,
+              hardenedRuntime: true,
+            }),
+          },
+          osxNotarize:
+            process.env.APPLE_ID && process.env.APPLE_APP_PASSWORD
+              ? {
+                  appleId: process.env.APPLE_ID,
+                  appleIdPassword: process.env.APPLE_APP_PASSWORD,
+                  teamId: process.env.APPLE_TEAM_ID!,
+                }
+              : { keychainProfile: "lychee-notarize" },
+        }
+      : {}),
   },
   rebuildConfig: {},
   makers: [
