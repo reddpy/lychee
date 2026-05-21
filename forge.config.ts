@@ -38,13 +38,14 @@ const config: ForgeConfig = {
               hardenedRuntime: true,
             }),
           },
-          osxNotarize: process.env.APPLE_ID
-            ? {
-                appleId: process.env.APPLE_ID!,
-                appleIdPassword: process.env.APPLE_ID_PASSWORD!,
-                teamId: process.env.APPLE_TEAM_ID!,
-              }
-            : { keychainProfile: "lychee-notarize" },
+          osxNotarize:
+            process.env.APPLE_ID && process.env.APPLE_APP_PASSWORD
+              ? {
+                  appleId: process.env.APPLE_ID,
+                  appleIdPassword: process.env.APPLE_APP_PASSWORD,
+                  teamId: process.env.APPLE_TEAM_ID!,
+                }
+              : { keychainProfile: "lychee-notarize" },
         }
       : {}),
   },
