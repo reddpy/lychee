@@ -46,7 +46,11 @@ const on: IpcOn = (channel, callback) => {
   };
 };
 
-const exposed: Record<string, unknown> = { invoke, on };
+const exposed: Record<string, unknown> = {
+  invoke,
+  on,
+  platform: process.platform,
+};
 
 if (isE2E) {
   exposed.__mocks = {
@@ -69,6 +73,7 @@ declare global {
     lychee: {
       invoke: IpcInvoke;
       on: IpcOn;
+      platform: NodeJS.Platform;
       __mocks?: {
         set: (
           channel: string,

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { AppSidebar } from "../components/app-sidebar";
 import { CollapsedSidebarWidget } from "../components/collapsed-sidebar-widget";
+import { HamburgerMenu } from "../components/hamburger-menu";
 import { LexicalEditor } from "../components/lexical-editor";
 import { MediaPlaybackPill } from "../components/media-playback-pill";
 import { SettingsDialog } from "../components/settings/settings-dialog";
@@ -22,6 +23,44 @@ import { useSettingsStore } from "../renderer/settings-store";
 // sidebar boundary as the window narrows.
 const EMPTY_STATE_OFFSET_TRANSFORM =
   "translateX(max(calc((100vw - var(--sidebar-width) - 320px) / -2), calc(var(--sidebar-width) / -2)))";
+
+const IS_MAC = window.lychee.platform === "darwin";
+
+// Width to reserve at the right edge of the title bar so tabs/controls don't
+// slide under the OS-painted min/max/close overlay (Win/Linux). Returns 0 on
+// macOS or when the overlay isn't visible (fullscreen, unsupported platforms).
+type WindowControlsOverlay = {
+  visible: boolean;
+  getTitlebarAreaRect: () => DOMRect;
+  addEventListener: (type: "geometrychange", listener: () => void) => void;
+  removeEventListener: (type: "geometrychange", listener: () => void) => void;
+};
+
+function useWindowControlsOverlayInset(): number {
+  const [inset, setInset] = React.useState(0);
+  React.useEffect(() => {
+    const wco = (navigator as Navigator & {
+      windowControlsOverlay?: WindowControlsOverlay;
+    }).windowControlsOverlay;
+    if (!wco) return;
+    const update = () => {
+      if (!wco.visible) {
+        setInset(0);
+        return;
+      }
+      const rect = wco.getTitlebarAreaRect();
+      setInset(Math.max(0, window.innerWidth - rect.right));
+    };
+    update();
+    wco.addEventListener("geometrychange", update);
+    window.addEventListener("resize", update);
+    return () => {
+      wco.removeEventListener("geometrychange", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  return inset;
+}
 
 /** Unified top bar: left section aligns with sidebar, right section holds tabs. */
 function TopBar() {
@@ -48,14 +87,30 @@ function TopBar() {
     if (nextTab) selectDocument(nextTab.tabId);
   }, [canGoRight, activeIndex, openTabs, selectDocument]);
 
+  const overlayInset = useWindowControlsOverlayInset();
+
+  // Hide the WCO divider when the rightmost tab is active so the divider
+  // doesn't visually crash into the active tab's edge — mirrors how
+  // inactive-tab dividers hide next to the active tab.
+  const lastTabActive =
+    openTabs.length > 0 &&
+    selectedId === openTabs[openTabs.length - 1].tabId;
+
   return (
     <div className="titlebar-drag relative flex h-10 w-full shrink-0 bg-[hsl(var(--sidebar-background))]">
       {/* Left section — matches sidebar width when open, shrinks when collapsed */}
       <div
         className={`relative z-20 flex shrink-0 items-center overflow-hidden border-r border-r-[hsl(var(--border))] transition-[width] duration-200 ease-out ${sidebarOpen ? "w-[var(--sidebar-width)]" : "w-[184px]"}`}
       >
-        {/* Traffic lights space — always reserved */}
-        <div className="w-19 shrink-0" />
+        {IS_MAC ? (
+          /* Traffic lights space — Mac only */
+          <div className="w-19 shrink-0" />
+        ) : (
+          /* Hamburger menu replaces the native menu bar on Win/Linux */
+          <div className="flex shrink-0 items-center px-2 translate-y-0.5">
+            <HamburgerMenu />
+          </div>
+        )}
         {/* Sidebar toggle */}
         <div className="titlebar-nodrag flex shrink-0 items-center px-1 translate-y-0.5">
           <SidebarTrigger className="h-7 w-7 rounded-md border border-transparent text-[hsl(var(--muted-foreground))] hover:bg-brand/15 hover:border-brand/30 hover:text-brand transition-all" />
@@ -99,6 +154,20 @@ function TopBar() {
       <div className="relative flex min-w-0 flex-1 items-stretch bg-[hsl(var(--sidebar-background))]">
         {hasTabs ? <TabStrip /> : null}
       </div>
+      {/* Reserved gutter for OS-painted window controls overlay (Win/Linux).
+          A short, vertically-centered divider sits just left of the gutter so
+          tabs never visually touch the min/max/close buttons — matches the
+          inactive-tab divider style so it doesn't crash into the content area. */}
+      {overlayInset > 0 ? (
+        <>
+          <div className="shrink-0 relative w-px" aria-hidden>
+            {!lastTabActive && (
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-px bg-[hsl(var(--border))]" />
+            )}
+          </div>
+          <div className="shrink-0" style={{ width: overlayInset }} aria-hidden />
+        </>
+      ) : null}
       {/* Bottom border — last child so it paints above inactive tabs; active tab z-10 breaks through */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-foreground/8" />
     </div>

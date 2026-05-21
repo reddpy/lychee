@@ -1,5 +1,6 @@
-import { ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import type { IpcContract, IpcChannel } from '../shared/ipc-types';
+import { applyChromeToAllWindows, setOverlayDimmed } from './window-chrome';
 import {
   createDocument,
   deleteDocument,
@@ -137,5 +138,52 @@ export function registerIpcHandlers() {
   handle('settings.getAll', () => ({
     settings: getAllSettings(),
   }));
+
+  handle('window.action', (payload) => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    switch (payload.action) {
+      case 'minimize':
+        win?.minimize();
+        break;
+      case 'close':
+        win?.close();
+        break;
+      case 'toggleFullscreen':
+        if (win) win.setFullScreen(!win.isFullScreen());
+        break;
+      case 'reload':
+        win?.webContents.reload();
+        break;
+      case 'forceReload':
+        win?.webContents.reloadIgnoringCache();
+        break;
+      case 'toggleDevTools':
+        win?.webContents.toggleDevTools();
+        break;
+      case 'zoomIn':
+        if (win) win.webContents.zoomLevel = win.webContents.zoomLevel + 0.5;
+        break;
+      case 'zoomOut':
+        if (win) win.webContents.zoomLevel = win.webContents.zoomLevel - 0.5;
+        break;
+      case 'resetZoom':
+        if (win) win.webContents.zoomLevel = 0;
+        break;
+      case 'quit':
+        app.quit();
+        break;
+    }
+    return { ok: true };
+  });
+
+  handle('app.updateChrome', (payload) => {
+    applyChromeToAllWindows(payload.resolvedTheme);
+    return { ok: true };
+  });
+
+  handle('app.setOverlayDimmed', (payload) => {
+    setOverlayDimmed(payload.dimmed);
+    return { ok: true };
+  });
 }
 

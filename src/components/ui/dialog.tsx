@@ -5,6 +5,26 @@ import { XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
+// Ref-counted dim signal: tells the main process to darken the OS-painted WCO
+// (min/max/close gutter) while any dialog overlay is mounted, so it visually
+// matches the bg-black/50 backdrop instead of staying bright. Counter handles
+// nested/stacked overlays without flicker.
+let overlayDimCount = 0;
+
+function incrementOverlayDim(): void {
+  overlayDimCount += 1;
+  if (overlayDimCount === 1) {
+    void window.lychee?.invoke('app.setOverlayDimmed', { dimmed: true });
+  }
+}
+
+function decrementOverlayDim(): void {
+  overlayDimCount = Math.max(0, overlayDimCount - 1);
+  if (overlayDimCount === 0) {
+    void window.lychee?.invoke('app.setOverlayDimmed', { dimmed: false });
+  }
+}
+
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -33,6 +53,12 @@ function DialogOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+  React.useEffect(() => {
+    incrementOverlayDim();
+    return () => {
+      decrementOverlayDim();
+    };
+  }, []);
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"

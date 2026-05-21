@@ -44,6 +44,11 @@ function persistToDb(mode: Mode) {
   window.lychee.invoke('settings.set', { key: 'theme', value: mode });
 }
 
+/** Repaint native title-bar overlay (Win/Linux) to match the resolved theme. */
+function notifyChromeChange(resolved: ResolvedTheme) {
+  void window.lychee.invoke('app.updateChrome', { resolvedTheme: resolved });
+}
+
 const initialMode = readStoredMode();
 const initialResolved = resolve(initialMode);
 applyClass(initialResolved);
@@ -52,6 +57,7 @@ applyClass(initialResolved);
 // Handles empty/invalid localStorage and first launch after migration.
 localStorage.setItem(STORAGE_KEY, initialMode);
 persistToDb(initialMode);
+notifyChromeChange(initialResolved);
 
 export const useThemeStore = create<ThemeStore>((set, get) => {
   mql.addEventListener('change', () => {
@@ -59,6 +65,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => {
     if (mode !== 'system') return;
     const resolved = resolve('system');
     applyClass(resolved, true);
+    notifyChromeChange(resolved);
     set({ resolvedTheme: resolved });
   });
 
@@ -70,6 +77,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => {
       persistToDb(mode);
       const resolved = resolve(mode);
       applyClass(resolved, true);
+      notifyChromeChange(resolved);
       set({ mode, resolvedTheme: resolved });
     },
   };
