@@ -65,11 +65,33 @@ jobs:
           if (-not $signtool) { throw "signtool.exe not found in Windows SDK" }
           "SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Diagnose maker availability
+      - name: Diagnose all makers
         shell: pwsh
         run: |
-          node -e "console.log('electron-winstaller:', require.resolve('electron-winstaller'))"
-          node -e "const M = require('@electron-forge/maker-squirrel').default; const m = new M(); console.log('MakerSquirrel.isSupportedOnCurrentPlatform =', m.isSupportedOnCurrentPlatform())"
+          node -e "
+          const sq = require('@electron-forge/maker-squirrel');
+          const zip = require('@electron-forge/maker-zip');
+          const dmg = require('@electron-forge/maker-dmg');
+          const rpm = require('@electron-forge/maker-rpm');
+          const deb = require('@electron-forge/maker-deb');
+          const ctors = [
+            ['MakerSquirrel', sq.MakerSquirrel || sq.default],
+            ['MakerZIP', zip.MakerZIP || zip.default],
+            ['MakerDMG', dmg.MakerDMG || dmg.default],
+            ['MakerRpm', rpm.MakerRpm || rpm.default],
+            ['MakerDeb', deb.MakerDeb || deb.default],
+          ];
+          for (const [name, C] of ctors) {
+            try {
+              const m = new C({});
+              const platforms = m.platforms || m.defaultPlatforms;
+              const supported = m.isSupportedOnCurrentPlatform();
+              console.log(name, '| platforms=' + JSON.stringify(platforms), '| isSupported=' + supported);
+            } catch (e) {
+              console.log(name, '| CONSTRUCTOR THREW:', e.message);
+            }
+          }
+          "
 
       - name: Make (sign app + Squirrel installer)
         env:

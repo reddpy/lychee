@@ -105,31 +105,37 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({
-      setupIcon: path.resolve(__dirname, "build", "icon.ico"),
-      iconUrl:
-        "https://raw.githubusercontent.com/reddpy/lychee/main/build/icon.ico",
-      // Signs the generated Setup.exe (and nupkg contents).
-      ...(winSign ? { windowsSign: winSign } : {}),
-    }),
+    new MakerSquirrel(
+      {
+        setupIcon: path.resolve(__dirname, "build", "icon.ico"),
+        iconUrl:
+          "https://raw.githubusercontent.com/reddpy/lychee/main/build/icon.ico",
+        // Signs the generated Setup.exe (and nupkg contents).
+        ...(winSign ? { windowsSign: winSign } : {}),
+      },
+      ["win32"],
+    ),
     new MakerZIP({}, ["darwin"]),
-    new MakerDMG({
-      title: "Install Lychee",
-      background: path.resolve(__dirname, "build", "dmg-background.png"),
-      icon: path.resolve(__dirname, "build", "icon.icns"),
-      iconSize: 120,
-      contents: (opts: { appPath: string }) => [
-        { x: 140, y: 200, type: "file", path: opts.appPath },
-        { x: 400, y: 200, type: "link", path: "/Applications" },
-      ],
-      additionalDMGOptions: {
-        window: {
-          size: { width: 540, height: 360 },
+    new MakerDMG(
+      {
+        title: "Install Lychee",
+        background: path.resolve(__dirname, "build", "dmg-background.png"),
+        icon: path.resolve(__dirname, "build", "icon.icns"),
+        iconSize: 120,
+        contents: (opts: { appPath: string }) => [
+          { x: 140, y: 200, type: "file", path: opts.appPath },
+          { x: 400, y: 200, type: "link", path: "/Applications" },
+        ],
+        additionalDMGOptions: {
+          window: {
+            size: { width: 540, height: 360 },
+          },
         },
       },
-    }),
-    new MakerRpm({}),
-    new MakerDeb({}),
+      ["darwin"],
+    ),
+    new MakerRpm({}, ["linux"]),
+    new MakerDeb({}, ["linux"]),
   ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
