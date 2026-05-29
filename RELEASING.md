@@ -107,6 +107,26 @@ Actions) for signing to succeed:
    - **Linux** shows “… is available” with a **Download** button linking to the
      releases page.
 
+### Checking the update feed directly (no install needed)
+
+You can confirm update.electronjs.org sees a release without installing anything.
+**The path is `platform-arch`, not just `platform`** — the app requests
+`darwin-arm64`, so checking plain `/darwin/` will mislead you (it looks for an
+Intel build we don't ship and 404s even when the arm64 zip is present):
+
+```bash
+# Ask "is there something newer than <version>?"
+curl -s https://update.electronjs.org/reddpy/lychee/darwin-arm64/<version>   # Apple Silicon
+curl -s https://update.electronjs.org/reddpy/lychee/win32/<version>/RELEASES # Windows
+#   200 + JSON/RELEASES body → update available
+#   204 No Content           → already on the latest
+#   404                       → wrong path/arch, missing zip, or release flagged prerelease/draft
+```
+
+The mac zip must match `.*-(mac|darwin|osx).*\.zip` — our Forge output
+(`Lychee-darwin-arm64-<version>.zip`) satisfies this. update.electronjs.org caches
+for a few minutes, so give a freshly-published release a moment before checking.
+
 ## Local build sanity check (no publish)
 
 ```bash
