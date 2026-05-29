@@ -1,9 +1,4 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import { MakerSquirrel } from "@electron-forge/maker-squirrel";
-import { MakerZIP } from "@electron-forge/maker-zip";
-import { MakerDMG } from "@electron-forge/maker-dmg";
-import { MakerDeb } from "@electron-forge/maker-deb";
-import { MakerRpm } from "@electron-forge/maker-rpm";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { WebpackPlugin } from "@electron-forge/plugin-webpack";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
@@ -105,19 +100,24 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel(
-      {
+    {
+      name: "@electron-forge/maker-squirrel",
+      platforms: ["win32"],
+      config: {
         setupIcon: path.resolve(__dirname, "build", "icon.ico"),
         iconUrl:
           "https://raw.githubusercontent.com/reddpy/lychee/main/build/icon.ico",
-        // Signs the generated Setup.exe (and nupkg contents).
         ...(winSign ? { windowsSign: winSign } : {}),
       },
-      ["win32"],
-    ),
-    new MakerZIP({}, ["darwin"]),
-    new MakerDMG(
-      {
+    },
+    {
+      name: "@electron-forge/maker-zip",
+      platforms: ["darwin"],
+    },
+    {
+      name: "@electron-forge/maker-dmg",
+      platforms: ["darwin"],
+      config: {
         title: "Install Lychee",
         background: path.resolve(__dirname, "build", "dmg-background.png"),
         icon: path.resolve(__dirname, "build", "icon.icns"),
@@ -132,10 +132,17 @@ const config: ForgeConfig = {
           },
         },
       },
-      ["darwin"],
-    ),
-    new MakerRpm({}, ["linux"]),
-    new MakerDeb({}, ["linux"]),
+    },
+    {
+      name: "@electron-forge/maker-rpm",
+      platforms: ["linux"],
+      config: {},
+    },
+    {
+      name: "@electron-forge/maker-deb",
+      platforms: ["linux"],
+      config: {},
+    },
   ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
