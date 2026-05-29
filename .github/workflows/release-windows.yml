@@ -29,7 +29,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11
 
       - uses: actions/setup-node@v4
         with:
@@ -64,6 +64,12 @@ jobs:
             Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw "signtool.exe not found in Windows SDK" }
           "SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Diagnose maker availability
+        shell: pwsh
+        run: |
+          node -e "console.log('electron-winstaller:', require.resolve('electron-winstaller'))"
+          node -e "const M = require('@electron-forge/maker-squirrel').default; const m = new M(); console.log('MakerSquirrel.isSupportedOnCurrentPlatform =', m.isSupportedOnCurrentPlatform())"
 
       - name: Make (sign app + Squirrel installer)
         env:
