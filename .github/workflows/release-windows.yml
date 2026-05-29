@@ -48,12 +48,14 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Trusted Signing dlib (latest stable; bump if a newer client is needed).
+          # Artifact Signing dlib (formerly Microsoft.Trusted.Signing.Client; renamed
+          # and old package unlisted by Microsoft in the Trusted Signing → Artifact
+          # Signing rebrand).
           $nuget = "$env:RUNNER_TEMP\nuget.exe"
           Invoke-WebRequest "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $nuget
-          & $nuget install Microsoft.Trusted.Signing.Client `
+          & $nuget install Microsoft.ArtifactSigning.Client `
             -OutputDirectory "$env:RUNNER_TEMP\ts" -ExcludeVersion
-          $dlib = "$env:RUNNER_TEMP\ts\Microsoft.Trusted.Signing.Client\bin\x64\Azure.CodeSigning.Dlib.dll"
+          $dlib = "$env:RUNNER_TEMP\ts\Microsoft.ArtifactSigning.Client\bin\x64\Azure.CodeSigning.Dlib.dll"
           if (-not (Test-Path $dlib)) { throw "Azure dlib not found at $dlib" }
           "AZURE_CODE_SIGNING_DLIB=$dlib" | Out-File -FilePath $env:GITHUB_ENV -Append
 
