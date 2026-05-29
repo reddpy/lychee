@@ -66,7 +66,21 @@ jobs:
           "SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Make (sign app + Squirrel installer)
+        env:
+          DEBUG: "electron-forge:*"
         run: pnpm make
+
+      - name: Show workspace after make
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "CWD: $(Get-Location)"
+          if (Test-Path out) {
+            Get-ChildItem -Path out -Recurse | Select-Object FullName | Format-Table -AutoSize -Wrap
+          } else {
+            Write-Host "out\ does not exist after make"
+            Get-ChildItem -Path . | Select-Object Name | Format-Table -AutoSize
+          }
 
       - name: Verify signatures
         shell: pwsh
