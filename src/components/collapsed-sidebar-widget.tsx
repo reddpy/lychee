@@ -2,6 +2,7 @@ import { Settings } from 'lucide-react';
 
 import { useSidebar } from './ui/sidebar';
 import { useSettingsStore } from '../renderer/settings-store';
+import { UpdateDot } from './update-dot';
 import { LycheeLogo } from './sidebar/lychee-logo';
 
 export function CollapsedSidebarWidget() {
@@ -28,11 +29,12 @@ export function CollapsedSidebarWidget() {
         <button
           type="button"
           onClick={openSettings}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors"
+          className="relative flex h-8 w-8 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors"
           title="Settings"
           aria-label="Settings"
         >
           <Settings className="h-4 w-4" />
+          <UpdateDot className="absolute right-1.5 top-1.5" />
         </button>
         <div title="Lychee Notes">
           <LycheeLogo className="h-5 w-5" />

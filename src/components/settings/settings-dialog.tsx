@@ -1,27 +1,37 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Check,
+  Download,
+  Info,
+  Loader2,
   Monitor,
   Moon,
   PenLine,
   Palette,
+  RotateCw,
   Settings,
   SlidersHorizontal,
   Sun,
   X,
 } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
+import { LycheeLogo } from '@/components/sidebar/lychee-logo';
+import { UpdateDot } from '@/components/update-dot';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/renderer/settings-store';
 import { useThemeStore } from '@/renderer/theme-store';
+import { useUpdateStore } from '@/renderer/update-store';
+import { type UpdateAction, describeUpdate } from '@/renderer/update-status-view';
 
-type SectionKey = 'general' | 'appearance' | 'editor';
+type SectionKey = 'general' | 'appearance' | 'editor' | 'about';
 
 const sections: { key: SectionKey; label: string; icon: typeof Settings }[] = [
   { key: 'general', label: 'General', icon: SlidersHorizontal },
   { key: 'appearance', label: 'Appearance', icon: Palette },
   { key: 'editor', label: 'Editor', icon: PenLine },
+  { key: 'about', label: 'About', icon: Info },
 ];
 
 type Mode = 'light' | 'dark' | 'system';
@@ -127,6 +137,64 @@ function AppearanceSettings() {
   );
 }
 
+function AboutSettings() {
+  const status = useUpdateStore((s) => s.status);
+  const install = useUpdateStore((s) => s.install);
+  const check = useUpdateStore((s) => s.check);
+  const isLinux = window.lychee.platform === 'linux';
+
+  const openReleases = (): void => {
+    void window.lychee.invoke('shell.openExternal', { url: status.releaseUrl });
+  };
+
+  // All state/platform branching lives in describeUpdate (unit-tested); here we
+  // only map the resolved action to a handler/icon/variant.
+  const view = describeUpdate(status, isLinux);
+  const handlers: Record<NonNullable<UpdateAction>, () => void> = {
+    install,
+    download: openReleases,
+    check,
+    'open-releases': openReleases,
+  };
+  const isPrimary = view.action === 'install' || view.action === 'download';
+  const ActionIcon = view.action === 'download' ? Download : RotateCw;
+  const showIcon = view.action === 'install' || view.action === 'download' || view.action === 'check';
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader title="About" description="Version and software updates." />
+
+      <div className="flex items-center gap-3">
+        <LycheeLogo className="h-10 w-10" />
+        <div className="space-y-0.5">
+          <p className="text-sm font-semibold">Lychee</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Version {status.currentVersion || '—'}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
+          {view.busy && <Loader2 className="h-4 w-4 animate-spin" />}
+          <span className={isPrimary ? 'text-[hsl(var(--foreground))]' : undefined}>
+            {view.message}
+          </span>
+        </div>
+        {view.action && (
+          <Button
+            size="sm"
+            variant={isPrimary ? 'default' : 'outline'}
+            onClick={handlers[view.action]}
+          >
+            {showIcon && <ActionIcon />} {view.actionLabel}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PlaceholderSettings({
   title,
   description,
@@ -146,6 +214,7 @@ function PlaceholderSettings({
 
 function SectionContent({ section }: { section: SectionKey }) {
   if (section === 'appearance') return <AppearanceSettings />;
+  if (section === 'about') return <AboutSettings />;
   if (section === 'editor')
     return (
       <PlaceholderSettings
@@ -166,6 +235,14 @@ export function SettingsDialog() {
   const closeSettings = useSettingsStore((s) => s.closeSettings);
   const [activeSection, setActiveSection] = useState<SectionKey>('general');
   const firstNavRef = useRef<HTMLButtonElement>(null);
+
+  // Land on About when opened while an update is pending — the red dot drew
+  // them here, so show them the update straight away. Keyed on the open
+  // transition only (read imperatively) so a status push arriving mid-session
+  // doesn't yank the user off whatever section they're reading.
+  useEffect(() => {
+    if (isOpen && useUpdateStore.getState().hasUpdate) setActiveSection('about');
+  }, [isOpen]);
 
   return (
     <Dialog
@@ -223,6 +300,7 @@ export function SettingsDialog() {
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{label}</span>
+                  {key === 'about' && <UpdateDot className="ml-auto" />}
                 </button>
               );
             })}

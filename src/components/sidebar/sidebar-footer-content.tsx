@@ -7,6 +7,7 @@ import {
   useSidebar,
 } from "../ui/sidebar";
 import { useSettingsStore } from "../../renderer/settings-store";
+import { UpdateDot } from "../update-dot";
 import { TrashBinPopover } from "./trash-bin-popover";
 
 export function SidebarFooterContent() {
@@ -21,7 +22,10 @@ export function SidebarFooterContent() {
         {!isFloating && (
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Settings" onClick={openSettings}>
-              <Settings className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
+              <span className="relative flex shrink-0">
+                <Settings className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+                <UpdateDot className="absolute -right-1 -top-1" />
+              </span>
               <span className="truncate text-sm font-semibold">Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

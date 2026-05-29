@@ -4,6 +4,7 @@ import { Menu as MenuIcon } from 'lucide-react';
 import type { WindowAction } from '../shared/ipc-types';
 import { useDocumentStore } from '../renderer/document-store';
 import { useSettingsStore } from '../renderer/settings-store';
+import { UpdateDot } from './update-dot';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,9 +51,10 @@ export function HamburgerMenu() {
         <button
           type="button"
           aria-label="Application menu"
-          className="titlebar-nodrag flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-[hsl(var(--muted-foreground))] transition-all hover:border-brand/30 hover:bg-brand/15 hover:text-brand"
+          className="titlebar-nodrag relative flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-[hsl(var(--muted-foreground))] transition-all hover:border-brand/30 hover:bg-brand/15 hover:text-brand"
         >
           <MenuIcon className="h-4 w-4" />
+          <UpdateDot className="absolute right-1 top-1" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={6}>
