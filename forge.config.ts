@@ -9,6 +9,7 @@ import { WebpackPlugin } from "@electron-forge/plugin-webpack";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 
+import fs from "fs";
 import path from "path";
 
 import { mainConfig } from "./webpack.main.config";
@@ -25,6 +26,64 @@ const entitlements = path.resolve(__dirname, "build", "entitlements.mac.plist");
 
 // Sign + notarize only when an identity is present (skip for local dev/E2E builds).
 const shouldSignMac = !isE2E && !!process.env.APPLE_TEAM_ID;
+
+// --- Windows code signing via Azure Trusted Signing ---
+// Enabled when the Azure account env vars are present (skip for dev/E2E). Auth
+// is handled by the Azure dlib via DefaultAzureCredential, which reads
+// AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET from the environment.
+// Signing is Windows-only (signtool); on macOS/Linux these vars are simply unset.
+const shouldSignWin =
+  !isE2E &&
+  !!process.env.AZURE_CODE_SIGNING_ACCOUNT &&
+  !!process.env.AZURE_CODE_SIGNING_DLIB;
+
+// signtool reads the account/profile/endpoint from this JSON (the /dmdf file).
+// It is generated from env in the prePackage hook below, before any signing runs.
+const winMetadata = path.resolve(__dirname, "build", "trusted-signing.json");
+
+// Built once and reused by both the packager (signs the app's nested binaries)
+// and MakerSquirrel (signs Setup.exe). NOTE: paths must not contain spaces —
+// @electron/windows-sign space-splits signWithParams, so quoting won't help.
+const winSign = shouldSignWin
+  ? {
+      ...(process.env.SIGNTOOL_PATH
+        ? { signToolPath: process.env.SIGNTOOL_PATH }
+        : {}),
+      signWithParams: [
+        "/v",
+        "/debug",
+        "/fd",
+        "SHA256",
+        "/td",
+        "SHA256",
+        "/tr",
+        process.env.AZURE_TIMESTAMP_URL ??
+          "http://timestamp.acs.microsoft.com",
+        "/dlib",
+        process.env.AZURE_CODE_SIGNING_DLIB!,
+        "/dmdf",
+        winMetadata,
+      ].join(" "),
+    }
+  : undefined;
+
+// Write the Trusted Signing metadata file consumed by signtool's /dmdf flag.
+function writeWinSignMetadata() {
+  if (!shouldSignWin) return;
+  fs.mkdirSync(path.dirname(winMetadata), { recursive: true });
+  fs.writeFileSync(
+    winMetadata,
+    JSON.stringify(
+      {
+        Endpoint: process.env.AZURE_ENDPOINT,
+        CodeSigningAccountName: process.env.AZURE_CODE_SIGNING_ACCOUNT,
+        CertificateProfileName: process.env.AZURE_CERT_PROFILE,
+      },
+      null,
+      2,
+    ),
+  );
+}
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -48,6 +107,9 @@ const config: ForgeConfig = {
               : { keychainProfile: "lychee-notarize" },
         }
       : {}),
+    // Recursively signs the packaged app's nested binaries (electron .exe,
+    // native .node modules, etc.) before the installer is built.
+    ...(winSign ? { windowsSign: winSign } : {}),
   },
   rebuildConfig: {},
   makers: [
@@ -55,6 +117,8 @@ const config: ForgeConfig = {
       setupIcon: path.resolve(__dirname, "build", "icon.ico"),
       iconUrl:
         "https://raw.githubusercontent.com/reddpy/lychee/main/build/icon.ico",
+      // Signs the generated Setup.exe (and nupkg contents).
+      ...(winSign ? { windowsSign: winSign } : {}),
     }),
     new MakerZIP({}, ["darwin"]),
     new MakerDMG({
@@ -108,6 +172,13 @@ const config: ForgeConfig = {
       [FuseV1Options.OnlyLoadAppFromAsar]: !isE2E,
     }),
   ],
+  hooks: {
+    // Generate the Azure Trusted Signing metadata file before packaging so it
+    // exists when signtool runs (no-op unless Windows signing env is present).
+    prePackage: async () => {
+      writeWinSignMetadata();
+    },
+  },
 };
 
 export default config;
