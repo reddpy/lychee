@@ -80,6 +80,10 @@ function writeWinSignMetadata() {
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // The packaged binary is named after productName ("Lychee") by default, but
+    // the Linux deb/rpm makers look up the binary by the lowercase package name
+    // ("lychee"). Pin executableName so the Linux installers find the binary.
+    executableName: "lychee",
     icon: path.resolve(__dirname, "build", "icon"),
     ...(shouldSignMac
       ? {
