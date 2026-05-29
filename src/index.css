@@ -157,6 +157,34 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* Themed scrollbars (Chromium + Firefox). Picks up light/dark via design tokens. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 8px;
+  border: 2px solid hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.55);
+}
+
+::-webkit-scrollbar-corner {
+  background: hsl(var(--background));
+}
+
+* {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) hsl(var(--background));
+}
+
 /* Hide scrollbar while keeping scroll behavior */
 .scrollbar-hide {
   scrollbar-width: none;
