@@ -44,26 +44,18 @@ const winMetadata = path.resolve(__dirname, "build", "trusted-signing.json");
 // Built once and reused by both the packager (signs the app's nested binaries)
 // and MakerSquirrel (signs Setup.exe). NOTE: paths must not contain spaces —
 // @electron/windows-sign space-splits signWithParams, so quoting won't help.
+// Hash + timestamp server live in dedicated keys; duplicating them inside
+// signWithParams makes signtool reject with duplicate-flag errors that the
+// packager swallows.
 const winSign = shouldSignWin
   ? {
       ...(process.env.SIGNTOOL_PATH
         ? { signToolPath: process.env.SIGNTOOL_PATH }
         : {}),
-      signWithParams: [
-        "/v",
-        "/debug",
-        "/fd",
-        "SHA256",
-        "/td",
-        "SHA256",
-        "/tr",
-        process.env.AZURE_TIMESTAMP_URL ??
-          "http://timestamp.acs.microsoft.com",
-        "/dlib",
-        process.env.AZURE_CODE_SIGNING_DLIB!,
-        "/dmdf",
-        winMetadata,
-      ].join(" "),
+      signWithParams: `/v /debug /dlib ${process.env.AZURE_CODE_SIGNING_DLIB} /dmdf ${winMetadata}`,
+      timestampServer:
+        process.env.AZURE_TIMESTAMP_URL ?? "http://timestamp.acs.microsoft.com",
+      hashes: ["sha256" as const],
     }
   : undefined;
 
