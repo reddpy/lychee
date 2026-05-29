@@ -22,7 +22,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # node 22 (LTS): Electron Forge resolves instance-form makers to empty
+          # targets on node 24, producing no distributables. Matches the working
+          # Windows release workflow (see commit 59d2382).
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
