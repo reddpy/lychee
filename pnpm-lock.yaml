@@ -225,6 +225,9 @@ importers:
       electron:
         specifier: 41.5.1
         version: 41.5.1
+      electron-winstaller:
+        specifier: ^5.4.0
+        version: 5.4.0
       eslint:
         specifier: ^10.3.0
         version: 10.3.0(jiti@2.7.0)
@@ -9529,7 +9532,6 @@ snapshots:
       '@electron/windows-sign': 1.2.2
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   electron@41.5.1:
     dependencies:
@@ -10173,7 +10175,6 @@ snapshots:
       graceful-fs: 4.2.11
       jsonfile: 4.0.0
       universalify: 0.1.2
-    optional: true
 
   fs-extra@8.1.0:
     dependencies:
@@ -11165,7 +11166,6 @@ snapshots:
   mkdirp@0.5.6:
     dependencies:
       minimist: 1.2.8
-    optional: true
 
   mkdirp@1.0.4: {}
 
@@ -11915,7 +11915,6 @@ snapshots:
   rimraf@2.6.3:
     dependencies:
       glob: 7.2.3
-    optional: true
 
   rimraf@3.0.2:
     dependencies:
@@ -12484,7 +12483,6 @@ snapshots:
     dependencies:
       mkdirp: 0.5.6
       rimraf: 2.6.3
-    optional: true
 
   terser-webpack-plugin@5.6.0(lightningcss@1.32.0)(postcss@8.5.14)(webpack@5.106.2(lightningcss@1.32.0)(postcss@8.5.14)):
     dependencies:
