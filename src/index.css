@@ -29,7 +29,7 @@
 /* shadcn-style design tokens — warm palette with lychee brand red */
 :root {
   /* Brand red (#C14B55). Constant across light/dark; opacity variants via `bg-brand/<n>` etc. */
-  --brand: 355 49% 53%;
+  --brand: 212 90% 50%;
 
   --background: 30 25% 99.5%;
   --foreground: 20 15% 8%;
@@ -73,7 +73,7 @@
 }
 
 .dark {
-  --brand: 355 49% 53%;
+  --brand: 212 90% 50%;
 
   --background: 240 6% 10%;
   --foreground: 0 0% 92%;
