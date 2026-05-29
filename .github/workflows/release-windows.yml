@@ -73,7 +73,7 @@ jobs:
 
       - name: Make (sign app + Squirrel installer)
         env:
-          DEBUG: "electron-forge:*"
+          DEBUG: "electron-forge:*,electron-packager,@electron/windows-sign,electron-windows-sign"
         run: pnpm make
 
       - name: Show workspace after make
