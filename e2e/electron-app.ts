@@ -13,48 +13,55 @@ const packageJson = JSON.parse(
   fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'),
 ) as { name?: string; productName?: string };
 
-const PRODUCT_NAMES = [
-  packageJson.productName,
-  packageJson.name,
-  'Lychee',
-  'lychee',
-].filter((name, index, names): name is string =>
-  typeof name === 'string' && name.length > 0 && names.indexOf(name) === index,
-);
+function dedupeNames(...names: Array<string | undefined>): string[] {
+  return names.filter((name, index, all): name is string =>
+    typeof name === 'string' && name.length > 0 && all.indexOf(name) === index,
+  );
+}
+
+// The packaged output folder / .app bundle / .exe are named after productName,
+// but forge.config.ts pins `executableName: "lychee"`, so the inner Unix binary
+// (and the Linux/Windows executable) is named after that, independent of the
+// bundle name. Keep the two candidate lists separate so the cross product still
+// finds the binary after the executableName change.
+const BUNDLE_NAMES = dedupeNames(packageJson.productName, packageJson.name, 'Lychee', 'lychee');
+const EXECUTABLE_NAMES = dedupeNames('lychee', packageJson.name, packageJson.productName, 'Lychee');
 
 function findPackagedBinary(): string | null {
   const platform = os.platform();
   const arch = os.arch();
   const outDir = path.join(PROJECT_ROOT, 'out');
 
-  for (const productName of PRODUCT_NAMES) {
-    let binary: string;
+  for (const bundleName of BUNDLE_NAMES) {
+    for (const execName of EXECUTABLE_NAMES) {
+      let binary: string;
 
-    if (platform === 'darwin') {
-      binary = path.join(
-        outDir,
-        `${productName}-darwin-${arch}`,
-        `${productName}.app`,
-        'Contents',
-        'MacOS',
-        productName,
-      );
-    } else if (platform === 'win32') {
-      binary = path.join(
-        outDir,
-        `${productName}-win32-${arch}`,
-        `${productName}.exe`,
-      );
-    } else {
-      binary = path.join(
-        outDir,
-        `${productName}-linux-${arch}`,
-        productName,
-      );
-    }
+      if (platform === 'darwin') {
+        binary = path.join(
+          outDir,
+          `${bundleName}-darwin-${arch}`,
+          `${bundleName}.app`,
+          'Contents',
+          'MacOS',
+          execName,
+        );
+      } else if (platform === 'win32') {
+        binary = path.join(
+          outDir,
+          `${bundleName}-win32-${arch}`,
+          `${execName}.exe`,
+        );
+      } else {
+        binary = path.join(
+          outDir,
+          `${bundleName}-linux-${arch}`,
+          execName,
+        );
+      }
 
-    if (fs.existsSync(binary)) {
-      return binary;
+      if (fs.existsSync(binary)) {
+        return binary;
+      }
     }
   }
 
