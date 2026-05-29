@@ -14,6 +14,7 @@ import {
 import { closeDatabase, initDatabase } from './main/db';
 import { resolveImagePath } from './main/image-protocol';
 import { registerIpcHandlers } from './main/ipc';
+import { initUpdater } from './main/updater';
 import { isAllowedExternal } from './main/url-policy';
 import {
   applyChromeToAllWindows,
@@ -332,6 +333,10 @@ app.whenReady().then(() => {
   // and would otherwise hit "No handler registered" if the window is created first.
   registerIpcHandlers();
   createWindow();
+
+  // Start the auto-updater after the window exists so early status broadcasts
+  // reach a live renderer (late joiners pull current state via update.getStatus).
+  initUpdater();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

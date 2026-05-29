@@ -17,6 +17,7 @@ import { saveImage, getImagePath, deleteImage, downloadImage } from './repos/ima
 import { resolveUrl } from './repos/url-resolver';
 import { fetchUrlMetadata } from './repos/url-metadata';
 import { getSetting, setSetting, getAllSettings } from './repos/settings';
+import { checkForUpdates, getUpdateStatus, installUpdate } from './updater';
 import { isAllowedExternal } from './url-policy';
 
 type Handler<C extends IpcChannel> = (
@@ -183,6 +184,18 @@ export function registerIpcHandlers() {
 
   handle('app.setOverlayDimmed', (payload) => {
     setOverlayDimmed(payload.dimmed);
+    return { ok: true };
+  });
+
+  handle('update.getStatus', () => getUpdateStatus());
+
+  handle('update.check', () => {
+    checkForUpdates();
+    return { ok: true };
+  });
+
+  handle('update.install', () => {
+    installUpdate();
     return { ok: true };
   });
 }

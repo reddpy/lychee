@@ -148,7 +148,7 @@ test.describe('Settings Modal', () => {
     await expect(dialog.getByText('App-wide preferences and startup options.')).toBeVisible();
   });
 
-  test('shows all three section nav buttons', async ({ window }) => {
+  test('shows all section nav buttons', async ({ window }) => {
     const settingsBtn = window.locator('aside[data-state="expanded"]').getByText('Settings');
     await settingsBtn.click();
 
@@ -159,6 +159,25 @@ test.describe('Settings Modal', () => {
     await expect(nav.getByText('General', { exact: true })).toBeVisible();
     await expect(nav.getByText('Appearance', { exact: true })).toBeVisible();
     await expect(nav.getByText('Editor', { exact: true })).toBeVisible();
+    await expect(nav.getByText('About', { exact: true })).toBeVisible();
+  });
+
+  test('About section shows version and update status', async ({ window }) => {
+    const settingsBtn = window.locator('aside[data-state="expanded"]').getByText('Settings');
+    await settingsBtn.click();
+
+    const dialog = window.locator('[data-slot="dialog-content"]');
+    await expect(dialog).toBeVisible();
+
+    await dialog.locator('nav').getByText('About', { exact: true }).click();
+
+    // App version line (e.g. "Version 0.1.0-alpha.1").
+    await expect(dialog.getByText(/^Version \d/)).toBeVisible();
+    // Under E2E the updater is deliberately inert (see src/main/updater.ts),
+    // so the pane shows the 'unsupported' status rather than an update prompt.
+    await expect(
+      dialog.getByText('Updates are delivered automatically in installed builds.'),
+    ).toBeVisible();
   });
 });
 

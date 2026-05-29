@@ -16,6 +16,37 @@ export type UrlMetadataResult = {
   url: string;
 };
 
+// ── Auto-update types ────────────────────────────────────────────────
+
+// Single source of truth for update UI. `state` drives both the red-dot
+// indicator (shown for 'available' | 'ready') and the About-pane status line.
+//
+// Platform split:
+//   mac/win  — Electron's autoUpdater downloads in the background, so the
+//              actionable terminal state is 'ready' (downloaded; restart to
+//              apply). 'available' is never emitted here.
+//   linux    — autoUpdater is unsupported; we poll GitHub releases instead, so
+//              the actionable state is 'available' (open releases page to grab
+//              the new .deb/.rpm). 'downloading'/'ready' are never emitted.
+//   dev/E2E/unpackaged — 'unsupported' (the feature is inert).
+export type UpdateState =
+  | 'unsupported'
+  | 'checking'
+  | 'up-to-date'
+  | 'downloading'
+  | 'ready'
+  | 'available'
+  | 'error';
+
+export type UpdateStatus = {
+  state: UpdateState;
+  currentVersion: string;
+  // Set once a newer release is known (releaseName on mac/win, tag on linux).
+  newVersion?: string;
+  // GitHub releases page — the Linux "Download" target and error fallback.
+  releaseUrl: string;
+};
+
 // ── IPC contract ─────────────────────────────────────────────────────
 
 export type IpcContract = {
@@ -123,6 +154,20 @@ export type IpcContract = {
     req: { dimmed: boolean };
     res: { ok: true };
   };
+  'update.getStatus': {
+    req: Record<string, never>;
+    res: UpdateStatus;
+  };
+  // Manual re-check (Linux only; no-op elsewhere — mac/win poll on their own).
+  'update.check': {
+    req: Record<string, never>;
+    res: { ok: true };
+  };
+  // Restart into the already-downloaded update (mac/win only; no-op otherwise).
+  'update.install': {
+    req: Record<string, never>;
+    res: { ok: true };
+  };
 };
 
 // Actions the hamburger menu (Win/Linux) dispatches to main — covers View
@@ -155,6 +200,7 @@ export type IpcEvents = {
   'menu:open-settings': void;
   'menu:close-tab': void;
   'menu:reopen-closed-tab': void;
+  'update:status': UpdateStatus;
 };
 
 export type IpcEventChannel = keyof IpcEvents;
