@@ -1,3 +1,4 @@
+import { spawn } from 'child_process';
 import path from 'path';
 import {
   app,
@@ -90,7 +91,36 @@ declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
+//
+// Issue #200: electron-squirrel-startup shells out to `Update.exe --createShortcut`
+// on BOTH --squirrel-install AND --squirrel-updated, with no `-l` flag, which
+// makes Squirrel default to creating *both* Desktop and Start Menu shortcuts on
+// every update — recreating a desktop shortcut the user previously deleted.
+//
+// We intercept only those two events to:
+//   --squirrel-install: create a Start-Menu shortcut only (no Desktop).
+//   --squirrel-updated: do nothing (preserve whatever shortcuts the user has).
+// All other squirrel events (--squirrel-uninstall, --squirrel-obsolete, future
+// additions) fall through to electron-squirrel-startup unchanged, so we keep its
+// well-tested handling for the lifecycle stages that don't trigger the bug.
+function interceptSquirrelShortcutEvents(): boolean {
+  if (process.platform !== 'win32' || process.argv.length < 2) return false;
+  const cmd = process.argv[1];
+  if (cmd !== '--squirrel-install' && cmd !== '--squirrel-updated') return false;
+
+  if (cmd === '--squirrel-install') {
+    const updateExe = path.resolve(path.dirname(process.execPath), '..', 'Update.exe');
+    const exeName = path.basename(process.execPath);
+    spawn(updateExe, [`--createShortcut=${exeName}`, '-l', 'StartMenu'], { detached: true });
+  }
+  // --squirrel-updated: intentionally no-op; do NOT recreate shortcuts.
+  app.quit();
+  return true;
+}
+
+if (interceptSquirrelShortcutEvents()) {
+  // app.quit() above; fall through to event loop.
+} else if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
