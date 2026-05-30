@@ -77,6 +77,8 @@ function writeWinSignMetadata() {
   );
 }
 
+const linuxIcon = path.resolve(__dirname, "build", "icon.png");
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -85,6 +87,10 @@ const config: ForgeConfig = {
     // ("lychee"). Pin executableName so the Linux installers find the binary.
     executableName: "lychee",
     icon: path.resolve(__dirname, "build", "icon"),
+    // Copy build/icon.png into the packaged app's resources/ directory so the
+    // runtime BrowserWindow `icon:` path can resolve it on Linux/Windows.
+    // (macOS reads the icon from the .icns embedded in the bundle.)
+    extraResource: [linuxIcon],
     ...(shouldSignMac
       ? {
           osxSign: {
@@ -137,8 +143,8 @@ const config: ForgeConfig = {
       },
       ["darwin"],
     ),
-    new MakerRpm({}, ["linux"]),
-    new MakerDeb({}, ["linux"]),
+    new MakerRpm({ options: { icon: linuxIcon } }, ["linux"]),
+    new MakerDeb({ options: { icon: linuxIcon } }, ["linux"]),
   ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
