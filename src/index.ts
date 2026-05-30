@@ -62,7 +62,12 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // Used for Linux/Windows window chrome; macOS reads the icon from the bundle's .icns.
-const windowIconPath = path.resolve(__dirname, '..', '..', 'build', 'icon.png');
+// In production only the webpack output lives inside app.asar, so build/ isn't
+// reachable from __dirname — forge's extraResource copies icon.png into
+// process.resourcesPath instead.
+const windowIconPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'icon.png')
+  : path.resolve(__dirname, '..', '..', 'build', 'icon.png');
 
 const LYCHEE_WEBSITE_URL = 'https://lycheenote.com';
 const LYCHEE_REPO_URL = 'https://github.com/reddpy/lychee';
