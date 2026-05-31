@@ -23,13 +23,17 @@ async function createNoteWithTitle(window: Page, title: string): Promise<string>
 
 /** Click into the body, type a URL + Space to trigger auto-link detection. */
 async function typeUrlInBody(window: Page, url: string) {
-  const visibleTitle = window.locator('main:visible h1.editor-title');
-  await visibleTitle.click();
-  await window.keyboard.press('Enter'); // move to body
+  // Click directly into the first body paragraph. Going via the title and
+  // pressing Enter is unsafe — Playwright's click lands on the middle of the
+  // h1, and Enter mid-title splits the title (matches Notion behavior).
+  await window.locator('main:visible .ContentEditable__root > p').first().click();
   await window.waitForTimeout(200);
   await window.keyboard.type(url, { delay: 10 });
   // Space triggers auto-link detection
   await window.keyboard.press('Space');
+  // Leave a trailing empty paragraph after the URL so downstream tests can
+  // ArrowDown past an embedded card without disturbing it.
+  await window.keyboard.press('Enter');
   await window.waitForTimeout(500);
 }
 
