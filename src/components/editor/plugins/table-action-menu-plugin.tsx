@@ -200,8 +200,9 @@ function TableActionBar({
   if (!position) return null
 
   // Flip the dropdown upward when there isn't enough space below.
-  // Menu height ≈ 220px + trigger height ≈ 20px + gap 4px = ~244px; use 270 for safety.
-  const menuFlipped = (window.innerHeight - position.top) < 270
+  // Measured layout: 7 buttons × 40px + 2 dividers × 2px + p-1 padding 8px = 292px
+  // menu, plus 22px (trigger + gap). Use 320 for safety.
+  const menuFlipped = (window.innerHeight - position.top) < 320
 
   const iconClass = "h-3.5 w-3.5"
   const btnBase = "flex w-full items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground"
