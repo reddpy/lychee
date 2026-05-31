@@ -68,14 +68,13 @@ function SearchBar({ tabId }: { tabId: string }) {
   const requestScroll = useSearchHighlightStore((s) => s.requestScroll);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  // Focus + select input when search opens
+  // Focus + select input when search opens. Sync (not setTimeout) — the input
+  // is already in the DOM by the time this effect runs, and any delay risks
+  // racing with a follow-up user click that should have kept focus elsewhere.
   React.useEffect(() => {
     if (isOpen) {
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      }, 50);
-      return () => clearTimeout(timer);
+      inputRef.current?.focus();
+      inputRef.current?.select();
     }
   }, [isOpen]);
 
