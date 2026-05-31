@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
+  $getNodeByKey,
   $getRoot,
   $getSelection,
   $isRangeSelection,
@@ -11,12 +12,14 @@ import {
   COMMAND_PRIORITY_HIGH,
   KEY_DOWN_COMMAND,
 } from "lexical"
-import { $createTitleNode, $isTitleNode } from "../nodes/title-node"
+import { $createTitleNode, $isTitleNode, TitleNode } from "../nodes/title-node"
 
 interface TitlePluginProps {
   initialTitle?: string
   onTitleChange?: (title: string) => void
 }
+
+const PLACEHOLDER_CLASS = "is-placeholder"
 
 export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): null {
   const [editor] = useLexicalComposerContext()
@@ -46,19 +49,36 @@ export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): 
           root.append($createParagraphNode())
         }
       }
-
-      // Set initial placeholder state
-      const titleNode = $getRoot().getFirstChild()
-      if ($isTitleNode(titleNode)) {
-        const titleDom = editor.getElementByKey(titleNode.getKey())
-        if (titleDom) {
-          titleDom.classList.toggle("is-placeholder", titleNode.getTextContent().length === 0)
-        }
-      }
     })
   }, [editor, initialTitle])
 
-  // Listen for changes to sync title and toggle placeholder
+  // Toggle is-placeholder on TitleNode lifecycle (create/update). Mutation
+  // listeners fire after DOM reconciliation, so getElementByKey is safe here —
+  // unlike inside editor.update(), where the DOM for nodes created in the same
+  // batch hasn't been committed yet (Lexical defers $commitPendingUpdates to a
+  // microtask). registerMutationListener also fires immediately with `created`
+  // for any TitleNode already mounted in the DOM at registration time, which
+  // covers the reloaded-note path (node imported from JSON before the plugin's
+  // effect runs).
+  useEffect(() => {
+    return editor.registerMutationListener(TitleNode, (mutations) => {
+      editor.getEditorState().read(() => {
+        for (const [key, mutation] of mutations) {
+          if (mutation === "destroyed") continue
+          const node = $getNodeByKey(key)
+          if (!$isTitleNode(node)) continue
+          const dom = editor.getElementByKey(key)
+          if (!dom) continue
+          dom.classList.toggle(PLACEHOLDER_CLASS, node.getTextContent().length === 0)
+        }
+      })
+    })
+  }, [editor])
+
+  // Typing into the TitleNode mutates a child TextNode, which does not fire a
+  // mutation on the TitleNode itself — so the placeholder toggle for the
+  // text-change case lives here. prevTitleRef gates the work so we only touch
+  // the DOM when the text actually changes.
   const prevTitleRef = useRef(initialTitle ?? "")
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
@@ -78,7 +98,7 @@ export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): 
             requestAnimationFrame(() => {
               const titleDom = editor.getElementByKey(key)
               if (titleDom) {
-                titleDom.classList.toggle("is-placeholder", isEmpty)
+                titleDom.classList.toggle(PLACEHOLDER_CLASS, isEmpty)
               }
             })
           }

@@ -388,6 +388,17 @@ test.describe('Title Typing Performance & Persistence', () => {
 
   // ── Placeholder toggle ─────────────────────────────────────────────
 
+  test('placeholder class is present on a brand-new note before any typing', async ({ window }) => {
+    // beforeEach already created a new note. Do not click or type — assert
+    // the initial state directly. Regression guard for issue #201: the
+    // mount-time imperative classList toggle inside editor.update() lost a
+    // race against Lexical's microtask-deferred reconciliation, so
+    // getElementByKey() returned null for the freshly created TitleNode and
+    // the class was silently skipped.
+    const title = window.locator('h1.editor-title');
+    await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+  });
+
   test('placeholder class toggles correctly through multiple empty/non-empty cycles', async ({ window }) => {
     const title = window.locator('h1.editor-title');
     await title.click();
@@ -421,6 +432,127 @@ test.describe('Title Typing Performance & Persistence', () => {
     expect(
       await title.evaluate((el) => el.classList.contains('is-placeholder')),
     ).toBe(true);
+  });
+
+  test('placeholder reappears after reopening a previously emptied note', async ({ window }) => {
+    // Type, then clear, then close + reopen the tab. The reopened note's
+    // initial state comes from serialized JSON, which exercises the
+    // mutation-listener's immediate-fire path (already-mounted TitleNode at
+    // listener registration time) instead of the create-during-mount path.
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.type('Temp');
+    await window.waitForTimeout(700); // settle save debounce
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await window.keyboard.press(`${modifier}+a`);
+    await window.keyboard.press('Backspace');
+    await window.waitForTimeout(700);
+
+    // Close the (only) tab and reopen the note from the sidebar.
+    const noteId = (await listDocumentsFromDb(window))[0].id;
+    await window
+      .locator('[data-tab-id]')
+      .first()
+      .locator('[aria-label="Close tab"]')
+      .click({ force: true });
+    await window.waitForTimeout(200);
+    await window.locator(`[data-note-id="${noteId}"]`).click();
+
+    const reopenedTitle = window.locator('main:visible h1.editor-title');
+    await expect(reopenedTitle).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+  });
+
+  test('placeholder is NOT present on a reopened note that has a title', async ({ window }) => {
+    // Ensures the mutation listener correctly reads existing text content on
+    // its initial `created` fire and does not spuriously add the class to a
+    // non-empty title.
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.type('Persisted');
+    await window.waitForTimeout(700);
+
+    const noteId = (await listDocumentsFromDb(window))[0].id;
+    await window
+      .locator('[data-tab-id]')
+      .first()
+      .locator('[aria-label="Close tab"]')
+      .click({ force: true });
+    await window.waitForTimeout(200);
+    await window.locator(`[data-note-id="${noteId}"]`).click();
+
+    const reopenedTitle = window.locator('main:visible h1.editor-title');
+    await expect(reopenedTitle).toHaveText('Persisted');
+    await expect(reopenedTitle).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+  });
+
+  test('switching tabs preserves correct placeholder state per note', async ({ window }) => {
+    // First note: leave empty. beforeEach already created note A (empty).
+    // The empty-title tab renders "New Page" as its visible label.
+    const visibleTitle = window.locator('main:visible h1.editor-title');
+    await expect(visibleTitle).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+
+    // Create note B with text.
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle.click();
+    await window.keyboard.type('Has Title');
+    await window.waitForTimeout(700);
+    await expect(visibleTitle).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+
+    // Match tabs by their rendered label (data-tab-id is the tab's own id,
+    // not the document id, so filter by hasText is the stable selector).
+    const emptyTab = window.locator('[data-tab-id]').filter({ hasText: 'New Page' });
+    const titledTab = window.locator('[data-tab-id]').filter({ hasText: 'Has Title' });
+
+    // Switch back to the empty note — placeholder must still be there.
+    await emptyTab.click();
+    await window.waitForTimeout(200);
+    await expect(visibleTitle).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+
+    // And back to the titled note — still no placeholder.
+    await titledTab.click();
+    await window.waitForTimeout(200);
+    await expect(visibleTitle).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+    await expect(visibleTitle).toHaveText('Has Title');
+  });
+
+  test('stress: 20 rapid type/clear cycles keep placeholder class in sync', async ({ window }) => {
+    // Exercises the update-listener's rAF-deferred toggle under load. Each
+    // cycle should land the class in the correct terminal state.
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+    for (let i = 0; i < 20; i++) {
+      await window.keyboard.type('x', { delay: 0 });
+      await window.keyboard.press(`${modifier}+a`);
+      await window.keyboard.press('Backspace');
+    }
+    // Allow the final rAF callback to run.
+    await window.waitForTimeout(100);
+    await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+    await expect(title).toHaveText('');
+  });
+
+  test('paste into title then clear restores placeholder', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+
+    // Inject text via the clipboard API path used in the renderer (Lexical's
+    // paste handling differs from typing — it batches the insert in a single
+    // editor.update, so this validates the mutation/update interplay).
+    await window.evaluate(async (text) => {
+      await navigator.clipboard.writeText(text);
+    }, 'Pasted Title');
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await window.keyboard.press(`${modifier}+v`);
+    await window.waitForTimeout(150);
+    await expect(title).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+
+    await window.keyboard.press(`${modifier}+a`);
+    await window.keyboard.press('Backspace');
+    await window.waitForTimeout(150);
+    await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
   });
 
   // ── Long title ─────────────────────────────────────────────────────
