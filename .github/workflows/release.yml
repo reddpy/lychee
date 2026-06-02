@@ -47,8 +47,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          ls -la release-assets
-          gh release create "$GITHUB_REF_NAME" release-assets/* \
+          # upload-artifact preserves each build's internal layout (deb/x64/…,
+          # squirrel.windows/x64/…), so release-assets/* would feed directories
+          # into gh release create. Flatten to a file list, NUL-delimited to
+          # tolerate the space in "Lychee-<version> Setup.exe".
+          find release-assets -type f -print0 | xargs -0 ls -la
+          mapfile -d '' -t assets < <(find release-assets -type f -print0)
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes
