@@ -67,6 +67,8 @@
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-webpack": "^7.11.1",
     "@electron/fuses": "^2.1.1",
+    "@lexical/headless": "^0.44.0",
+    "@lexical/yjs": "^0.44.0",
     "@playwright/test": "^1.60.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/postcss": "^4.3.0",
@@ -89,6 +91,7 @@
     "eslint": "^10.3.0",
     "eslint-plugin-import": "^2.32.0",
     "fork-ts-checker-webpack-plugin": "^9.1.0",
+    "happy-dom": "^20.9.0",
     "lucide-react": "^1.14.0",
     "node-loader": "^2.1.0",
     "postcss": "^8.5.14",
@@ -99,7 +102,8 @@
     "tailwindcss": "^4.3.0",
     "ts-loader": "^9.5.7",
     "typescript": "~5.9.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "yjs": "^13.6.31"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
