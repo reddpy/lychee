@@ -58,30 +58,33 @@ update.electronjs.org tolerate the `v` prefix.
 
 ## What happens on a `v*` tag push
 
-A single workflow — `.github/workflows/release.yml` — runs three build jobs in
-parallel, then a fourth job publishes one GitHub Release once all builds
-succeed:
+`.github/workflows/release.yml` triggers on `v*` tags and fans out to three
+reusable build workflows in parallel; a `publish-release` job runs once all
+three succeed:
 
-| Job | Runner | Produces | Signing |
+| Workflow / Job | Runner | Produces | Signing |
 | --- | --- | --- | --- |
-| `build-macos` | macOS | `.dmg`, `.zip` (arm64) | Developer ID + notarization |
-| `build-windows` | Windows | `Setup.exe`, `.nupkg`, `RELEASES` | Azure Trusted Signing |
-| `build-linux` | Ubuntu | `.deb`, `.rpm` | none (notify-only) |
-| `publish-release` | Ubuntu | the GitHub Release | n/a (`needs:` all three above; tag-gated) |
+| `.github/workflows/build-macos.yml` | macOS | `.dmg`, `.zip` (arm64) | Developer ID + notarization |
+| `.github/workflows/build-windows.yml` | Windows | `Setup.exe`, `.nupkg`, `RELEASES` | Azure Trusted Signing |
+| `.github/workflows/build-linux.yml` | Ubuntu | `.deb`, `.rpm` | none (notify-only) |
+| `publish-release` (in `release.yml`) | Ubuntu | the GitHub Release | n/a |
 
-Each build job runs `pnpm make`, verifies signatures, and uploads its outputs
-as workflow artifacts. `publish-release` then downloads all three artifacts
-and runs `gh release create` exactly once. If any build job fails, no Release
-is created — preventing partial publishes.
+Each build workflow runs `pnpm make`, verifies signatures, and uploads its
+outputs as workflow artifacts. `publish-release` downloads all three artifacts
+and runs `gh release create` exactly once. If any build fails, no Release is
+created — preventing partial publishes.
 
 ### Manually building a single platform
 
-For testing a packaging change without cutting a tag: Actions → **Release** →
-**Run workflow**. The dispatch UI exposes three checkboxes (Build macOS / Build
-Windows / Build Linux), all checked by default. Uncheck whichever platforms you
-don't want to burn runner time on. Manual runs always skip `publish-release`
-(it's gated by the `v*` tag), so the artifacts land on the run summary page
-for download — no GitHub Release is created.
+For testing a packaging change without cutting a tag, each `build-*.yml` is
+also independently dispatchable. Go to **Actions → Build macOS** (or **Build
+Windows** / **Build Linux**) → **Run workflow**. The run finishes when that
+single platform finishes, and the artifact is downloadable from the run
+summary immediately. No release is created.
+
+This is the right path for iterating on packaging — a single-platform dispatch
+takes only as long as that platform's build, with no waiting on other platforms
+or any orchestrator job to resolve before the artifact appears in the UI.
 
 ### Why these specific assets matter
 

@@ -1,0 +1,53 @@
+name: Build Linux
+
+# Reusable from release.yml on a v* tag, and individually dispatchable from
+# the Actions UI for testing packaging changes without cutting a release.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Linux (.deb + .rpm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          # node 22 (LTS): Electron Forge resolves instance-form makers to empty
+          # targets on node 24, producing no distributables.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # MakerDeb needs dpkg + fakeroot; MakerRpm needs rpmbuild. ubuntu-latest
+      # ships dpkg but not fakeroot/rpm.
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm
+
+      # No signing on Linux — autoUpdater is unsupported there, so the in-app
+      # updater is notify-only (see src/main/updater.ts). These artifacts just
+      # need to exist on the release for the "Download" button to point at.
+      - name: Make (.deb + .rpm)
+        run: pnpm make
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lychee-linux
+          path: |
+            out/make/**/*.deb
+            out/make/**/*.rpm
+          retention-days: 30
