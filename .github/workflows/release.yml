@@ -8,6 +8,10 @@ on:
   push:
     tags:
       - "v*"
+  # Also lets the orchestrator be manually dispatched as a full-pipeline
+  # dry-run. publish-release is tag-gated, so dispatching from a branch
+  # builds all three platforms in one parent run but creates no Release.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -28,6 +32,7 @@ jobs:
   publish-release:
     name: Publish GitHub Release
     needs: [build-macos, build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts

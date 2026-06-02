@@ -86,6 +86,15 @@ This is the right path for iterating on packaging — a single-platform dispatch
 takes only as long as that platform's build, with no waiting on other platforms
 or any orchestrator job to resolve before the artifact appears in the UI.
 
+### Dispatching the full pipeline as a dry-run
+
+**Actions → Release → Run workflow** fans out to all three `build-*.yml`
+workflows in a single parent run — useful for verifying end-to-end pipeline
+health (matrix of all platforms, signing wiring, etc.) without cutting a tag.
+`publish-release` is gated by `if: startsWith(github.ref, 'refs/tags/v')`, so a
+manual dispatch from a branch builds all three platforms but creates no GitHub
+Release; artifacts land on the run summary once the slowest build finishes.
+
 ### Why these specific assets matter
 
 The auto-updater is picky about what it consumes:
