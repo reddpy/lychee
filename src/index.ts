@@ -19,7 +19,7 @@ import { initUpdater } from './main/updater';
 import { isAllowedExternal } from './main/url-policy';
 import {
   applyChromeToAllWindows,
-  chromeFor,
+  bootstrapChromeFor,
   resolveTheme,
   TITLEBAR_OVERLAY_HEIGHT,
 } from './main/window-chrome';
@@ -261,7 +261,7 @@ function buildAppMenu(): Menu {
 const createWindow = (): BrowserWindow => {
   const isMac = process.platform === 'darwin';
   const theme = resolveTheme();
-  const chrome = chromeFor(theme);
+  const chrome = bootstrapChromeFor(theme);
 
   const mainWindow = new BrowserWindow({
     height: 600,

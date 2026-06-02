@@ -3,11 +3,28 @@ import { getSetting } from './repos/settings';
 
 export type ResolvedTheme = 'light' | 'dark';
 
-// Approximations of the renderer's --sidebar-background / --sidebar-foreground
-// tokens (src/index.css). The native overlay can't read CSS variables, so we
-// mirror the resolved hex here. Keep in sync if the tokens move.
-const LIGHT = { color: '#F7F3EE', symbolColor: '#5B5249', bg: '#fefefd' } as const;
-const DARK = { color: '#1B1B1F', symbolColor: '#B0B0B6', bg: '#1d1816' } as const;
+export type ChromeColors = {
+  /** WCO gutter background — must equal hsl(var(--sidebar-background)) */
+  color: string;
+  /** WCO icon (min/max/close glyph) color — equals hsl(var(--sidebar-foreground)) */
+  symbolColor: string;
+};
+
+// Bootstrap fallback used ONLY for the BrowserWindow's initial paint, before
+// the renderer mounts and ships its CSS-resolved colors via app.updateChrome.
+// After that, the cache (populated by setChromeColors) is the source of truth.
+// These should stay close to the design tokens but exactness isn't required —
+// the flash window is ~one frame. `bg` is the BrowserWindow's backgroundColor;
+// it's hidden under the renderer once it paints, so there's no token to mirror.
+const BOOTSTRAP: Record<ResolvedTheme, ChromeColors & { bg: string }> = {
+  light: { color: '#F9F7F6', symbolColor: '#5B5249', bg: '#fefefd' },
+  dark: { color: '#1A1A1E', symbolColor: '#B0B0B6', bg: '#1d1816' },
+};
+
+// Latest renderer-supplied colors per resolved theme. The renderer probes its
+// own CSS tokens, so this stays exact across token edits — no main-side HSL
+// math or hand-mirrored hex to drift. Empty until the first updateChrome call.
+const colorCache: Partial<Record<ResolvedTheme, ChromeColors>> = {};
 
 export const TITLEBAR_HEIGHT = 40;
 
@@ -16,19 +33,38 @@ export const TITLEBAR_HEIGHT = 40;
 // (the OS paints the overlay's color opaquely across its full height).
 export const TITLEBAR_OVERLAY_HEIGHT = TITLEBAR_HEIGHT - 1;
 
-export function resolveTheme(): ResolvedTheme {
+function readThemeMode(): 'light' | 'dark' | 'system' {
   try {
     const mode = getSetting('theme');
     if (mode === 'dark') return 'dark';
     if (mode === 'light') return 'light';
-    return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    return 'system';
   } catch {
-    return 'light';
+    return 'system';
   }
 }
 
-export function chromeFor(theme: ResolvedTheme) {
-  return theme === 'dark' ? DARK : LIGHT;
+export function resolveTheme(): ResolvedTheme {
+  const mode = readThemeMode();
+  if (mode === 'dark') return 'dark';
+  if (mode === 'light') return 'light';
+  return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+}
+
+/** Bootstrap colors for the BrowserWindow constructor — replaced once the
+ *  renderer attaches and calls setChromeColors. */
+export function bootstrapChromeFor(theme: ResolvedTheme) {
+  return BOOTSTRAP[theme];
+}
+
+/** Store renderer-resolved colors for a theme. Subsequent applyChromeToWindow
+ *  calls (theme changes, dim toggles) read from this cache. */
+export function setChromeColors(theme: ResolvedTheme, colors: ChromeColors): void {
+  colorCache[theme] = colors;
+}
+
+function colorsFor(theme: ResolvedTheme): ChromeColors {
+  return colorCache[theme] ?? BOOTSTRAP[theme];
 }
 
 // Renderer dim overlay is bg-black/50 (Radix dialog backdrop). The WCO is painted
@@ -48,16 +84,37 @@ function blendTowardBlack(hex: string, alpha: number): string {
 // Persists across theme changes so applyChromeToWindow stays in sync.
 let overlayDimmed = false;
 
+// Defer apply so rapid state flips (React StrictMode mount→cleanup→mount fires
+// the dim toggle three times in <1ms) collapse to a single setTitleBarOverlay
+// call. Windows' DWM can drop intermediate updates when hit that fast, leaving
+// the WCO stuck on whichever intermediate color won the race.
+let pendingApply: NodeJS.Immediate | null = null;
+
 export function setOverlayDimmed(dimmed: boolean): void {
   if (overlayDimmed === dimmed) return;
   overlayDimmed = dimmed;
-  applyChromeToAllWindows();
+  if (pendingApply) return;
+  pendingApply = setImmediate(() => {
+    pendingApply = null;
+    applyChromeToAllWindows();
+  });
 }
 
 export function applyChromeToWindow(win: BrowserWindow, theme: ResolvedTheme = resolveTheme()): void {
   if (process.platform === 'darwin') return;
-  const c = chromeFor(theme);
-  win.setBackgroundColor(c.bg);
+  // Windows derives the min/max caption-button hover tint from nativeTheme,
+  // not from our overlay color. If themeSource stays 'system' while the app
+  // theme diverges from the OS, hover becomes invisible (e.g. system dark +
+  // app light paints a light hover on our light overlay). Align it so the
+  // tint contrasts with our overlay.
+  const desiredSource = readThemeMode();
+  if (nativeTheme.themeSource !== desiredSource) {
+    nativeTheme.themeSource = desiredSource;
+  }
+  const c = colorsFor(theme);
+  // bg is the BrowserWindow paint behind the renderer — only visible during
+  // the boot flash, so the bootstrap value is fine; no need to mirror tokens.
+  win.setBackgroundColor(BOOTSTRAP[theme].bg);
   const color = overlayDimmed ? blendTowardBlack(c.color, 0.5) : c.color;
   const symbolColor = overlayDimmed ? blendTowardBlack(c.symbolColor, 0.5) : c.symbolColor;
   try {

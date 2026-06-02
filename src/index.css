@@ -54,8 +54,10 @@
   --popover: 30 25% 99.5%;
   --popover-foreground: 20 15% 8%;
 
-  /* accent (highlighted menu item, etc.) */
-  --accent: 25 15% 96%;
+  /* accent (highlighted menu item, etc.) — needs ~7%+ lightness delta from
+     --background (99.5%) to read as a clear hover against the popover bg.
+     Matches the perceptual contrast that dark mode's --accent (19% on 10% bg) has. */
+  --accent: 25 18% 92%;
   --accent-foreground: 20 15% 8%;
 
   /* destructive (trash, delete, danger) */
@@ -66,7 +68,7 @@
   --sidebar-foreground: 20 10% 28%;
   --sidebar-primary: 355 49% 53%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 25 18% 94%;
+  --sidebar-accent: 25 18% 91%;
   --sidebar-accent-foreground: 20 10% 12%;
   --sidebar-border: 25 15% 90%;
   --sidebar-ring: 355 49% 53%;
