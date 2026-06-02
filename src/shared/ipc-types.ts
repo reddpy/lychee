@@ -146,8 +146,11 @@ export type IpcContract = {
     req: { action: WindowAction };
     res: { ok: true };
   };
+  // Renderer ships the exact resolved hex of its theme tokens so the OS-painted
+  // WCO matches the tab bar without main-side approximation. color matches
+  // hsl(var(--sidebar-background)); symbolColor matches hsl(var(--sidebar-foreground)).
   'app.updateChrome': {
-    req: { resolvedTheme: 'light' | 'dark' };
+    req: { resolvedTheme: 'light' | 'dark'; color: string; symbolColor: string };
     res: { ok: true };
   };
   'app.setOverlayDimmed': {

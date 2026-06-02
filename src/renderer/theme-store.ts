@@ -44,9 +44,28 @@ function persistToDb(mode: Mode) {
   window.lychee.invoke('settings.set', { key: 'theme', value: mode });
 }
 
+// Probe the browser-resolved color of a CSS expression. Lets the renderer act
+// as the single source of truth for theme colors — main process receives exact
+// hex with no HSL math or hardcoded mirrors of CSS tokens.
+function resolveCssColor(cssExpr: string): string {
+  const probe = document.createElement('span');
+  probe.style.cssText = `color: ${cssExpr}; display: none;`;
+  // Append to documentElement (always present) rather than body, which may not
+  // exist yet if this module evaluates before body is parsed.
+  document.documentElement.appendChild(probe);
+  const computed = getComputedStyle(probe).color;
+  probe.remove();
+  const m = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(computed);
+  if (!m) return '#000000';
+  const hex = (n: string) => parseInt(n, 10).toString(16).padStart(2, '0');
+  return `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
+}
+
 /** Repaint native title-bar overlay (Win/Linux) to match the resolved theme. */
 function notifyChromeChange(resolved: ResolvedTheme) {
-  void window.lychee.invoke('app.updateChrome', { resolvedTheme: resolved });
+  const color = resolveCssColor('hsl(var(--sidebar-background))');
+  const symbolColor = resolveCssColor('hsl(var(--sidebar-foreground))');
+  void window.lychee.invoke('app.updateChrome', { resolvedTheme: resolved, color, symbolColor });
 }
 
 const initialMode = readStoredMode();
