@@ -6,7 +6,6 @@ import { CollapsedSidebarWidget } from "../components/collapsed-sidebar-widget";
 import { ErrorBoundary } from "../components/error-boundary";
 import { HamburgerMenu } from "../components/hamburger-menu";
 import { LexicalEditor } from "../components/lexical-editor";
-import { MediaPlaybackPill } from "../components/media-playback-pill";
 import { SettingsDialog } from "../components/settings/settings-dialog";
 import { LycheeLogoHorizontal } from "../components/sidebar/lychee-logo";
 import { TabStrip } from "../components/tab-strip";
@@ -40,9 +39,11 @@ type WindowControlsOverlay = {
 function useWindowControlsOverlayInset(): number {
   const [inset, setInset] = React.useState(0);
   React.useEffect(() => {
-    const wco = (navigator as Navigator & {
-      windowControlsOverlay?: WindowControlsOverlay;
-    }).windowControlsOverlay;
+    const wco = (
+      navigator as Navigator & {
+        windowControlsOverlay?: WindowControlsOverlay;
+      }
+    ).windowControlsOverlay;
     if (!wco) return;
     const update = () => {
       if (!wco.visible) {
@@ -94,8 +95,7 @@ function TopBar() {
   // doesn't visually crash into the active tab's edge — mirrors how
   // inactive-tab dividers hide next to the active tab.
   const lastTabActive =
-    openTabs.length > 0 &&
-    selectedId === openTabs[openTabs.length - 1].tabId;
+    openTabs.length > 0 && selectedId === openTabs[openTabs.length - 1].tabId;
 
   return (
     <div className="titlebar-drag relative flex h-10 w-full shrink-0 bg-[hsl(var(--sidebar-background))]">
@@ -127,9 +127,7 @@ function TopBar() {
             aria-label="Previous tab"
             className={
               "flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors " +
-              (canGoLeft
-                ? "hover:bg-brand/15 hover:text-brand"
-                : "opacity-30")
+              (canGoLeft ? "hover:bg-brand/15 hover:text-brand" : "opacity-30")
             }
           >
             <ChevronLeft className="h-4 w-4" />
@@ -141,9 +139,7 @@ function TopBar() {
             aria-label="Next tab"
             className={
               "flex h-6 w-6 items-center justify-center rounded-sm text-[hsl(var(--muted-foreground))] transition-colors " +
-              (canGoRight
-                ? "hover:bg-brand/15 hover:text-brand"
-                : "opacity-30")
+              (canGoRight ? "hover:bg-brand/15 hover:text-brand" : "opacity-30")
             }
           >
             <ChevronRight className="h-4 w-4" />
@@ -166,7 +162,11 @@ function TopBar() {
               <div className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-px bg-[hsl(var(--border))]" />
             )}
           </div>
-          <div className="shrink-0" style={{ width: overlayInset }} aria-hidden />
+          <div
+            className="shrink-0"
+            style={{ width: overlayInset }}
+            aria-hidden
+          />
         </>
       ) : null}
       {/* Bottom border — last child so it paints above inactive tabs; active tab z-10 breaks through */}
@@ -262,19 +262,22 @@ function EditorArea() {
 
 function useMenuEventSubscriptions() {
   React.useEffect(() => {
-    const offNewNote = window.lychee.on('menu:new-note', () => {
+    const offNewNote = window.lychee.on("menu:new-note", () => {
       void useDocumentStore.getState().createDocument(null);
     });
-    const offOpenSettings = window.lychee.on('menu:open-settings', () => {
+    const offOpenSettings = window.lychee.on("menu:open-settings", () => {
       useSettingsStore.getState().openSettings();
     });
-    const offCloseTab = window.lychee.on('menu:close-tab', () => {
+    const offCloseTab = window.lychee.on("menu:close-tab", () => {
       const { selectedId, closeTab } = useDocumentStore.getState();
       if (selectedId) closeTab(selectedId);
     });
-    const offReopenClosedTab = window.lychee.on('menu:reopen-closed-tab', () => {
-      useDocumentStore.getState().reopenLastClosedTab();
-    });
+    const offReopenClosedTab = window.lychee.on(
+      "menu:reopen-closed-tab",
+      () => {
+        useDocumentStore.getState().reopenLastClosedTab();
+      },
+    );
     return () => {
       offNewNote();
       offOpenSettings();
@@ -314,7 +317,6 @@ export function App() {
                 {e2eCrashProbe("editor")}
                 <EditorArea />
               </ErrorBoundary>
-              <MediaPlaybackPill />
             </div>
           </SidebarInset>
           <CollapsedSidebarWidget />
