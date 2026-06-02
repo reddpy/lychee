@@ -294,8 +294,8 @@ export function SettingsDialog() {
                   className={cn(
                     'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors',
                     isActive
-                      ? 'bg-[hsl(var(--accent))] text-[hsl(var(--accent-foreground))] font-medium'
-                      : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/60 hover:text-[hsl(var(--foreground))]',
+                      ? 'bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-accent-foreground))] font-medium'
+                      : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]',
                   )}
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" />
