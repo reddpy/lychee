@@ -1,4 +1,4 @@
-import type { Configuration } from 'webpack';
+import { type Configuration, DefinePlugin } from 'webpack';
 import path from 'path';
 import CopyPlugin from 'copy-webpack-plugin';
 
@@ -26,6 +26,14 @@ export const rendererConfig: Configuration = {
   ],
   plugins: [
     ...plugins,
+    // Build-time flag for E2E-only renderer code (E2ECrashProbe). Baked from the
+    // E2E env var at build time so production bundles (built without E2E=1) get
+    // the literal `false` and Terser strips the gated code entirely. Deliberately
+    // a dedicated token — NOT process.env.E2E — so the preload's runtime E2E gate
+    // (src/preload.ts) is left untouched even though it shares this config.
+    new DefinePlugin({
+      __LYCHEE_E2E__: JSON.stringify(process.env.E2E === '1'),
+    }),
     // Emit theme-bootstrap.js alongside index.html so <head> can load it
     // synchronously pre-paint without bundling it into the main renderer chunk.
     new CopyPlugin({

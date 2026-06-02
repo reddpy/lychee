@@ -284,6 +284,17 @@ function useMenuEventSubscriptions() {
   }, []);
 }
 
+// E2E-only crash injector. Loaded via require() inside the build-flag guard so
+// webpack drops both the call and the entire module from production bundles
+// (zero trace — no probe code or strings ship). See src/types/globals.d.ts and
+// src/components/e2e-crash-probe.tsx.
+function e2eCrashProbe(scope: string): React.ReactElement | null {
+  if (!__LYCHEE_E2E__) return null;
+  const { E2ECrashProbe } =
+    require("../components/e2e-crash-probe") as typeof import("../components/e2e-crash-probe");
+  return <E2ECrashProbe scope={scope} />;
+}
+
 export function App() {
   useMenuEventSubscriptions();
   // Reset the editor boundary when the active tab changes, so a crash isolated
@@ -292,6 +303,7 @@ export function App() {
   const selectedId = useDocumentStore((s) => s.selectedId);
   return (
     <SidebarProvider defaultOpen>
+      {e2eCrashProbe("app")}
       <div className="flex h-full w-full flex-col">
         <TopBar />
         <div className="relative flex min-h-0 flex-1">
@@ -299,6 +311,7 @@ export function App() {
           <SidebarInset>
             <div className="relative flex min-h-0 flex-1 flex-col">
               <ErrorBoundary scope="editor" resetKeys={[selectedId]}>
+                {e2eCrashProbe("editor")}
                 <EditorArea />
               </ErrorBoundary>
               <MediaPlaybackPill />
