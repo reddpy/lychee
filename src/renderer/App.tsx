@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { AppSidebar } from "../components/app-sidebar";
 import { CollapsedSidebarWidget } from "../components/collapsed-sidebar-widget";
+import { ErrorBoundary } from "../components/error-boundary";
 import { HamburgerMenu } from "../components/hamburger-menu";
 import { LexicalEditor } from "../components/lexical-editor";
 import { MediaPlaybackPill } from "../components/media-playback-pill";
@@ -283,17 +284,36 @@ function useMenuEventSubscriptions() {
   }, []);
 }
 
+// E2E-only crash injector. Loaded via require() inside the build-flag guard so
+// webpack drops both the call and the entire module from production bundles
+// (zero trace — no probe code or strings ship). See src/types/globals.d.ts and
+// src/components/e2e-crash-probe.tsx.
+function e2eCrashProbe(scope: string): React.ReactElement | null {
+  if (!__LYCHEE_E2E__) return null;
+  const { E2ECrashProbe } =
+    require("../components/e2e-crash-probe") as typeof import("../components/e2e-crash-probe");
+  return <E2ECrashProbe scope={scope} />;
+}
+
 export function App() {
   useMenuEventSubscriptions();
+  // Reset the editor boundary when the active tab changes, so a crash isolated
+  // to one document recovers as soon as the user navigates away from it,
+  // instead of staying stuck on the fallback until a full reload.
+  const selectedId = useDocumentStore((s) => s.selectedId);
   return (
     <SidebarProvider defaultOpen>
+      {e2eCrashProbe("app")}
       <div className="flex h-full w-full flex-col">
         <TopBar />
         <div className="relative flex min-h-0 flex-1">
           <AppSidebar />
           <SidebarInset>
             <div className="relative flex min-h-0 flex-1 flex-col">
-              <EditorArea />
+              <ErrorBoundary scope="editor" resetKeys={[selectedId]}>
+                {e2eCrashProbe("editor")}
+                <EditorArea />
+              </ErrorBoundary>
               <MediaPlaybackPill />
             </div>
           </SidebarInset>

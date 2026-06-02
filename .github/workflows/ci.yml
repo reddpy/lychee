@@ -106,7 +106,7 @@ jobs:
           - name: menu-shortcuts
             specs: e2e/menu-shortcuts.spec.ts
           - name: misc
-            specs: e2e/youtube-embed.spec.ts e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts e2e/content-security-policy.spec.ts
+            specs: e2e/youtube-embed.spec.ts e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts e2e/content-security-policy.spec.ts e2e/error-boundary.spec.ts
             workers: 1
     steps:
       - uses: actions/checkout@v4
