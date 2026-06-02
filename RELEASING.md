@@ -11,9 +11,9 @@ pnpm version prerelease   # 0.1.0-alpha.1 → 0.1.0-alpha.2 (bumps package.json,
 git push --follow-tags    # pushes the commit + tag; the v* tag triggers the release workflows
 ```
 
-That's it. The three release workflows build, sign, and publish a GitHub
-Release with all platform assets. Within ~15 minutes, installed apps on the
-previous version see the update.
+That's it. The release workflow builds and signs each platform in parallel,
+then publishes a single GitHub Release with all platform assets. Within
+~15 minutes, installed apps on the previous version see the update.
 
 ## The one rule: `package.json` version is the single source of truth
 
@@ -58,18 +58,30 @@ update.electronjs.org tolerate the `v` prefix.
 
 ## What happens on a `v*` tag push
 
-Three workflows run in parallel (each also supports manual `workflow_dispatch`):
+A single workflow — `.github/workflows/release.yml` — runs three build jobs in
+parallel, then a fourth job publishes one GitHub Release once all builds
+succeed:
 
-| Workflow | Runner | Produces | Signing |
+| Job | Runner | Produces | Signing |
 | --- | --- | --- | --- |
-| `.github/workflows/release-macos.yml` | macOS | `.dmg`, `.zip` | Developer ID + notarization |
-| `.github/workflows/release-windows.yml` | Windows | `Setup.exe`, `.nupkg`, `RELEASES` | Azure Trusted Signing |
-| `.github/workflows/release-linux.yml` | Ubuntu | `.deb`, `.rpm` | none (notify-only) |
+| `build-macos` | macOS | `.dmg`, `.zip` (arm64) | Developer ID + notarization |
+| `build-windows` | Windows | `Setup.exe`, `.nupkg`, `RELEASES` | Azure Trusted Signing |
+| `build-linux` | Ubuntu | `.deb`, `.rpm` | none (notify-only) |
+| `publish-release` | Ubuntu | the GitHub Release | n/a (`needs:` all three above; tag-gated) |
 
-Each builds with `pnpm make`, verifies signatures, then publishes to a single
-GitHub Release for the tag. The first workflow to finish runs
-`gh release create`; the others fall back to `gh release upload --clobber`, so
-they all attach to the same release regardless of finish order.
+Each build job runs `pnpm make`, verifies signatures, and uploads its outputs
+as workflow artifacts. `publish-release` then downloads all three artifacts
+and runs `gh release create` exactly once. If any build job fails, no Release
+is created — preventing partial publishes.
+
+### Manually building a single platform
+
+For testing a packaging change without cutting a tag: Actions → **Release** →
+**Run workflow**. The dispatch UI exposes three checkboxes (Build macOS / Build
+Windows / Build Linux), all checked by default. Uncheck whichever platforms you
+don't want to burn runner time on. Manual runs always skip `publish-release`
+(it's gated by the `v*` tag), so the artifacts land on the run summary page
+for download — no GitHub Release is created.
 
 ### Why these specific assets matter
 
