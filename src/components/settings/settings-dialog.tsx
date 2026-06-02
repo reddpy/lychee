@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { LycheeLogo } from '@/components/sidebar/lychee-logo';
 import { UpdateDot } from '@/components/update-dot';
 import { cn } from '@/lib/utils';
@@ -257,6 +257,10 @@ export function SettingsDialog() {
       <DialogContent
         className="sm:max-w-[min(44rem,calc(100vw-10rem))] h-[min(34rem,calc(100vh-6rem))] gap-0 overflow-hidden rounded-2xl border border-[hsl(var(--border))]/60 bg-[hsl(var(--popover))]/95 p-0 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.4),0_10px_20px_-8px_rgba(0,0,0,0.15),inset_0_1px_0_0_rgba(255,255,255,0.06)] ring-1 ring-black/5 backdrop-blur-xl flex flex-col"
         showCloseButton={false}
+        // Description varies per section (each SectionHeader carries its own
+        // title + body), so there's no single root-level description to point
+        // at. Explicit undefined silences the Radix warning intentionally.
+        aria-describedby={undefined}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           firstNavRef.current?.focus();
@@ -266,7 +270,7 @@ export function SettingsDialog() {
         <div className="flex items-center justify-between gap-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/40 px-5 py-3">
           <div className="flex items-center gap-2">
             <Settings className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-            <h2 className="text-sm font-semibold tracking-tight">Settings</h2>
+            <DialogTitle className="text-sm font-semibold tracking-tight">Settings</DialogTitle>
           </div>
           <DialogClose asChild>
             <button

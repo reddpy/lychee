@@ -84,10 +84,20 @@ function blendTowardBlack(hex: string, alpha: number): string {
 // Persists across theme changes so applyChromeToWindow stays in sync.
 let overlayDimmed = false;
 
+// Defer apply so rapid state flips (React StrictMode mount→cleanup→mount fires
+// the dim toggle three times in <1ms) collapse to a single setTitleBarOverlay
+// call. Windows' DWM can drop intermediate updates when hit that fast, leaving
+// the WCO stuck on whichever intermediate color won the race.
+let pendingApply: NodeJS.Immediate | null = null;
+
 export function setOverlayDimmed(dimmed: boolean): void {
   if (overlayDimmed === dimmed) return;
   overlayDimmed = dimmed;
-  applyChromeToAllWindows();
+  if (pendingApply) return;
+  pendingApply = setImmediate(() => {
+    pendingApply = null;
+    applyChromeToAllWindows();
+  });
 }
 
 export function applyChromeToWindow(win: BrowserWindow, theme: ResolvedTheme = resolveTheme()): void {
