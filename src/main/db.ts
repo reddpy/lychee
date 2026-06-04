@@ -29,15 +29,50 @@ function pruneOldBackups(userDataDir: string): void {
   }
 }
 
+// Parse the stored schema_version string. A missing/empty value means an
+// unversioned (fresh/legacy) DB → 0. Anything present but not a non-negative
+// integer is corruption: throw so the caller can fail closed rather than guess
+// a baseline and migrate from the wrong version (which could destroy data).
+export function parseSchemaVersion(value: string | undefined): number {
+  if (!value) return 0;
+  const version = Number(value);
+  if (!Number.isInteger(version) || version < 0) {
+    throw new Error(`unreadable schema_version ${JSON.stringify(value)}`);
+  }
+  return version;
+}
+
 function readCurrentSchemaVersion(database: BetterSqlite3Database): number {
+  let row: { value?: string } | undefined;
   try {
-    const row = database
+    row = database
       .prepare(`SELECT value FROM meta WHERE key = 'schema_version'`)
       .get() as { value?: string } | undefined;
-    return row?.value ? Number(row.value) : 0;
   } catch {
     // meta table doesn't exist yet (fresh DB)
     return 0;
+  }
+  // Parse *outside* the try: a corrupt-version error must propagate, not be
+  // mistaken for the missing-table (fresh DB) case above.
+  return parseSchemaVersion(row?.value);
+}
+
+// Best-effort extraction of a human-meaningful code from a teardown error.
+// better-sqlite3 errors carry a string `.code` (e.g. "SQLITE_FULL"); Node fs
+// errors carry both `.code` ("EACCES") and a numeric `.errno`. Falls back to
+// "unknown" so the log line is always well-formed regardless of error shape.
+export function backupErrorCode(err: unknown): string | number {
+  const e = err as { code?: string; errno?: number } | null | undefined;
+  return e?.code ?? e?.errno ?? "unknown";
+}
+
+// Close a handle during error teardown without letting a close failure mask
+// the original (actionable) error that triggered the teardown.
+function safeClose(database: BetterSqlite3Database): void {
+  try {
+    database.close();
+  } catch {
+    // The triggering error is the one worth surfacing; swallow this.
   }
 }
 
@@ -75,10 +110,41 @@ export function initDatabase(): { dbPath: string } {
 
   let backupPath: string | null = null;
   if (!isFreshInstall) {
-    const currentVersion = readCurrentSchemaVersion(database);
+    let currentVersion: number;
+    try {
+      currentVersion = readCurrentSchemaVersion(database);
+    } catch (err) {
+      // Fail closed: if the on-disk schema version is unreadable we can't know
+      // which migrations apply — migrating from a guessed baseline could
+      // corrupt or destroy data. The original DB file is untouched.
+      console.error(
+        `[db] ${(err as Error).message}: refusing to migrate to protect existing data.`,
+      );
+      safeClose(database);
+      throw err;
+    }
     if (currentVersion < LATEST_SCHEMA_VERSION) {
-      backupPath = path.join(userDataDir, `lychee.sqlite3.bak-v${currentVersion}`);
-      vacuumIntoFile(database, backupPath);
+      const dest = path.join(userDataDir, `lychee.sqlite3.bak-v${currentVersion}`);
+      backupPath = dest;
+      try {
+        vacuumIntoFile(database, dest);
+      } catch (err) {
+        // Fail closed: a failed backup (disk full, permission denied, etc.)
+        // must abort launch rather than migrate without a safety net. The
+        // original DB file is untouched — VACUUM INTO only writes the backup.
+        console.error(
+          `[db] backup failed (${backupErrorCode(err)}): refusing to migrate to protect existing data.`,
+        );
+        // A failed VACUUM INTO can leave a partial/truncated file behind. Drop
+        // it so it can't masquerade as a valid backup before the next attempt.
+        try {
+          if (fs.existsSync(dest)) fs.unlinkSync(dest);
+        } catch {
+          // best-effort
+        }
+        safeClose(database);
+        throw err;
+      }
       pruneOldBackups(userDataDir);
       console.log(`[db] backed up to ${backupPath} before migration`);
     }
@@ -90,7 +156,7 @@ export function initDatabase(): { dbPath: string } {
     if (backupPath) {
       console.error(`[db] migration failed. Backup available at: ${backupPath}`);
     }
-    database.close();
+    safeClose(database);
     throw err;
   }
 
