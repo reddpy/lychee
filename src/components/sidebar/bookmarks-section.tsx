@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight, FileText, MoreHorizontal } from 'lucide-react';
 
 import type { DocumentRow } from '../../shared/documents';
+import { displayNoteTitle } from '../../shared/note-title';
 import {
   SidebarGroup,
   SidebarMenu,
@@ -51,7 +52,7 @@ function BookmarkItem({ doc, isSelected }: { doc: DocumentRow; isSelected: boole
       <div className="relative" data-note-id={doc.id} data-section="bookmarks">
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip={doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}
+            tooltip={displayNoteTitle(doc.title)}
             isActive={isSelected}
             onClick={(e: React.MouseEvent) => {
               if (e.metaKey || e.ctrlKey) {
@@ -78,7 +79,7 @@ function BookmarkItem({ doc, isSelected }: { doc: DocumentRow; isSelected: boole
                 "flex-1 truncate select-none text-[hsl(var(--muted-foreground))]",
                 isSelected && "font-extrabold text-[hsl(var(--foreground))]",
               )}>
-                {doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}
+                {displayNoteTitle(doc.title)}
               </span>
 
               {/* Options (⋯) dropdown — appears on hover, no + button since canAddChild=false */}

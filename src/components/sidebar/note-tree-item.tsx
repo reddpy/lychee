@@ -8,6 +8,7 @@ import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/el
 import { pointerOutsideOfPreview } from '@atlaskit/pragmatic-drag-and-drop/element/pointer-outside-of-preview';
 
 import type { DocumentRow } from '../../shared/documents';
+import { displayNoteTitle } from '../../shared/note-title';
 import {
   SidebarMenuButton,
   SidebarMenuItem,
@@ -282,7 +283,7 @@ export function NoteTreeItem({
 
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip={doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}
+            tooltip={displayNoteTitle(doc.title)}
             isActive={isSelected && !showNestIndicator}
             onClick={handleClick}
             onAuxClick={handleAuxClick}
@@ -330,7 +331,7 @@ export function NoteTreeItem({
 
               {/* Title */}
               <span className={cn("flex-1 truncate select-none text-[hsl(var(--muted-foreground))]", isSelected && "font-extrabold text-[hsl(var(--foreground))]")}>
-                {doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}
+                {displayNoteTitle(doc.title)}
               </span>
 
               {/* Action buttons */}

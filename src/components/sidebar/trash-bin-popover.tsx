@@ -10,9 +10,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "../../lib/utils";
 import { SidebarMenuItem, useHoverLock } from "../ui/sidebar";
+import { displayNoteTitle } from "../../shared/note-title";
 
 function displayTitle(doc: DocumentRow): string {
-  return doc.title && doc.title !== "Untitled" ? doc.title : "New Page";
+  return displayNoteTitle(doc.title);
 }
 
 function TrashItemRow({

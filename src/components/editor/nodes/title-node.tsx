@@ -12,6 +12,7 @@ import {
   RangeSelection,
   SerializedElementNode,
 } from "lexical"
+import { NEW_NOTE_TITLE } from "../../../shared/note-title"
 
 export type SerializedTitleNode = SerializedElementNode & {
   type: "title"
@@ -34,7 +35,7 @@ export class TitleNode extends ElementNode {
   createDOM(_config: EditorConfig): HTMLElement {
     const dom = document.createElement("h1")
     dom.className = "editor-title"
-    dom.setAttribute("data-placeholder", "New Page")
+    dom.setAttribute("data-placeholder", NEW_NOTE_TITLE)
     dom.setAttribute("data-lexical-no-drag", "true")
     return dom
   }
