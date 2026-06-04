@@ -21,6 +21,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../lib/utils';
 import { useDocumentStore } from '../renderer/document-store';
 import type { DocumentRow } from '../shared/documents';
+import { displayNoteTitle } from '../shared/note-title';
 import { ReadOnlyNotePreview } from './editor/read-only-note-preview';
 
 /* ------------------------------------------------------------------ */
@@ -47,7 +48,7 @@ const TabPreviewPopup = React.memo(function TabPreviewPopup({
   const doc = useDocumentStore((s) => s.documents.find((d) => d.id === docId));
 
   const hasTitle = doc ? (doc.title && doc.title !== 'Untitled') : false;
-  const displayTitle = hasTitle ? doc!.title : 'New Page';
+  const displayTitle = displayNoteTitle(doc?.title);
   const emoji = doc?.emoji ?? null;
 
   const hasContent = React.useMemo(() => {
@@ -217,7 +218,7 @@ function SortableTab({
         {emoji ? (
           <span className="shrink-0 text-base leading-none">{emoji}</span>
         ) : null}
-        <span className="min-w-0 truncate">{title && title !== 'Untitled' ? title : 'New Page'}</span>
+        <span className="min-w-0 truncate">{displayNoteTitle(title)}</span>
         {isDuplicate && (
           <span className="shrink-0 h-1.5 w-1.5 rounded-full bg-current opacity-40" />
         )}

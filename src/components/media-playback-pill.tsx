@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { Pause, Play, Volume2, X } from "lucide-react";
 import { useMediaStore } from "@/renderer/media-store";
 import { useDocumentStore } from "@/renderer/document-store";
+import { displayNoteTitle } from "@/shared/note-title";
 
 export function MediaPlaybackPill() {
   const activeMedia = useMediaStore((s) => s.activeMedia);
@@ -58,7 +59,7 @@ export function MediaPlaybackPill() {
 
   const doc = documents.find((d) => d.id === activeMedia.noteId);
   const noteEmoji = doc?.emoji ?? null;
-  const noteTitle = activeMedia.noteTitle || "Untitled";
+  const noteTitle = displayNoteTitle(activeMedia.noteTitle);
   const contentTitle = activeMedia.contentTitle || "Media";
   const isPlaying = activeMedia.isPlaying;
 

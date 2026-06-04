@@ -1,3 +1,5 @@
+import { displayNoteTitle } from "./note-title";
+
 export type HighlightedSnippet = {
   before: string;
   match: string;
@@ -13,8 +15,10 @@ const TEXT_LIKE_KEYS = new Set([
   "caption",
 ]);
 
+// Re-exported for search scoring/display; delegates to the shared note-title
+// fallback so the palette stays consistent with the rest of the app.
 export function normalizedTitle(title: string) {
-  return title.trim() || "Untitled";
+  return displayNoteTitle(title);
 }
 
 export function scoreDocument(title: string, query: string) {

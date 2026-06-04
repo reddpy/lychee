@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react';
 import type { DocumentRow } from '../../shared/documents';
+import { displayNoteTitle } from '../../shared/note-title';
 
 export type DragOverlayItemProps = {
   doc: DocumentRow;
@@ -20,7 +21,7 @@ export function DragOverlayItem({ doc }: DragOverlayItemProps) {
         {iconNode}
       </span>
       <span className="truncate max-w-[180px]">
-        {doc.title && doc.title !== 'Untitled' ? doc.title : 'New Page'}
+        {displayNoteTitle(doc.title)}
       </span>
     </div>
   );

@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect, type MouseEvent } from "reac
 import { ChevronRight, Ellipsis } from "lucide-react";
 import { useDocumentStore, selectActiveDocId } from "@/renderer/document-store";
 import { DocumentRow } from "@/shared/documents";
+import { displayNoteTitle } from "@/shared/note-title";
 import {
   Popover,
   PopoverContent,
@@ -92,7 +93,7 @@ function AncestorSegment({
   return (
     <button
       type="button"
-      title={doc.title || "Untitled"}
+      title={displayNoteTitle(doc.title)}
       onClick={(e) => onNavigate(doc.id, e)}
       onAuxClick={(e) => onAuxClick(doc.id, e)}
       className="flex items-center gap-1 min-w-0 rounded px-1 py-0.5 text-xs text-[hsl(var(--muted-foreground))]/70 hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))] transition-colors cursor-pointer select-none"
@@ -101,7 +102,7 @@ function AncestorSegment({
         <span className="text-xs leading-none shrink-0">{doc.emoji}</span>
       )}
       <span className="truncate" style={{ maxWidth: maxTitleW }}>
-        {doc.title || "Untitled"}
+        {displayNoteTitle(doc.title)}
       </span>
     </button>
   );
@@ -195,7 +196,7 @@ export function BreadcrumbBar() {
                 <button
                   key={doc.id}
                   type="button"
-                  title={doc.title || "Untitled"}
+                  title={displayNoteTitle(doc.title)}
                   onClick={(e) => handleNavigate(doc.id, e)}
                   onAuxClick={(e) => handleAuxClick(doc.id, e)}
                   className="group/row flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-sm text-left hover:bg-[hsl(var(--accent))] transition-colors"
@@ -209,7 +210,7 @@ export function BreadcrumbBar() {
                       {doc.emoji}
                     </span>
                   ) : null}
-                  <span className="truncate">{doc.title || "Untitled"}</span>
+                  <span className="truncate">{displayNoteTitle(doc.title)}</span>
                 </button>
               ))}
             </PopoverContent>
@@ -234,7 +235,7 @@ export function BreadcrumbBar() {
       {/* Current note */}
       {(visibleAncestors.length > 0 || needsCollapse) && <Chevron />}
       <span
-        title={currentDoc.title || "Untitled"}
+        title={displayNoteTitle(currentDoc.title)}
         className="flex items-center gap-1 min-w-0 px-1 py-0.5 text-xs text-[hsl(var(--muted-foreground))]/40 select-none"
       >
         {currentDoc.emoji && (
@@ -243,7 +244,7 @@ export function BreadcrumbBar() {
           </span>
         )}
         <span className="truncate" style={{ maxWidth: maxTitleW }}>
-          {currentDoc.title || "Untitled"}
+          {displayNoteTitle(currentDoc.title)}
         </span>
       </span>
     </nav>

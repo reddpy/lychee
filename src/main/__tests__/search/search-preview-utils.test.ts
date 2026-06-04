@@ -14,12 +14,17 @@ describe("Search Preview Utils — Backend Contracts", () => {
       expect(normalizedTitle("  My note  ")).toBe("My note");
     });
 
-    it("falls back to Untitled for empty title", () => {
-      expect(normalizedTitle("")).toBe("Untitled");
+    it("falls back to New Page for empty title", () => {
+      expect(normalizedTitle("")).toBe("New Page");
     });
 
-    it("falls back to Untitled for whitespace-only title", () => {
-      expect(normalizedTitle("   \n\t  ")).toBe("Untitled");
+    it("falls back to New Page for whitespace-only title", () => {
+      expect(normalizedTitle("   \n\t  ")).toBe("New Page");
+    });
+
+    it("treats the legacy Untitled sentinel as New Page", () => {
+      expect(normalizedTitle("Untitled")).toBe("New Page");
+      expect(normalizedTitle("  Untitled  ")).toBe("New Page");
     });
   });
 
@@ -40,8 +45,10 @@ describe("Search Preview Utils — Backend Contracts", () => {
       expect(scoreDocument("Engineering", "roadmap")).toBe(-1);
     });
 
-    it("uses Untitled fallback when title is blank", () => {
-      expect(scoreDocument("   ", "untitled")).toBe(300);
+    it("uses the New Page fallback when title is blank", () => {
+      expect(scoreDocument("   ", "new page")).toBe(300);
+      // The old "untitled" sentinel no longer matches a blank-titled note.
+      expect(scoreDocument("   ", "untitled")).toBe(-1);
     });
 
     it("returns 0 for empty query", () => {
