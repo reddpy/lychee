@@ -35,7 +35,6 @@ import { LinkMatcher } from "@lexical/react/LexicalAutoLinkPlugin"
 import * as linkify from "linkifyjs"
 
 import { ContentEditable } from "@/components/editor/editor-ui/content-editable"
-import { DraggableBlockPlugin } from "@/components/editor/plugins/draggable-block-plugin"
 import { SlashCommandPlugin } from "@/components/editor/plugins/slash-command-plugin"
 import { KeyboardShortcutsPlugin } from "@/components/editor/plugins/keyboard-shortcuts-plugin"
 import { FloatingToolbarPlugin } from "@/components/editor/plugins/floating-toolbar-plugin"
@@ -162,9 +161,6 @@ export function Plugins({
 
       {/* Block highlight (shared by drag handle, TOC, etc.) */}
       <BlockHighlightPlugin />
-
-      {/* Drag and drop blocks */}
-      <DraggableBlockPlugin anchorElem={editorContainerRef.current} />
 
       {/* Click below last block to append paragraph */}
       <ClickToAppendPlugin />
