@@ -82,10 +82,25 @@ const linuxIcon = path.resolve(__dirname, "build", "icon.png");
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // Reverse-DNS of lycheenote.com. Without this, @electron/packager defaults
+    // to "com.electron.lychee". Changed once, during alpha: Squirrel.Mac
+    // verifies updates against the running app's designated requirement (which
+    // embeds the bundle id), so macOS installs from before this change cannot
+    // auto-update past it and need a one-time manual re-download (notes are
+    // unaffected — userData is keyed by app name). Do NOT change this again.
+    // The helper bundle id derives from it automatically (".helper" suffix).
+    // Windows/Linux ignore it.
+    appBundleId: "com.lycheenote.app",
     // The packaged binary is named after productName ("Lychee") by default, but
     // the Linux deb/rpm makers look up the binary by the lowercase package name
-    // ("lychee"). Pin executableName so the Linux installers find the binary.
-    executableName: "lychee",
+    // ("lychee"). Pin executableName on Linux only: lowercase binaries are the
+    // Linux convention, and on macOS @electron/packager copies executableName
+    // into CFBundleDisplayName, which made Finder/Dock/menu bar show "lychee".
+    // Windows derives the .exe and Squirrel shortcut names from it too, so
+    // leaving it unset there yields "Lychee.exe" / a "Lychee" Start Menu entry
+    // (NTFS is case-insensitive, so existing installs keep updating fine).
+    // Builds always run on the target OS, so process.platform is the target.
+    ...(process.platform === "linux" ? { executableName: "lychee" } : {}),
     icon: path.resolve(__dirname, "build", "icon"),
     // Copy build/icon.png into the packaged app's resources/ directory so the
     // runtime BrowserWindow `icon:` path can resolve it on Linux/Windows.

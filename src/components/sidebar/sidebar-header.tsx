@@ -10,8 +10,8 @@ export function SidebarHeader() {
       <button
         type="button"
         className="flex h-6 w-6 flex-none items-center justify-center rounded-md border border-[hsl(var(--sidebar-border))] bg-white/70"
-        title="Lychee Notes"
-        aria-label="Lychee Notes"
+        title="Lychee"
+        aria-label="Lychee"
       >
         <LycheeLogo />
       </button>
@@ -20,9 +20,9 @@ export function SidebarHeader() {
           'min-w-0 flex-1 truncate text-sm font-semibold transition-opacity duration-150',
           open ? 'opacity-100' : 'opacity-0',
         )}
-        title="Lychee Notes"
+        title="Lychee"
       >
-        Lychee Notes
+        Lychee
       </div>
     </div>
   );

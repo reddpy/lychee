@@ -20,10 +20,10 @@ function dedupeNames(...names: Array<string | undefined>): string[] {
 }
 
 // The packaged output folder / .app bundle / .exe are named after productName,
-// but forge.config.ts pins `executableName: "lychee"`, so the inner Unix binary
-// (and the Linux/Windows executable) is named after that, independent of the
-// bundle name. Keep the two candidate lists separate so the cross product still
-// finds the binary after the executableName change.
+// but forge.config.ts pins `executableName: "lychee"` on Linux builds, so the
+// executable name can differ from the bundle name depending on platform (and
+// older local builds pinned it everywhere). Keep the two candidate lists
+// separate so the cross product finds the binary in all combinations.
 const BUNDLE_NAMES = dedupeNames(packageJson.productName, packageJson.name, 'Lychee', 'lychee');
 const EXECUTABLE_NAMES = dedupeNames('lychee', packageJson.name, packageJson.productName, 'Lychee');
 
