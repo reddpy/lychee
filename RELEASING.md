@@ -15,6 +15,14 @@ That's it. The release workflow builds and signs each platform in parallel,
 then publishes a single GitHub Release with all platform assets. Within
 ~15 minutes, installed apps on the previous version see the update.
 
+> **One-time note for the first release after 0.1.0-alpha.7:** the macOS bundle
+> id changed from `com.electron.lychee` to `com.lycheenote.app`. Squirrel.Mac
+> rejects updates whose bundle id differs from the running app's, so macOS
+> installs of alpha.7 or earlier will NOT auto-update — the release notes must
+> tell macOS users to re-download once from the website/GitHub. Notes are safe
+> (userData is keyed by app name, which didn't change). Windows and Linux are
+> unaffected. Delete this note after that release ships.
+
 ## The one rule: `package.json` version is the single source of truth
 
 The number in `package.json` `"version"` is the **only** place the app version

@@ -36,7 +36,7 @@ export function CollapsedSidebarWidget() {
           <Settings className="h-4 w-4" />
           <UpdateDot className="absolute right-1.5 top-1.5" />
         </button>
-        <div title="Lychee Notes">
+        <div title="Lychee">
           <LycheeLogo className="h-5 w-5" />
         </div>
       </div>
