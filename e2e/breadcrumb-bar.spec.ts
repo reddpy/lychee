@@ -324,7 +324,7 @@ test.describe('BreadcrumbBar — Inline Trail', () => {
     await expect(chevrons).toHaveCount(2);
   });
 
-  test('untitled notes display "Untitled"', async ({ window }) => {
+  test('untitled notes display "New Page"', async ({ window }) => {
     const m = await seedTree(window, [
       { title: 'Root' },
       { title: '', parentTitle: 'Root' },
@@ -332,7 +332,7 @@ test.describe('BreadcrumbBar — Inline Trail', () => {
     const childId = m.get('')!;
     await selectDoc(window, childId);
 
-    await expect(window.locator(BREADCRUMB_NAV)).toContainText('Untitled');
+    await expect(window.locator(BREADCRUMB_NAV)).toContainText('New Page');
   });
 
   test('emoji is shown next to ancestor title', async ({ window }) => {
@@ -2133,7 +2133,7 @@ test.describe('BreadcrumbBar — Robustness', () => {
     await expect(window.locator(BREADCRUMB_NAV)).not.toBeVisible();
   });
 
-  test('ancestor renamed to empty string shows "Untitled" in breadcrumb', async ({ window }) => {
+  test('ancestor renamed to empty string shows "New Page" in breadcrumb', async ({ window }) => {
     const m = await seedTree(window, [
       { title: 'Named Parent' },
       { title: 'Child', parentTitle: 'Named Parent' },
@@ -2149,7 +2149,7 @@ test.describe('BreadcrumbBar — Robustness', () => {
     }, m.get('Named Parent')!);
     await window.waitForTimeout(300);
 
-    await expect(window.locator(BREADCRUMB_NAV)).toContainText('Untitled');
+    await expect(window.locator(BREADCRUMB_NAV)).toContainText('New Page');
     await expect(window.locator(BREADCRUMB_NAV)).not.toContainText('Named Parent');
   });
 

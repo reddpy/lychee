@@ -25,9 +25,11 @@ async function createNoteWithTitle(window: Page, title: string): Promise<string>
   await window.locator('main:visible h1.editor-title').click();
   await window.keyboard.type(title);
   await window.waitForTimeout(700);
-  return window.evaluate(() =>
-    (window as any).__documentStore.getState().selectedId as string,
-  );
+  return window.evaluate(() => {
+    const s = (window as any).__documentStore.getState();
+    // selectedId is a tabId; resolve it to the document id behind the tab.
+    return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId as string;
+  });
 }
 
 /** Right-click on a note item in the sidebar to open its context menu. */
@@ -70,11 +72,13 @@ async function bookmarkViaBackend(window: Page, docId: string): Promise<void> {
   await window.waitForTimeout(150);
 }
 
-/** Get currently selected note ID from the Zustand store. */
+/** Get the doc ID of the currently selected tab from the Zustand store. */
 async function getSelectedId(window: Page): Promise<string> {
-  return window.evaluate(() =>
-    (window as any).__documentStore.getState().selectedId as string,
-  );
+  return window.evaluate(() => {
+    const s = (window as any).__documentStore.getState();
+    // selectedId is a tabId; resolve it to the document id behind the tab.
+    return s.openTabs.find((t: any) => t.tabId === s.selectedId)?.docId as string;
+  });
 }
 
 /** How many times a [data-note-id] element appears in the full sidebar DOM. */
@@ -108,10 +112,16 @@ function bookmarksSectionHeader(window: Page) {
   return window.locator('aside').locator('button').filter({ hasText: /^Bookmarks$/ }).first();
 }
 
-/** Close a tab via Zustand store without UI interaction. */
+/** Close all tabs showing a document via Zustand store without UI interaction. */
 async function closeTabViaStore(window: Page, docId: string): Promise<void> {
   await window.evaluate(
-    (id: string) => (window as any).__documentStore.getState().closeTab(id),
+    (id: string) => {
+      const state = (window as any).__documentStore.getState();
+      // closeTab takes a tabId; resolve every tab showing this document.
+      for (const t of state.openTabs.filter((t: any) => t.docId === id)) {
+        state.closeTab(t.tabId);
+      }
+    },
     docId,
   );
   await window.waitForTimeout(100);
