@@ -21,6 +21,7 @@ import {
   normalizedTitle,
   scoreDocument,
 } from "../../shared/search-preview";
+import { hasNoteTitle } from "../../shared/note-title";
 import {
   buildHighlightedPreviewState,
   ReadOnlyNotePreview,
@@ -567,6 +568,15 @@ export function SearchNotesButton() {
     : undefined;
   const isPreviewLoading =
     (isPreparingPreviews && !previewPrepared) || isSearching || isPaletteInitializing;
+  // A note is empty only when it has neither a real title nor body text — a
+  // brand-new "New Page" renders to a blank preview pane. Emoji is deliberately
+  // ignored: an emoji-only note is still empty (its emoji shows above this).
+  // Checking the title explicitly keeps a titled-but-bodyless note from being
+  // misread as empty regardless of whether bodyText includes the title.
+  const isPreviewEmpty = previewEntry
+    ? !hasNoteTitle(previewEntry.doc.title) &&
+      previewEntry.bodyText.trim().length === 0
+    : false;
 
   const handlePreviewMatchStateChange = React.useCallback(
     (active: number, count: number) => {
@@ -577,6 +587,17 @@ export function SearchNotesButton() {
     },
     [],
   );
+
+  // An empty preview doesn't mount ReadOnlyNotePreview, so it never reports a
+  // match count. Zero it ourselves so a stale count from a previously-previewed
+  // note can't linger in the match navigator.
+  React.useEffect(() => {
+    if (!isPreviewEmpty) return;
+    previewActiveMatchIndexRef.current = 0;
+    previewMatchCountRef.current = 0;
+    setPreviewActiveMatchIndex(0);
+    setPreviewMatchCount(0);
+  }, [isPreviewEmpty, previewDocId]);
 
   return (
     <>
@@ -954,14 +975,24 @@ export function SearchNotesButton() {
                         <div className="h-4 w-3/4 animate-pulse rounded bg-[hsl(var(--muted))]/70" />
                       </div>
                     ) : null}
-                    {!isPreviewLoading && previewEditorState !== undefined ? (
-                      <ReadOnlyNotePreview
-                        ref={previewNavRef}
-                        key={previewEntry.doc.id}
-                        editorState={previewEditorState}
-                        query={deferredQuery}
-                        onMatchStateChange={handlePreviewMatchStateChange}
-                      />
+                    {!isPreviewLoading ? (
+                      isPreviewEmpty ? (
+                        // Shown whether or not the editor state parsed: a blank
+                        // note may have empty content that yields no editor
+                        // state at all, so this must not depend on it.
+                        <div className="flex flex-col items-center justify-center gap-2 py-20 text-center text-[hsl(var(--muted-foreground))]">
+                          <FileText className="h-8 w-8 opacity-30" />
+                          <span className="text-sm">This note is empty</span>
+                        </div>
+                      ) : previewEditorState !== undefined ? (
+                        <ReadOnlyNotePreview
+                          ref={previewNavRef}
+                          key={previewEntry.doc.id}
+                          editorState={previewEditorState}
+                          query={deferredQuery}
+                          onMatchStateChange={handlePreviewMatchStateChange}
+                        />
+                      ) : null
                     ) : null}
                     </div>
                   </div>

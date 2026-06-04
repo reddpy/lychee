@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NEW_NOTE_TITLE, displayNoteTitle } from "./note-title";
+import { NEW_NOTE_TITLE, displayNoteTitle, hasNoteTitle } from "./note-title";
 
 describe("displayNoteTitle", () => {
   it("returns the trimmed title when present", () => {
@@ -28,5 +28,29 @@ describe("displayNoteTitle", () => {
 
   it("uses 'New Page' as the canonical label", () => {
     expect(NEW_NOTE_TITLE).toBe("New Page");
+  });
+});
+
+describe("hasNoteTitle", () => {
+  it("is true for a real, user-provided title", () => {
+    expect(hasNoteTitle("Tokyo Trip")).toBe(true);
+    expect(hasNoteTitle("  Tokyo Trip  ")).toBe(true);
+  });
+
+  it("is false for blank / whitespace / null / undefined titles", () => {
+    expect(hasNoteTitle("")).toBe(false);
+    expect(hasNoteTitle("   \n\t ")).toBe(false);
+    expect(hasNoteTitle(null)).toBe(false);
+    expect(hasNoteTitle(undefined)).toBe(false);
+  });
+
+  it("is false for the legacy Untitled sentinel", () => {
+    expect(hasNoteTitle("Untitled")).toBe(false);
+    expect(hasNoteTitle("  Untitled  ")).toBe(false);
+  });
+
+  it("is the inverse of showing the placeholder", () => {
+    expect(hasNoteTitle("Real")).toBe(displayNoteTitle("Real") !== NEW_NOTE_TITLE);
+    expect(hasNoteTitle("")).toBe(displayNoteTitle("") !== NEW_NOTE_TITLE);
   });
 });

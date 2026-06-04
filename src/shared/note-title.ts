@@ -7,7 +7,15 @@ export const NEW_NOTE_TITLE = "New Page";
 // "Untitled" sentinel (older notes and pre-strip data) — falls back to
 // NEW_NOTE_TITLE. Centralizing this keeps every surface consistent and prevents
 // the fallback from drifting per call site.
+// Whether a note has a real, user-provided title — i.e. not blank and not the
+// legacy "Untitled" sentinel. The inverse of "shows the NEW_NOTE_TITLE
+// placeholder". Used for empty-note detection and tab title state.
+export function hasNoteTitle(title: string | null | undefined): boolean {
+  const trimmed = (title ?? "").trim();
+  return trimmed !== "" && trimmed !== "Untitled";
+}
+
 export function displayNoteTitle(title: string | null | undefined): string {
   const trimmed = (title ?? "").trim();
-  return trimmed && trimmed !== "Untitled" ? trimmed : NEW_NOTE_TITLE;
+  return hasNoteTitle(trimmed) ? trimmed : NEW_NOTE_TITLE;
 }

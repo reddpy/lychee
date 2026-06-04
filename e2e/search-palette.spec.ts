@@ -2570,3 +2570,210 @@ test.describe("Search palette e2e", () => {
     }
   });
 });
+
+const EMPTY_PREVIEW_TEXT = "This note is empty";
+
+function emptyPreviewState(window: Page) {
+  return palette(window).getByText(EMPTY_PREVIEW_TEXT);
+}
+
+// The big emoji rendered inside the preview pane uses text-6xl; the list-row
+// emoji uses text-base, so this scopes strictly to the preview.
+function previewEmoji(window: Page) {
+  return palette(window).locator(".text-6xl");
+}
+
+// Minimal but valid editor content for IPC seeding: validateContentJson only
+// requires root.children to be an array, and extractPlainText pulls the "text".
+function bodyContent(text: string): string {
+  return JSON.stringify({
+    root: {
+      type: "root",
+      version: 1,
+      children: [
+        {
+          type: "paragraph",
+          version: 1,
+          children: [
+            {
+              type: "text",
+              version: 1,
+              detail: 0,
+              format: 0,
+              mode: "normal",
+              style: "",
+              text,
+            },
+          ],
+        },
+      ],
+    },
+  });
+}
+
+async function seedDocs(
+  window: Page,
+  specs: Array<{ title?: string; emoji?: string | null; content?: string }>,
+): Promise<string[]> {
+  const ids = await window.evaluate(async (items) => {
+    const lychee = (
+      window as unknown as {
+        lychee: {
+          invoke: (
+            channel: string,
+            payload: Record<string, unknown>,
+          ) => Promise<{ document: { id: string } }>;
+        };
+      }
+    ).lychee;
+    const created: string[] = [];
+    for (const spec of items) {
+      const res = await lychee.invoke("documents.create", {
+        parentId: null,
+        title: spec.title ?? "",
+        emoji: spec.emoji ?? null,
+        content: spec.content ?? "",
+      });
+      created.push(res.document.id);
+    }
+    return created;
+  }, specs);
+
+  await window.reload();
+  await window.waitForLoadState("domcontentloaded");
+  await window.waitForSelector("aside[data-state]", { timeout: 15_000 });
+  return ids;
+}
+
+async function createBlankNoteViaUi(window: Page) {
+  await window.locator('[aria-label="New note"]').click();
+  await window.waitForTimeout(320);
+}
+
+test.describe("Search palette empty-note preview", () => {
+  test.beforeEach(async ({ window }) => {
+    await window.setViewportSize({ width: 1400, height: 900 });
+  });
+
+  test("blank note with no stored content (content='') shows the empty-state", async ({
+    window,
+  }) => {
+    // This is the path that regressed: empty content yields no editor state, so
+    // the empty-state must not depend on one existing.
+    await seedDocs(window, [{ title: "", content: "" }]);
+    await openPalette(window);
+    await waitForResultRows(window, 1);
+    await expect(await selectedItem(window)).toContainText("New Page");
+    await expect(emptyPreviewState(window)).toBeVisible();
+  });
+
+  test("blank note created through the editor (serialized empty doc) shows the empty-state", async ({
+    window,
+  }) => {
+    // The other representation: a UI-created blank note stores a parseable
+    // empty editor state. Both must surface the same empty-state.
+    await createBlankNoteViaUi(window);
+    await openPalette(window);
+    await waitForResultRows(window, 1);
+    await expect(await selectedItem(window)).toContainText("New Page");
+    await expect(emptyPreviewState(window)).toBeVisible();
+  });
+
+  test("emoji set but no title/body is still empty (emoji still renders)", async ({
+    window,
+  }) => {
+    await seedDocs(window, [{ title: "", emoji: "🚀", content: "" }]);
+    await openPalette(window);
+    await waitForResultRows(window, 1);
+    await expect(emptyPreviewState(window)).toBeVisible();
+    await expect(previewEmoji(window)).toHaveText("🚀");
+  });
+
+  test("note with a title but no body is NOT empty", async ({ window }) => {
+    await seedDocs(window, [{ title: "Title only note", content: "" }]);
+    await openPalette(window);
+    await paletteInput(window).fill("title only note");
+    await waitForResultRows(window, 1);
+    await expect(await selectedItem(window)).toContainText("Title only note");
+    await expect(emptyPreviewState(window)).toHaveCount(0);
+  });
+
+  test("note with a body but no title is NOT empty", async ({ window }) => {
+    await seedDocs(window, [
+      { title: "", content: bodyContent("bodyonlytoken content here") },
+    ]);
+    await openPalette(window);
+    await paletteInput(window).fill("bodyonlytoken");
+    await waitForResultRows(window, 1);
+    // Pairs with the content='' test: same "New Page" title, but the body
+    // flips it to non-empty — proving the body actually drives the decision.
+    await expect(await selectedItem(window)).toContainText("New Page");
+    await expect(emptyPreviewState(window)).toHaveCount(0);
+  });
+
+  test("whitespace-only title and whitespace-only body counts as empty", async ({
+    window,
+  }) => {
+    await seedDocs(window, [{ title: "   ", content: bodyContent("   \n\t  ") }]);
+    await openPalette(window);
+    await waitForResultRows(window, 1);
+    await expect(await selectedItem(window)).toContainText("New Page");
+    await expect(emptyPreviewState(window)).toBeVisible();
+  });
+
+  test("emoji-only note with whitespace title is still empty", async ({ window }) => {
+    await seedDocs(window, [{ title: "  ", emoji: "🌱", content: "" }]);
+    await openPalette(window);
+    await waitForResultRows(window, 1);
+    await expect(emptyPreviewState(window)).toBeVisible();
+    await expect(previewEmoji(window)).toHaveText("🌱");
+  });
+
+  test("switching from a matched note to an empty note clears the stale match count", async ({
+    window,
+  }) => {
+    // Real content (renders highlight <mark>s) so the counter has something to
+    // count; the title deliberately omits the query token. Both notes are made
+    // via the UI — no reload — so the debounced body save isn't raced away.
+    await createNoteWithBody(window, "Alpha note", ["zeta zeta zeta"]);
+    await createBlankNoteViaUi(window);
+
+    await openPalette(window);
+    await paletteInput(window).fill("zeta");
+    await waitForResultRows(window, 1);
+    await expect(resultItems(window).filter({ hasText: "Alpha note" }).first()).toBeVisible();
+    await expect(previewCounter(window)).toHaveText(/^\d+\/3$/);
+
+    // "new page" matches only the empty note (by its New Page title); the
+    // content note drops out, preview falls back to the empty note.
+    await paletteInput(window).fill("new page");
+    await waitForResultRows(window, 1);
+    await expect(emptyPreviewState(window)).toBeVisible();
+    await expect(previewCounter(window)).toHaveText("0/0");
+  });
+
+  test("toggling selection between empty and non-empty notes updates the empty-state each time", async ({
+    window,
+  }) => {
+    // Seeded empty-first so the non-empty note is newest → previewed first.
+    await seedDocs(window, [
+      { title: "", content: "" },
+      { title: "Filled note", content: bodyContent("real body text") },
+    ]);
+    await openPalette(window);
+    await waitForResultRows(window, 2);
+
+    await expect(await selectedItem(window)).toContainText("Filled note");
+    await expect(emptyPreviewState(window)).toHaveCount(0);
+
+    for (let i = 0; i < 4; i += 1) {
+      await window.keyboard.press("ArrowDown");
+      await expect(await selectedItem(window)).toContainText("New Page");
+      await expect(emptyPreviewState(window)).toBeVisible();
+
+      await window.keyboard.press("ArrowUp");
+      await expect(await selectedItem(window)).toContainText("Filled note");
+      await expect(emptyPreviewState(window)).toHaveCount(0);
+    }
+  });
+});

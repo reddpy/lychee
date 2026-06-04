@@ -139,6 +139,22 @@ describe("Search Preview Utils — Backend Contracts", () => {
     it("returns empty string when content is empty", () => {
       expect(extractPlainText("")).toBe("");
     });
+
+    // A brand-new "New Page" serializes to a title node + empty paragraph with
+    // no text. The search preview keys its empty-state off this producing "".
+    it("returns empty string for a blank new-page editor state", () => {
+      const blankNewPage = JSON.stringify({
+        root: {
+          type: "root",
+          version: 1,
+          children: [
+            { type: "title", version: 1, children: [] },
+            { type: "paragraph", version: 1, children: [] },
+          ],
+        },
+      });
+      expect(extractPlainText(blankNewPage)).toBe("");
+    });
   });
 
   describe("buildHighlightedSnippet()", () => {
