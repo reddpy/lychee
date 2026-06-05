@@ -7,6 +7,9 @@ import {
   $getSelection,
   $isRangeSelection,
   $isParagraphNode,
+  BLUR_COMMAND,
+  COMMAND_PRIORITY_LOW,
+  FOCUS_COMMAND,
   LexicalNode,
   NodeMutation,
 } from "lexical"
@@ -96,16 +99,24 @@ export function BlockPlaceholderPlugin(): null {
     let prevParagraphDom: HTMLElement | null = null
     let prevKey: string | null = null
 
-    return editor.registerUpdateListener(({ editorState }) => {
-      editorState.read(() => {
+    const clearPlaceholder = () => {
+      if (prevParagraphDom) {
+        prevParagraphDom.classList.remove(PLACEHOLDER_CLASS)
+        prevParagraphDom.removeAttribute("data-placeholder")
+        prevParagraphDom = null
+        prevKey = null
+      }
+    }
+
+    const syncPlaceholder = () => {
+      editor.getEditorState().read(() => {
+        const root = editor.getRootElement()
+        const hasFocus =
+          root !== null &&
+          (root === document.activeElement || root.contains(document.activeElement))
         const selection = $getSelection()
-        if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
-          if (prevParagraphDom) {
-            prevParagraphDom.classList.remove(PLACEHOLDER_CLASS)
-            prevParagraphDom.removeAttribute("data-placeholder")
-            prevParagraphDom = null
-            prevKey = null
-          }
+        if (!hasFocus || !$isRangeSelection(selection) || !selection.isCollapsed()) {
+          clearPlaceholder()
           return
         }
 
@@ -136,7 +147,31 @@ export function BlockPlaceholderPlugin(): null {
           }
         }
       })
-    })
+    }
+
+    return mergeRegister(
+      editor.registerUpdateListener(() => {
+        syncPlaceholder()
+      }),
+      // Selection survives blur in Lexical, so the update listener alone never
+      // clears the placeholder when focus leaves the editor (e.g. Escape).
+      editor.registerCommand(
+        BLUR_COMMAND,
+        () => {
+          clearPlaceholder()
+          return false
+        },
+        COMMAND_PRIORITY_LOW
+      ),
+      editor.registerCommand(
+        FOCUS_COMMAND,
+        () => {
+          syncPlaceholder()
+          return false
+        },
+        COMMAND_PRIORITY_LOW
+      )
+    )
   }, [editor])
 
   return null
