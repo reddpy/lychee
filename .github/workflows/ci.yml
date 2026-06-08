@@ -74,6 +74,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # NOTE: this is a hand-maintained allowlist — `playwright test <specs>`
+        # only runs what's listed here. Any new e2e/*.spec.ts must be added to a
+        # group below or it will silently never run in CI.
         include:
           - name: breadcrumb-bar
             specs: e2e/breadcrumb-bar.spec.ts
@@ -84,6 +87,9 @@ jobs:
             specs: e2e/sidebar-tree.spec.ts e2e/dark-mode.spec.ts
           - name: editor
             specs: e2e/editor.spec.ts e2e/title-typing.spec.ts
+            workers: 1
+          - name: list-backspace
+            specs: e2e/list-backspace.spec.ts
             workers: 1
           - name: media
             specs: e2e/image-bookmark-embed.spec.ts e2e/trash.spec.ts e2e/persistence.spec.ts
@@ -113,6 +119,9 @@ jobs:
             specs: e2e/menu-shortcuts.spec.ts
           - name: misc
             specs: e2e/youtube-embed.spec.ts e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts e2e/content-security-policy.spec.ts e2e/error-boundary.spec.ts
+            workers: 1
+          - name: sidebar-sections
+            specs: e2e/sidebar-context-menu.spec.ts e2e/sidebar-section-reorder.spec.ts e2e/section-indicator.spec.ts
             workers: 1
     steps:
       - uses: actions/checkout@v4

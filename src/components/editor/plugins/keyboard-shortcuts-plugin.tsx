@@ -13,7 +13,39 @@ import {
   ElementNode,
 } from "lexical"
 import { $isQuoteNode, $isHeadingNode } from "@lexical/rich-text"
+import { $findMatchingParent } from "@lexical/utils"
+import { $isListItemNode, ListItemNode } from "@lexical/list"
+import {
+  $convertListItemToParagraph,
+  $isCaretAtListItemStart,
+} from "./list-backspace"
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin"
+
+/**
+ * After a block is replaced by another, nudge the scroll position so the new
+ * block lands where the old one was. Prevents the cursor from visually jumping
+ * when the two blocks have different top margins. `oldTop` is the old block's
+ * viewport-relative top, captured *before* the DOM change.
+ */
+function compensateScroll(
+  editor: LexicalEditor,
+  oldTop: number | undefined,
+  newKey: string
+): void {
+  if (oldTop === undefined) return
+  requestAnimationFrame(() => {
+    const newDom = editor.getElementByKey(newKey)
+    if (!newDom) return
+    const newTop = newDom.getBoundingClientRect().top
+    const shift = oldTop - newTop
+    if (Math.abs(shift) > 1) {
+      const scrollContainer = editor.getRootElement()
+      if (scrollContainer) {
+        scrollContainer.scrollTop -= shift
+      }
+    }
+  })
+}
 
 /**
  * Replace a block element with a paragraph, compensating scroll position
@@ -34,23 +66,30 @@ function exitBlockToParagraph(
   topElement.replace(paragraph)
   paragraph.select()
 
-  // After DOM reconciliation, compensate scroll for margin difference
-  if (oldTop !== undefined) {
-    const paragraphKey = paragraph.getKey()
-    requestAnimationFrame(() => {
-      const newDom = editor.getElementByKey(paragraphKey)
-      if (!newDom) return
-      const newTop = newDom.getBoundingClientRect().top
-      const shift = oldTop - newTop
-      if (Math.abs(shift) > 1) {
-        const scrollContainer = editor.getRootElement()
-        if (scrollContainer) {
-          scrollContainer.scrollTop -= shift
-        }
-      }
-    })
-  }
+  compensateScroll(editor, oldTop, paragraph.getKey())
 
+  return true
+}
+
+/**
+ * Backspace at the start of a list item converts it back to a paragraph in
+ * place (Notion-style), instead of Lexical's default of merging the item up
+ * into the one above it (issue #222). Compensates scroll so the line doesn't
+ * visually shift when the list-item and paragraph margins differ.
+ */
+function exitListItemToParagraph(
+  editor: LexicalEditor,
+  listItem: ListItemNode,
+  event: KeyboardEvent
+): boolean {
+  const oldDom = editor.getElementByKey(listItem.getKey())
+  const oldTop = oldDom?.getBoundingClientRect().top
+
+  const paragraph = $convertListItemToParagraph(listItem)
+  if (paragraph === null) return false
+
+  event.preventDefault()
+  compensateScroll(editor, oldTop, paragraph.getKey())
   return true
 }
 
@@ -76,6 +115,29 @@ export function KeyboardShortcutsPlugin(): null {
               topElement.getTextContent().length === 0
             ) {
               return exitBlockToParagraph(editor, topElement, event)
+            }
+          }
+        }
+
+        // Backspace at the start of a list item → convert it back to a
+        // paragraph in place (Notion-style), rather than merging up (#222).
+        // Guard on offset === 0 first so mid-text backspaces (the common case)
+        // skip the ancestor walk entirely.
+        if (key === "Backspace" && !isModifier && !shiftKey) {
+          const selection = $getSelection()
+          if (
+            $isRangeSelection(selection) &&
+            selection.isCollapsed() &&
+            selection.anchor.offset === 0
+          ) {
+            const anchorNode = selection.anchor.getNode()
+            const listItem = $findMatchingParent(anchorNode, $isListItemNode)
+            if (
+              $isListItemNode(listItem) &&
+              $isCaretAtListItemStart(listItem, anchorNode, 0) &&
+              exitListItemToParagraph(editor, listItem, event)
+            ) {
+              return true
             }
           }
         }
