@@ -59,7 +59,7 @@ test.describe('Tab Management', () => {
     await expect(window.locator('[data-tab-id]')).toHaveCount(0);
 
     // Should return to empty state
-    await expect(window.getByText('Start writing')).toBeVisible();
+    await expect(window.getByTestId('empty-state')).toBeVisible();
   });
 
   test('closing active tab switches to adjacent tab', async ({ window }) => {

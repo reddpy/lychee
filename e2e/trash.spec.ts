@@ -23,7 +23,7 @@ test.describe('Trash Bin', () => {
     await expect(window.locator('[data-note-id]').filter({ hasText: 'Trashable Note' })).toHaveCount(0);
 
     // Tab should be closed, back to empty state
-    await expect(window.getByText('Start writing')).toBeVisible();
+    await expect(window.getByTestId('empty-state')).toBeVisible();
 
     // ── Backend: document has deletedAt set in SQLite ──
     const doc = await getDocumentFromDb(window, noteId!);

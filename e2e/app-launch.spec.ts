@@ -21,7 +21,7 @@ test.describe('App Launch', () => {
   });
 
   test('shows empty state when no document is selected', async ({ window }) => {
-    await expect(window.getByText('Start writing')).toBeVisible();
+    await expect(window.getByTestId('empty-state')).toBeVisible();
   });
 
   test('shows Trash Bin in sidebar footer', async ({ window }) => {
