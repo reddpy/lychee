@@ -20,7 +20,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # Pinned: Node 24.16.0 breaks extract-zip/yauzl (truncates the Electron
+          # archive), so electron's postinstall and electron-forge packaging both
+          # silently fail. 24.15.0 is the last clean version. See README/CI notes.
+          node-version: 24.15.0
           cache: pnpm
 
       - name: Install dependencies
@@ -42,7 +45,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # Pinned: Node 24.16.0 breaks extract-zip/yauzl (truncates the Electron
+          # archive), so electron's postinstall and electron-forge packaging both
+          # silently fail. 24.15.0 is the last clean version. See README/CI notes.
+          node-version: 24.15.0
           cache: pnpm
 
       - name: Install dependencies
@@ -117,7 +123,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # Pinned: Node 24.16.0 breaks extract-zip/yauzl (truncates the Electron
+          # archive), so electron's postinstall and electron-forge packaging both
+          # silently fail. 24.15.0 is the last clean version. See README/CI notes.
+          node-version: 24.15.0
           cache: pnpm
 
       - name: Install dependencies
@@ -181,7 +190,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # Pinned: Node 24.16.0 breaks extract-zip/yauzl (truncates the Electron
+          # archive), so electron's postinstall and electron-forge packaging both
+          # silently fail. 24.15.0 is the last clean version. See README/CI notes.
+          node-version: 24.15.0
           cache: pnpm
 
       - name: Install dependencies
