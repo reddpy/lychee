@@ -7,6 +7,9 @@ import {
   $getSelection,
   $isRangeSelection,
   $isParagraphNode,
+  BLUR_COMMAND,
+  COMMAND_PRIORITY_LOW,
+  FOCUS_COMMAND,
   LexicalNode,
   NodeMutation,
 } from "lexical"
@@ -95,26 +98,48 @@ export function BlockPlaceholderPlugin(): null {
   useEffect(() => {
     let prevParagraphDom: HTMLElement | null = null
     let prevKey: string | null = null
+    let focusSyncFrame = 0
 
-    return editor.registerUpdateListener(({ editorState }) => {
-      editorState.read(() => {
+    const clearPlaceholder = () => {
+      if (prevParagraphDom) {
+        prevParagraphDom.classList.remove(PLACEHOLDER_CLASS)
+        prevParagraphDom.removeAttribute("data-placeholder")
+        prevParagraphDom = null
+        prevKey = null
+      }
+    }
+
+    const syncPlaceholder = () => {
+      editor.getEditorState().read(() => {
+        const root = editor.getRootElement()
+        const hasFocus =
+          root !== null &&
+          (root === document.activeElement || root.contains(document.activeElement))
         const selection = $getSelection()
-        if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
-          if (prevParagraphDom) {
-            prevParagraphDom.classList.remove(PLACEHOLDER_CLASS)
-            prevParagraphDom.removeAttribute("data-placeholder")
-            prevParagraphDom = null
-            prevKey = null
-          }
+        if (!hasFocus || !$isRangeSelection(selection) || !selection.isCollapsed()) {
+          clearPlaceholder()
           return
         }
 
         const anchorNode = selection.anchor.getNode()
         const topElement = anchorNode.getTopLevelElement()
 
-        const key = topElement && $isParagraphNode(topElement) && topElement.getTextContent().length === 0
+        let key = topElement && $isParagraphNode(topElement) && topElement.getTextContent().length === 0
           ? topElement.getKey()
           : null
+
+        // Lexical's selection can briefly lag the DOM during refocus: clicking
+        // into a different block leaves the surviving pre-blur selection in
+        // place until the click's selectionchange is ingested. Only show the
+        // placeholder if the live DOM caret actually sits in that paragraph,
+        // otherwise it flashes on the previously-focused empty block.
+        if (key) {
+          const dom = editor.getElementByKey(key)
+          const domAnchor = document.getSelection()?.anchorNode ?? null
+          if (!dom || !domAnchor || !dom.contains(domAnchor)) {
+            key = null
+          }
+        }
 
         // Skip DOM work if same empty paragraph is still focused
         if (key === prevKey) return
@@ -136,7 +161,49 @@ export function BlockPlaceholderPlugin(): null {
           }
         }
       })
-    })
+    }
+
+    const cancelFocusSync = () => {
+      if (focusSyncFrame) {
+        cancelAnimationFrame(focusSyncFrame)
+        focusSyncFrame = 0
+      }
+    }
+
+    return mergeRegister(
+      editor.registerUpdateListener(() => {
+        syncPlaceholder()
+      }),
+      // Selection survives blur in Lexical, so the update listener alone never
+      // clears the placeholder when focus leaves the editor (e.g. Escape).
+      editor.registerCommand(
+        BLUR_COMMAND,
+        () => {
+          cancelFocusSync()
+          clearPlaceholder()
+          return false
+        },
+        COMMAND_PRIORITY_LOW
+      ),
+      // On refocus, Lexical's selection still holds the pre-blur position until
+      // the click's selectionchange is ingested. Syncing synchronously here would
+      // briefly paint the placeholder on the previously-focused empty paragraph
+      // when the click lands in a different block. Defer one frame so we read the
+      // settled, post-click selection instead.
+      editor.registerCommand(
+        FOCUS_COMMAND,
+        () => {
+          cancelFocusSync()
+          focusSyncFrame = requestAnimationFrame(() => {
+            focusSyncFrame = 0
+            syncPlaceholder()
+          })
+          return false
+        },
+        COMMAND_PRIORITY_LOW
+      ),
+      cancelFocusSync
+    )
   }, [editor])
 
   return null
