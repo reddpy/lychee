@@ -1,12 +1,10 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { createPortal } from "react-dom"
+import { useEffect } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
   $createParagraphNode,
   $createTextNode,
-  $getNodeByKey,
   $getSelection,
   $insertNodes,
   $isRangeSelection,
@@ -27,288 +25,20 @@ import {
   $findCellNode,
   $findTableNode,
   $insertTableRowAtSelection,
-  $insertTableColumnAtSelection,
-  $deleteTableRowAtSelection,
-  $deleteTableColumnAtSelection,
   $isTableCellNode,
   TableCellHeaderStates,
   TableCellNode,
 } from "@lexical/table"
-import {
-  ArrowUp,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  X,
-  Trash2,
-  Rows3,
-  Columns3,
-  Settings2,
-} from "lucide-react"
-import { onToolbarExclusive } from "@/components/lexical-editor"
 
-function TableActionBar({
-  editor,
-  tableCellNode,
-}: {
-  editor: ReturnType<typeof useLexicalComposerContext>[0]
-  tableCellNode: TableCellNode
-}) {
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    const cellKey = tableCellNode.getKey()
-    const update = () => {
-      editor.getEditorState().read(() => {
-        const cellNode = $getNodeByKey(cellKey)
-        if (!cellNode) {
-          setPosition(null)
-          return
-        }
-        const tableNode = $findTableNode(cellNode)
-        if (!tableNode) {
-          setPosition(null)
-          return
-        }
-        const cellElem = editor.getElementByKey(cellKey)
-        if (!cellElem) {
-          setPosition(null)
-          return
-        }
-        const cellRect = cellElem.getBoundingClientRect()
-        setPosition({
-          // Vertically centered, right edge inset
-          top: cellRect.top + cellRect.height / 2,
-          left: cellRect.right - 4,
-        })
-      })
-    }
-
-    update()
-
-    // ResizeObserver repositions when cell dimensions change (e.g. column resizing)
-    const cellElem = editor.getElementByKey(cellKey)
-    const resizeObserver = cellElem ? new ResizeObserver(update) : null
-    if (cellElem && resizeObserver) resizeObserver.observe(cellElem)
-
-    window.addEventListener("scroll", update, true)
-    window.addEventListener("resize", update)
-    return () => {
-      resizeObserver?.disconnect()
-      window.removeEventListener("scroll", update, true)
-      window.removeEventListener("resize", update)
-    }
-  }, [editor, tableCellNode])
-
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!open) return
-    const handleClick = (e: MouseEvent) => {
-      if (
-        triggerRef.current?.contains(e.target as Node) ||
-        menuRef.current?.contains(e.target as Node)
-      ) return
-      setOpen(false)
-    }
-    window.addEventListener("mousedown", handleClick)
-    return () => window.removeEventListener("mousedown", handleClick)
-  }, [open])
-
-  // Close menu when cell changes
-  useEffect(() => { setOpen(false) }, [tableCellNode])
-
-  // Close menu on tab switch so it doesn't bleed into duplicate tabs
-  useEffect(() => {
-    return onToolbarExclusive("__table-action__", () => setOpen(false))
-  }, [])
-
-  const run = useCallback((fn: () => void) => {
-    editor.update(fn)
-    setOpen(false)
-    // Restore DOM focus so keyboard shortcuts (Cmd+Z) still reach the editor
-    editor.focus()
-  }, [editor])
-
-  const insertRowAbove = useCallback(() => run(() => {
-    const newRow = $insertTableRowAtSelection(false)
-    if (newRow) {
-      const firstCell = newRow.getFirstChild()
-      if ($isTableCellNode(firstCell)) firstCell.selectStart()
-    }
-  }), [run])
-
-  const insertRowBelow = useCallback(() => run(() => {
-    const newRow = $insertTableRowAtSelection(true)
-    if (newRow) {
-      const firstCell = newRow.getFirstChild()
-      if ($isTableCellNode(firstCell)) firstCell.selectStart()
-    }
-  }), [run])
-
-  const insertColumnLeft = useCallback(() => run(() => {
-    const cellKey = tableCellNode.getKey()
-    $insertTableColumnAtSelection(false)
-    const cell = $getNodeByKey(cellKey)
-    if (!cell) return
-    const newCell = cell.getPreviousSibling()
-    if ($isTableCellNode(newCell)) newCell.selectStart()
-  }), [run, tableCellNode])
-
-  const insertColumnRight = useCallback(() => run(() => {
-    const cellKey = tableCellNode.getKey()
-    $insertTableColumnAtSelection(true)
-    const cell = $getNodeByKey(cellKey)
-    if (!cell) return
-    const newCell = cell.getNextSibling()
-    if ($isTableCellNode(newCell)) newCell.selectStart()
-  }), [run, tableCellNode])
-
-  const deleteRow = useCallback(() => run(() => {
-    $deleteTableRowAtSelection()
-  }), [run])
-
-  const deleteColumn = useCallback(() => run(() => {
-    $deleteTableColumnAtSelection()
-  }), [run])
-
-  const deleteTable = useCallback(() => run(() => {
-    const tableNode = $findTableNode(tableCellNode)
-    if (tableNode) {
-      const paragraph = $createParagraphNode()
-      tableNode.insertAfter(paragraph)
-      tableNode.remove()
-      paragraph.selectStart()
-    }
-  }), [run, tableCellNode])
-
-  const [isFirstRow, setIsFirstRow] = useState(false)
-  useEffect(() => {
-    editor.getEditorState().read(() => {
-      const tableNode = $findTableNode(tableCellNode)
-      if (!tableNode) {
-        setIsFirstRow(false)
-        return
-      }
-      const rowNode = tableCellNode.getParent()
-      setIsFirstRow(rowNode !== null && rowNode.getPreviousSibling() === null)
-    })
-  }, [editor, tableCellNode])
-
-  if (!position) return null
-
-  // Flip the dropdown upward when there isn't enough space below.
-  // Measured layout: 7 buttons × 40px + 2 dividers × 2px + p-1 padding 8px = 292px
-  // menu, plus 22px (trigger + gap). Use 320 for safety.
-  const menuFlipped = (window.innerHeight - position.top) < 320
-
-  const iconClass = "h-3.5 w-3.5"
-  const btnBase = "flex w-full items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground"
-  const insertBtnClass = `${btnBase} hover:bg-accent hover:text-accent-foreground`
-  const deleteBtnClass = `${btnBase} hover:bg-destructive/10 hover:text-destructive`
-  const dividerClass = "my-0.5 h-px w-full bg-[hsl(var(--border))]"
-
-  return createPortal(
-    <div
-      ref={menuRef}
-      className="fixed z-50 flex flex-col items-end table-action-menu"
-      style={{ top: position.top, left: position.left, transform: "translateX(-100%)" }}
-    >
-      {/* Trigger */}
-      <button
-        ref={triggerRef}
-        className="flex items-center justify-center rounded p-0.5 text-muted-foreground opacity-60 hover:opacity-100 hover:text-accent-foreground animate-in fade-in-0 -translate-y-1/2"
-        onClick={() => setOpen((v) => !v)}
-        title="Table actions"
-      >
-        <Settings2 className="h-3.5 w-3.5" />
-      </button>
-
-      {/* Expanded vertical menu */}
-      {open && (
-        <div
-          className="absolute right-0 flex flex-col rounded-md border border-[hsl(var(--border))] bg-popover p-1 shadow-md animate-in fade-in-0 slide-in-from-top-1"
-          style={menuFlipped ? { bottom: "calc(100% + 4px)" } : { top: "calc(100% + 4px)" }}
-        >
-            <button
-              className={isFirstRow ? `${insertBtnClass} pointer-events-none opacity-40` : insertBtnClass}
-              onClick={isFirstRow ? undefined : insertRowAbove}
-              title="Insert row above"
-              disabled={isFirstRow}
-              aria-disabled={isFirstRow}
-            >
-              <ArrowUp className={iconClass} />
-              <Rows3 className={iconClass} />
-              <span>Add Row</span>
-            </button>
-            <button className={insertBtnClass} onClick={insertRowBelow} title="Insert row below">
-              <ArrowDown className={iconClass} />
-              <Rows3 className={iconClass} />
-              <span>Add Row</span>
-            </button>
-            <button className={insertBtnClass} onClick={insertColumnLeft} title="Insert column left">
-              <ArrowLeft className={iconClass} />
-              <Columns3 className={iconClass} />
-              <span>Add Col</span>
-            </button>
-            <button className={insertBtnClass} onClick={insertColumnRight} title="Insert column right">
-              <ArrowRight className={iconClass} />
-              <Columns3 className={iconClass} />
-              <span>Add Col</span>
-            </button>
-
-            <div className={dividerClass} />
-
-            <button
-              className={isFirstRow ? `${deleteBtnClass} pointer-events-none opacity-40` : deleteBtnClass}
-              onClick={isFirstRow ? undefined : deleteRow}
-              title="Delete row"
-              disabled={isFirstRow}
-              aria-disabled={isFirstRow}
-            >
-              <X className={iconClass} />
-              <Rows3 className={iconClass} />
-              <span>Del Row</span>
-            </button>
-            <button className={deleteBtnClass} onClick={deleteColumn} title="Delete column">
-              <X className={iconClass} />
-              <Columns3 className={iconClass} />
-              <span>Del Col</span>
-            </button>
-
-            <div className={dividerClass} />
-
-            <button className={deleteBtnClass} onClick={deleteTable} title="Delete table">
-              <Trash2 className={iconClass} />
-              <span>Del Table</span>
-            </button>
-        </div>
-      )}
-    </div>,
-    document.body
-  )
-}
-
-export function TableActionMenuPlugin(): React.ReactElement | null {
+/**
+ * Table keyboard + paste behaviours. The visual per-cell action menu has been
+ * replaced by the hover gutters in {@link TableControlsPlugin}; this plugin now
+ * only carries the editing behaviours that have nothing to do with that UI:
+ * Tab-adds-a-row, Escape-exits, Cmd+A-selects-cell, Cmd+Backspace, and
+ * markdown-table paste.
+ */
+export function TableActionMenuPlugin(): null {
   const [editor] = useLexicalComposerContext()
-  const [tableCellNode, setTableCellNode] = useState<TableCellNode | null>(null)
-
-  // Track which table cell the cursor is in
-  useEffect(() => {
-    return editor.registerUpdateListener(({ editorState }) => {
-      editorState.read(() => {
-        const selection = $getSelection()
-        if (!$isRangeSelection(selection)) {
-          setTableCellNode(null)
-          return
-        }
-        const cell = $findCellNode(selection.anchor.getNode())
-        setTableCellNode(cell)
-      })
-    })
-  }, [editor])
 
   // Tab on the last cell of the last row creates a new row.
   // Lexical's built-in hasTabHandler only calls parentTable.selectNext() at the end;
@@ -539,7 +269,5 @@ export function TableActionMenuPlugin(): React.ReactElement | null {
     )
   }, [editor])
 
-  if (!tableCellNode) return null
-
-  return <TableActionBar editor={editor} tableCellNode={tableCellNode} />
+  return null
 }

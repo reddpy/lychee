@@ -48,6 +48,7 @@ import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
 import { YouTubePlugin } from "@/components/editor/plugins/youtube-plugin"
 import { ClickToAppendPlugin } from "@/components/editor/plugins/click-to-append-plugin"
 import { TableActionMenuPlugin } from "@/components/editor/plugins/table-action-menu-plugin"
+import { TableControlsPlugin } from "@/components/editor/plugins/table-controls-plugin"
 import { TableColumnResizerPlugin } from "@/components/editor/plugins/table-column-resizer-plugin"
 import { SearchHighlightPlugin } from "@/components/editor/plugins/search-highlight-plugin"
 import { TabSelectionPlugin } from "@/components/editor/plugins/tab-selection-plugin"
@@ -135,6 +136,7 @@ export function Plugins({
       <HorizontalRulePlugin />
       <TablePlugin hasCellMerge={false} hasCellBackgroundColor={false} hasTabHandler={true} hasHorizontalScroll={true} />
       <TableActionMenuPlugin />
+      <TableControlsPlugin />
       <TableColumnResizerPlugin />
       <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
       <LinkPlugin />
