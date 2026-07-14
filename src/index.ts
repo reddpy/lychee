@@ -14,7 +14,7 @@ import {
 } from 'electron';
 import { closeDatabase, initDatabase } from './main/db';
 import { resolveImagePath } from './main/image-protocol';
-import { registerIpcHandlers } from './main/ipc';
+import { registerClipboardIpcHandler, registerIpcHandlers } from './main/ipc';
 import { initUpdater } from './main/updater';
 import { isAllowedExternal } from './main/url-policy';
 import {
@@ -375,6 +375,7 @@ app.whenReady().then(() => {
   // the renderer can fire IPC during early hydration (e.g. theme/settings)
   // and would otherwise hit "No handler registered" if the window is created first.
   registerIpcHandlers();
+  registerClipboardIpcHandler();
   createWindow();
 
   // Start the auto-updater after the window exists so early status broadcasts

@@ -102,6 +102,37 @@ export function getImagePath(id: string): { filePath: string } {
   return { filePath: row.filename };
 }
 
+/**
+ * Return a self-contained data URL for clipboard HTML export.
+ *
+ * The editor normally renders images through the private lychee-image://
+ * protocol. That URL is intentionally app-local, so copying it into another
+ * application produces a broken image. Clipboard serialization is synchronous,
+ * therefore this read is synchronous as well and only runs for images that are
+ * actually part of the copied selection.
+ */
+export function getImageDataUrl(id: string): { dataUrl: string } {
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT filename, mimeType FROM images WHERE id = ?`,
+  ).get(id) as ImageRow | undefined;
+  if (!row) throw new Error(`Image not found: ${id}`);
+
+  if (!MIME_TO_EXT[row.mimeType]) {
+    throw new Error(`Unsupported image type: ${row.mimeType}`);
+  }
+
+  const imagesDir = getImagesDir();
+  const filePath = path.resolve(imagesDir, row.filename);
+  if (!filePath.startsWith(path.resolve(imagesDir) + path.sep)) {
+    throw new Error('Image path escapes the images directory');
+  }
+
+  const buffer = fs.readFileSync(filePath);
+  validateMagicBytes(buffer, row.mimeType);
+  return { dataUrl: `data:${row.mimeType};base64,${buffer.toString('base64')}` };
+}
+
 export async function downloadImage(url: string): Promise<{ id: string; filePath: string }> {
   // Dynamic import: net.fetch requires app to be ready
   const { net } = await import('electron');

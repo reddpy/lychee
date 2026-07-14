@@ -50,6 +50,17 @@ const exposed: Record<string, unknown> = {
   invoke,
   on,
   platform: process.platform,
+  getImageDataUrl: (id: string): string | null => {
+    try {
+      const result = ipcRenderer.sendSync("images.getDataUrlSync", { id }) as
+        | { ok: true; dataUrl: string }
+        | { ok: false; error: string }
+        | undefined;
+      return result?.ok ? result.dataUrl : null;
+    } catch {
+      return null;
+    }
+  },
 };
 
 if (isE2E) {
@@ -74,6 +85,7 @@ declare global {
       invoke: IpcInvoke;
       on: IpcOn;
       platform: NodeJS.Platform;
+      getImageDataUrl: (id: string) => string | null;
       __mocks?: {
         set: (
           channel: string,
