@@ -17,6 +17,7 @@ import {
 } from "../components/ui/sidebar";
 import { useDocumentStore } from "../renderer/document-store";
 import { useSettingsStore } from "../renderer/settings-store";
+import type { SidebarPreferences } from "../renderer/sidebar-preferences";
 
 // Pulls inset-centered content left by half the sidebar width to land at the
 // viewport center, clamped so the ~320px horizontal logo never crosses the
@@ -292,14 +293,21 @@ function e2eCrashProbe(scope: string): React.ReactElement | null {
   return <E2ECrashProbe scope={scope} />;
 }
 
-export function App() {
+export function App({
+  initialSidebarPreferences,
+}: {
+  initialSidebarPreferences?: SidebarPreferences;
+}) {
   useMenuEventSubscriptions();
   // Reset the editor boundary when the active tab changes, so a crash isolated
   // to one document recovers as soon as the user navigates away from it,
   // instead of staying stuck on the fallback until a full reload.
   const selectedId = useDocumentStore((s) => s.selectedId);
   return (
-    <SidebarProvider defaultOpen>
+    <SidebarProvider
+      defaultOpen={initialSidebarPreferences?.open ?? true}
+      defaultWidth={initialSidebarPreferences?.width}
+    >
       {e2eCrashProbe("app")}
       <div className="flex h-full w-full flex-col">
         <TopBar />

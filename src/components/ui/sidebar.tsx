@@ -3,6 +3,14 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { PanelLeft } from 'lucide-react';
 
 import { cn } from '../../lib/utils';
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  SIDEBAR_PREFERENCES_SETTING_KEY,
+  clampSidebarWidth,
+  serializeSidebarPreferences,
+} from '../../renderer/sidebar-preferences';
 import { Button } from './button';
 
 type SidebarContextValue = {
@@ -10,6 +18,9 @@ type SidebarContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  width: number;
+  setWidth: (width: number) => void;
+  commitWidth: () => void;
   /** Whether the sidebar is temporarily visible via hover. */
   hoverOpen: boolean;
   setHoverOpen: (hoverOpen: boolean) => void;
@@ -30,6 +41,7 @@ export function SidebarProvider({
   defaultOpen = true,
   open: openProp,
   onOpenChange,
+  defaultWidth = DEFAULT_SIDEBAR_WIDTH,
   style,
   className,
   children,
@@ -37,19 +49,51 @@ export function SidebarProvider({
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  defaultWidth?: number;
   style?: React.CSSProperties;
   className?: string;
 }>) {
   const [openInternal, setOpenInternal] = React.useState(defaultOpen);
+  const [width, setWidthInternal] = React.useState(() =>
+    clampSidebarWidth(defaultWidth),
+  );
   const open = openProp ?? openInternal;
+  const openRef = React.useRef(open);
+  const widthRef = React.useRef(width);
+
+  const persistPreferences = React.useCallback(() => {
+    void window.lychee
+      .invoke('settings.set', {
+        key: SIDEBAR_PREFERENCES_SETTING_KEY,
+        value: serializeSidebarPreferences({
+          open: openRef.current,
+          width: widthRef.current,
+        }),
+      })
+      .catch(() => {
+        // UI state remains usable if a non-critical preference write fails.
+      });
+  }, []);
 
   const setOpen = React.useCallback(
     (next: boolean) => {
+      openRef.current = next;
       onOpenChange?.(next);
       if (openProp === undefined) setOpenInternal(next);
+      persistPreferences();
     },
-    [onOpenChange, openProp],
+    [onOpenChange, openProp, persistPreferences],
   );
+
+  const setWidth = React.useCallback((next: number) => {
+    const clamped = clampSidebarWidth(next);
+    widthRef.current = clamped;
+    setWidthInternal(clamped);
+  }, []);
+
+  React.useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   const [hoverIntent, setHoverIntent] = React.useState(false);
   const hoverIntentRef = React.useRef(false);
@@ -151,13 +195,27 @@ export function SidebarProvider({
       open,
       setOpen,
       toggleSidebar: () => setOpen(!open),
+      width,
+      setWidth,
+      commitWidth: persistPreferences,
       hoverOpen,
       setHoverOpen,
       lockHover,
       unlockHover,
       isHoverLocked,
     }),
-    [open, setOpen, hoverOpen, setHoverOpen, lockHover, unlockHover, isHoverLocked],
+    [
+      open,
+      setOpen,
+      width,
+      setWidth,
+      persistPreferences,
+      hoverOpen,
+      setHoverOpen,
+      lockHover,
+      unlockHover,
+      isHoverLocked,
+    ],
   );
 
   return (
@@ -165,9 +223,10 @@ export function SidebarProvider({
       <TooltipPrimitive.Provider delayDuration={0}>
         <div
           className={cn('h-screen w-screen overflow-hidden', className)}
+          data-sidebar-provider="true"
           style={{
             ...(style ?? {}),
-            ['--sidebar-width' as unknown as keyof React.CSSProperties]: '18rem',
+            ['--sidebar-width' as unknown as keyof React.CSSProperties]: `${width}px`,
           }}
         >
           {children}
@@ -206,13 +265,15 @@ export function Sidebar({
         open && 'relative shrink-0 h-full border-r border-r-[hsl(var(--sidebar-border))]',
         // Collapsed: absolute overlay with transition
         !open && 'absolute transition-[transform,opacity] duration-200 ease-out',
-        isFloating && 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-brand overflow-hidden translate-x-0 opacity-100 shadow-xl',
+        isFloating && 'left-2 top-16 bottom-24 w-[calc(var(--sidebar-width)-0.5rem)] rounded-xl border border-brand translate-x-0 opacity-100 shadow-xl',
         !open && !isFloating && 'left-0 top-0 h-full border-r border-r-[hsl(var(--sidebar-border))] -translate-x-full opacity-0 shadow-none pointer-events-none',
         className,
       )}
       data-state={open ? 'expanded' : 'collapsed'}
     >
-      {children}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit]">
+        {children}
+      </div>
       <SidebarRail />
     </aside>
   );
@@ -394,16 +455,155 @@ export function useHoverLock() {
 }
 
 export function SidebarRail() {
-  const { open, toggleSidebar } = useSidebar();
+  const {
+    open,
+    hoverOpen,
+    width,
+    setWidth,
+    commitWidth,
+    toggleSidebar,
+    lockHover,
+    unlockHover,
+  } = useSidebar();
+  const isFloating = !open && hoverOpen;
+  const draggingRef = React.useRef(false);
+  const movedRef = React.useRef(false);
+  const startXRef = React.useRef(0);
+  const providerLeftRef = React.useRef(0);
+  const pointerIdRef = React.useRef<number | null>(null);
+  const bodyStylesRef = React.useRef<{ cursor: string; userSelect: string } | null>(null);
+
+  const finishDrag = React.useCallback(() => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    unlockHover();
+    if (bodyStylesRef.current) {
+      document.body.style.cursor = bodyStylesRef.current.cursor;
+      document.body.style.userSelect = bodyStylesRef.current.userSelect;
+      bodyStylesRef.current = null;
+    }
+  }, [unlockHover]);
+
+  React.useEffect(() => finishDrag, [finishDrag]);
+
+  const resizeFromClientX = React.useCallback(
+    (clientX: number) => {
+      if (!draggingRef.current) return;
+      if (Math.abs(clientX - startXRef.current) >= 2) {
+        movedRef.current = true;
+      }
+      // Treat sub-threshold pointer movement as click jitter. Without this,
+      // clicking the rail could silently alter the persisted width by a pixel.
+      if (!movedRef.current) return;
+      setWidth(clientX - providerLeftRef.current);
+    },
+    [setWidth],
+  );
+
+  React.useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== pointerIdRef.current) return;
+      resizeFromClientX(event.clientX);
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== pointerIdRef.current) return;
+      resizeFromClientX(event.clientX);
+      pointerIdRef.current = null;
+      finishDrag();
+      commitWidth();
+    };
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerId !== pointerIdRef.current) return;
+      pointerIdRef.current = null;
+      finishDrag();
+      commitWidth();
+    };
+
+    // Window-level tracking keeps floating resize stable even when the sidebar
+    // edge moves away from the pointer between fast pointer events.
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('pointerup', onPointerUp, true);
+    window.addEventListener('pointercancel', onPointerCancel, true);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('pointerup', onPointerUp, true);
+      window.removeEventListener('pointercancel', onPointerCancel, true);
+    };
+  }, [commitWidth, finishDrag, resizeFromClientX]);
+
   return (
     <button
-      onClick={toggleSidebar}
-      aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
+      type="button"
+      role="separator"
+      aria-orientation="vertical"
+      aria-valuemin={MIN_SIDEBAR_WIDTH}
+      aria-valuemax={MAX_SIDEBAR_WIDTH}
+      aria-valuenow={width}
+      aria-label="Resize sidebar"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        draggingRef.current = true;
+        movedRef.current = false;
+        startXRef.current = event.clientX;
+        pointerIdRef.current = event.pointerId;
+        providerLeftRef.current =
+          event.currentTarget
+            .closest<HTMLElement>('[data-sidebar-provider="true"]')
+            ?.getBoundingClientRect().left ?? 0;
+        lockHover();
+        bodyStylesRef.current = {
+          cursor: document.body.style.cursor,
+          userSelect: document.body.style.userSelect,
+        };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      }}
+      onClick={() => {
+        if (movedRef.current) {
+          movedRef.current = false;
+          return;
+        }
+        toggleSidebar();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          setWidth(width - 8);
+          commitWidth();
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          setWidth(width + 8);
+          commitWidth();
+        } else if (event.key === 'Home') {
+          event.preventDefault();
+          setWidth(MIN_SIDEBAR_WIDTH);
+          commitWidth();
+        } else if (event.key === 'End') {
+          event.preventDefault();
+          setWidth(MAX_SIDEBAR_WIDTH);
+          commitWidth();
+        }
+      }}
       className={cn(
-        'absolute right-0 top-0 h-full w-1.5',
-        'opacity-0 hover:opacity-100 transition-opacity',
+        'absolute -right-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none',
+        'group/rail opacity-0 hover:opacity-100 focus-visible:opacity-100 transition-opacity',
       )}
-      title={open ? 'Collapse sidebar' : 'Expand sidebar'}
-    />
+      title={`Drag to resize; click to ${open ? 'collapse' : 'expand'}`}
+    >
+      <span
+        style={
+          isFloating
+            ? {
+                top: 'calc(-4rem - 1px)',
+                bottom: 'calc(-6rem - 1px)',
+              }
+            : undefined
+        }
+        className={cn(
+          'pointer-events-none absolute left-1/2 w-1 -translate-x-1/2 bg-brand/70',
+          !isFloating && 'top-0 h-full',
+        )}
+      />
+    </button>
   );
 }
