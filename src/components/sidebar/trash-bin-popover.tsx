@@ -9,7 +9,7 @@ import { Input } from "../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "../../lib/utils";
-import { SidebarMenuItem, useHoverLock } from "../ui/sidebar";
+import { SidebarMenuItem, useHoverLock, useSidebar } from "../ui/sidebar";
 import { displayNoteTitle } from "../../shared/note-title";
 
 function displayTitle(doc: DocumentRow): string {
@@ -100,6 +100,7 @@ function TrashItemRow({
 
 export function TrashBinPopover() {
   const hoverLock = useHoverLock();
+  const { setHoverOpen } = useSidebar();
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [popoverOpen, setPopoverOpen] = React.useState(false);
   const [trashLoading, setTrashLoading] = React.useState(false);
@@ -193,21 +194,28 @@ export function TrashBinPopover() {
     setPendingDeleteDoc({ id: doc.id, title: displayTitle(doc) });
   }, []);
 
+  const closeTrashPopover = React.useCallback(() => {
+    setSearch("");
+    setPopoverOpen(false);
+    // Closing from a portalled dialog does not reliably fire the sidebar's
+    // mouse-leave handler, so clear its previous hover intent explicitly.
+    setHoverOpen(false);
+    hoverLock(false);
+  }, [hoverLock, setHoverOpen]);
+
   const handleConfirmDelete = React.useCallback(async () => {
     if (!pendingDeleteDoc) return;
     await permanentDeleteDocument(pendingDeleteDoc.id);
     setPendingDeleteDoc(null);
-  }, [pendingDeleteDoc, permanentDeleteDocument]);
+    // The popover locks the floating sidebar open while it is active. Once the
+    // delete flow completes, close it through the same path so that lock is
+    // released instead of leaving the sidebar permanently visible.
+    closeTrashPopover();
+  }, [pendingDeleteDoc, permanentDeleteDocument, closeTrashPopover]);
 
   const handleCancelDelete = React.useCallback(() => {
     setPendingDeleteDoc(null);
   }, []);
-
-  const closeTrashPopover = React.useCallback(() => {
-    setSearch("");
-    setPopoverOpen(false);
-    hoverLock(false);
-  }, [hoverLock]);
 
   const showOverlays = (popoverOpen || pendingDeleteDoc) && document?.body;
 
