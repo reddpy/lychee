@@ -37,6 +37,7 @@ import {
   $convertListItemToParagraph,
   $isCaretAtListItemStart,
 } from "../list-backspace"
+import { $insertMatchingChecklistItemBefore } from "../list-enter"
 
 function makeEditor() {
   return createHeadlessEditor({
@@ -885,5 +886,58 @@ describe("$convertListItemToParagraph (#222)", () => {
     expect(contCount).toBe(N - 2) // i2 .. i2999
     expect(contFirst).toBe("i2")
     expect(contLast).toBe(`i${N - 1}`)
+  })
+})
+
+describe("$insertMatchingChecklistItemBefore (#240)", () => {
+  it("inserts a matching checked item above a checked item", () => {
+    const editor = makeEditor()
+    editor.update(
+      () => {
+        const root = $getRoot()
+        root.clear()
+        const list = $createListNode("check")
+        const completed = $createListItemNode().setChecked(true)
+        completed.append($createTextNode("Done"))
+        list.append(completed)
+        root.append(list)
+      },
+      { discrete: true }
+    )
+
+    let states: Array<boolean | undefined> = []
+    editor.update(
+      () => {
+        const list = $getRoot().getFirstChild() as ListNode
+        const completed = list.getFirstChild() as ListItemNode
+        $insertMatchingChecklistItemBefore(completed)
+        states = list
+          .getChildren()
+          .map((item) => (item as ListItemNode).getChecked())
+      },
+      { discrete: true }
+    )
+
+    expect(read(editor)).toBe('CHECK[,Done]')
+    expect(states).toEqual([true, true])
+  })
+
+  it("declines unchecked and non-checklist items", () => {
+    const editor = makeEditor()
+    editor.update(() => buildList("bullet", ["A"]), { discrete: true })
+
+    let result: unknown = "unset"
+    editor.update(
+      () => {
+        const list = $getRoot().getFirstChild() as ListNode
+        result = $insertMatchingChecklistItemBefore(
+          list.getFirstChild() as ListItemNode
+        )
+      },
+      { discrete: true }
+    )
+
+    expect(result).toBeNull()
+    expect(read(editor)).toBe('BULLET[A]')
   })
 })
