@@ -1499,6 +1499,72 @@ test.describe("In-note search", () => {
     expect(reopenedSnapshot.activeCount).toBeGreaterThan(0);
   });
 
+  test("closing find cancels deferred highlight refreshes", async ({ window }) => {
+    await createNoteWithBody(window, "Deferred refresh cleanup", [
+      "alpha one",
+      "alpha two",
+      "alpha three",
+    ]);
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("alpha");
+    await expect(findCounter(window)).toHaveText("1/3");
+    const initialSnapshot = await readHighlightUxSnapshot(window);
+    test.skip(!initialSnapshot.supported, "CSS highlights API unavailable in this runtime");
+
+    await findTrigger(window).click();
+    await expect(findInput(window)).not.toBeVisible();
+
+    // Hold the callbacks queued while find reopens, then close the panel before
+    // they run. This reproduces the stale-closure window without relying on
+    // timing between Playwright commands and the browser's next paint.
+    await window.evaluate(() => {
+      const callbacks = new Map<number, FrameRequestCallback>();
+      const originalRequest = window.requestAnimationFrame;
+      const originalCancel = window.cancelAnimationFrame;
+      let nextId = 1;
+      Object.assign(window, {
+        __lycheeDeferredAnimationFrames: {
+          callbacks,
+          originalRequest,
+          originalCancel,
+        },
+        requestAnimationFrame(callback: FrameRequestCallback) {
+          const id = nextId++;
+          callbacks.set(id, callback);
+          return id;
+        },
+        cancelAnimationFrame(id: number) {
+          callbacks.delete(id);
+        },
+      });
+    });
+
+    await findTrigger(window).click();
+    await expect(findInput(window)).toBeVisible();
+    const queuedBeforeClose = await window.evaluate(
+      () => (window as any).__lycheeDeferredAnimationFrames.callbacks.size,
+    );
+    expect(queuedBeforeClose).toBeGreaterThan(0);
+
+    await findTrigger(window).click();
+    await expect(findInput(window)).not.toBeVisible();
+    await window.evaluate(() => {
+      const deferred = (window as any).__lycheeDeferredAnimationFrames;
+      Object.assign(window, {
+        requestAnimationFrame: deferred.originalRequest,
+        cancelAnimationFrame: deferred.originalCancel,
+      });
+      for (const callback of deferred.callbacks.values()) callback(performance.now());
+      delete (window as any).__lycheeDeferredAnimationFrames;
+    });
+
+    await expect
+      .poll(async () => (await readHighlightUxSnapshot(window)).allCount)
+      .toBe(0);
+    expect((await readHighlightUxSnapshot(window)).activeCount).toBe(0);
+  });
+
   test("deterministic close/reopen soak: 150 mixed tab operations keep state bounded", async ({
     window,
   }) => {
