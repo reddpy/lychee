@@ -1,5 +1,27 @@
 import { LexicalEditor } from "lexical"
 import { $generateHtmlFromNodes } from "@lexical/html"
+import { $getTitleNode } from "@/components/editor/nodes/title-node"
+
+const HTML_ESCAPE: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => HTML_ESCAPE[character])
+}
+
+/** Read the one canonical document title from the editor state. */
+export function getTitleForExport(editor: LexicalEditor): string {
+  let title = ""
+  editor.getEditorState().read(() => {
+    title = $getTitleNode()?.getTextContent().trim() ?? ""
+  })
+  return title
+}
 
 /**
  * Export editor content to HTML string
@@ -17,6 +39,7 @@ export function exportToHtml(editor: LexicalEditor): string {
  */
 export function exportToStyledHtml(editor: LexicalEditor): string {
   const html = exportToHtml(editor)
+  const documentTitle = escapeHtml(getTitleForExport(editor) || "Exported Document")
 
   const styles = `
     <style>
@@ -49,7 +72,7 @@ export function exportToStyledHtml(editor: LexicalEditor): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Exported Document</title>
+  <title>${documentTitle}</title>
   ${styles}
 </head>
 <body>

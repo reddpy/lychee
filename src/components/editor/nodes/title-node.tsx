@@ -1,6 +1,7 @@
 import {
   $applyNodeReplacement,
   $createParagraphNode,
+  $getRoot,
   DOMConversionMap,
   DOMExportOutput,
   EditorConfig,
@@ -48,13 +49,21 @@ export class TitleNode extends ElementNode {
   }
 
   exportDOM(_editor: LexicalEditor): DOMExportOutput {
+    // The title placeholder is editor UI, not document content. Omitting an
+    // empty title gives HTML/clipboard consumers a clean body while the
+    // serialized Lexical state still retains the structural TitleNode.
+    if (this.getTextContent().trim().length === 0) return { element: null }
+
     const element = document.createElement("h1")
-    element.className = "editor-title"
+    // Keep a format-neutral semantic marker for future full-document import.
+    // importDOM intentionally remains null: pasting an arbitrary exported h1
+    // into an existing note must not replace that note's canonical title.
+    element.setAttribute("data-lychee-title", "true")
     return { element }
   }
 
-  static importJSON(_serializedNode: SerializedTitleNode): TitleNode {
-    return $createTitleNode()
+  static importJSON(serializedNode: SerializedTitleNode): TitleNode {
+    return $createTitleNode().updateFromJSON(serializedNode)
   }
 
   exportJSON(): SerializedTitleNode {
@@ -106,4 +115,10 @@ export function $isTitleNode(
   node: LexicalNode | null | undefined
 ): node is TitleNode {
   return node instanceof TitleNode
+}
+
+/** Return the one canonical title: the first top-level document node. */
+export function $getTitleNode(): TitleNode | null {
+  const firstChild = $getRoot().getFirstChild()
+  return $isTitleNode(firstChild) ? firstChild : null
 }

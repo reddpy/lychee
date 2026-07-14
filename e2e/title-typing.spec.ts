@@ -357,6 +357,71 @@ test.describe('Title Typing Performance & Persistence', () => {
     expect(doc!.title).toBe('Prefix Clipboard Text');
   });
 
+  test('copying and pasting a fully selected note keeps exactly one title block', async ({ window, electronApp }) => {
+    const title = window.locator('h1.editor-title');
+    const editorRoot = window.locator('.ContentEditable__root');
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+    await title.click();
+    await window.keyboard.type('Only Title');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Body text');
+
+    await editorRoot.click();
+    await window.keyboard.press(`${modifier}+a`);
+    await window.keyboard.press(`${modifier}+c`);
+
+    const clipboardHtml = await electronApp.evaluate(({ clipboard }) =>
+      clipboard.readHTML(),
+    );
+    expect(clipboardHtml.match(/data-lychee-title="true"/g)).toHaveLength(1);
+    expect(clipboardHtml).not.toContain('class="editor-title"');
+
+    await window.keyboard.press(`${modifier}+v`);
+
+    await expect(editorRoot.locator('h1.editor-title')).toHaveCount(1);
+    await expect(title).toHaveText('Only Title');
+    await expect(editorRoot).toContainText('Body text');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    const content = JSON.parse(doc!.content);
+    expect(content.root.children.filter((node: any) => node.type === 'title')).toHaveLength(1);
+  });
+
+  test('select-all copy-paste from an empty title with body content keeps one title placeholder', async ({ window, electronApp }) => {
+    const editorRoot = window.locator('.ContentEditable__root');
+    const title = editorRoot.locator('h1.editor-title');
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+    // Reproduce issue #262 exactly: leave the title empty, add body content,
+    // then return the cursor to the title before selecting the whole note.
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Body text that must survive the paste');
+    await title.click();
+    await window.keyboard.press(`${modifier}+a`);
+    await window.keyboard.press(`${modifier}+c`);
+
+    const clipboardHtml = await electronApp.evaluate(({ clipboard }) =>
+      clipboard.readHTML(),
+    );
+    expect(clipboardHtml).not.toContain('data-lychee-title');
+    expect(clipboardHtml).toContain('Body text that must survive the paste');
+
+    await window.keyboard.press(`${modifier}+v`);
+
+    await expect(title).toHaveCount(1);
+    await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+    await expect(editorRoot).toContainText('Body text that must survive the paste');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    const content = JSON.parse(doc!.content);
+    expect(content.root.children.filter((node: any) => node.type === 'title')).toHaveLength(1);
+    expect(doc!.content).toContain('Body text that must survive the paste');
+  });
+
   // ── Special characters ─────────────────────────────────────────────
 
   test('special characters in title persist to database', async ({ window }) => {
