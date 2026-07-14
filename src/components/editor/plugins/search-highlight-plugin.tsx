@@ -440,7 +440,11 @@ export function SearchHighlightPlugin({
 
   // Scroll to current match when requested (e.g. single-match navigation)
   const prevScrollReqRef = React.useRef(scrollRequest);
-  React.useEffect(() => {
+  // A single-match Enter issues a scroll request without changing the active
+  // index. This must run before the browser paints: a normal effect can be
+  // deferred until after a following checkbox click, making that click appear
+  // to unexpectedly move the note.
+  React.useLayoutEffect(() => {
     if (prevScrollReqRef.current === scrollRequest) return;
     prevScrollReqRef.current = scrollRequest;
     if (!isOpenForDoc) return;
