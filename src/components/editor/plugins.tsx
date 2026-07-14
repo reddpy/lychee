@@ -163,7 +163,7 @@ export function Plugins({
       {/* YouTube video embed on paste */}
       <YouTubePlugin />
 
-      {/* Block highlight (shared by drag handle, TOC, etc.) */}
+      {/* Block highlight (shared by the section indicator and other features) */}
       <BlockHighlightPlugin />
 
       {/* Click below last block to append paragraph */}

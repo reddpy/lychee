@@ -1,7 +1,6 @@
 import { useEffect } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
-  $addUpdateTag,
   $createNodeSelection,
   $getNodeByKey,
   $getSelection,
@@ -231,7 +230,6 @@ export function ImagePlugin(): null {
       ImageNode,
       (mutations) => {
         editor.update(() => {
-          $addUpdateTag('skip-selection-focus')
           for (const [key, type] of mutations) {
             if (type === "destroyed") continue
             const node = $getNodeByKey(key)
