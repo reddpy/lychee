@@ -13,24 +13,6 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin"
 import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin"
 import { TablePlugin } from "@lexical/react/LexicalTablePlugin"
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin"
-import {
-  HEADING,
-  QUOTE,
-  CODE,
-  UNORDERED_LIST,
-  ORDERED_LIST,
-  CHECK_LIST,
-  BOLD_ITALIC_STAR,
-  BOLD_ITALIC_UNDERSCORE,
-  BOLD_STAR,
-  BOLD_UNDERSCORE,
-  ITALIC_STAR,
-  ITALIC_UNDERSCORE,
-  INLINE_CODE,
-  STRIKETHROUGH,
-  HIGHLIGHT,
-  LINK,
-} from "@lexical/markdown"
 import { LinkMatcher } from "@lexical/react/LexicalAutoLinkPlugin"
 import * as linkify from "linkifyjs"
 
@@ -52,31 +34,7 @@ import { TableColumnResizerPlugin } from "@/components/editor/plugins/table-colu
 import { SearchHighlightPlugin } from "@/components/editor/plugins/search-highlight-plugin"
 import { TabSelectionPlugin } from "@/components/editor/plugins/tab-selection-plugin"
 import { MenuHistoryPlugin } from "@/components/editor/plugins/menu-history-plugin"
-import { IMAGE, IMAGE_EXPORT } from "@/components/editor/plugins/image-markdown-transformer"
-import { TABLE, TABLE_EXPORT } from "@/components/editor/plugins/table-markdown-transformer"
-
-const TRANSFORMERS = [
-  HEADING,
-  QUOTE,
-  UNORDERED_LIST,
-  ORDERED_LIST,
-  CHECK_LIST,
-  IMAGE_EXPORT,
-  TABLE_EXPORT,
-  CODE,
-  INLINE_CODE,
-  BOLD_ITALIC_STAR,
-  BOLD_ITALIC_UNDERSCORE,
-  BOLD_STAR,
-  BOLD_UNDERSCORE,
-  HIGHLIGHT,
-  ITALIC_STAR,
-  ITALIC_UNDERSCORE,
-  STRIKETHROUGH,
-  IMAGE,
-  TABLE,
-  LINK,
-]
+import { MARKDOWN_TRANSFORMERS } from "@/components/editor/markdown-transformers"
 
 // Use linkifyjs for robust URL/email detection
 const MATCHERS: LinkMatcher[] = [
@@ -139,7 +97,7 @@ export function Plugins({
       <TableActionMenuPlugin />
       <TableControlsPlugin />
       <TableColumnResizerPlugin />
-      <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
+      <MarkdownShortcutPlugin transformers={MARKDOWN_TRANSFORMERS} />
       <LinkPlugin />
       <AutoLinkPlugin matchers={MATCHERS} />
       <LinkClickPlugin />

@@ -12,7 +12,12 @@ import {
   COMMAND_PRIORITY_HIGH,
   KEY_DOWN_COMMAND,
 } from "lexical"
-import { $createTitleNode, $isTitleNode, TitleNode } from "../nodes/title-node"
+import {
+  $createTitleNode,
+  $getTitleNode,
+  $isTitleNode,
+  TitleNode,
+} from "../nodes/title-node"
 
 interface TitlePluginProps {
   initialTitle?: string
@@ -20,6 +25,41 @@ interface TitlePluginProps {
 }
 
 const PLACEHOLDER_CLASS = "is-placeholder"
+
+/**
+ * A TitleNode is an editor-owned structural field, not a regular rich-text
+ * block. Lexical's internal clipboard preserves custom node types, so copying
+ * a whole note and pasting it back can otherwise insert another TitleNode.
+ *
+ * Keep the first root child as the canonical title. When a full-selection
+ * paste has just cleared that title, restore it from the incoming node. In any
+ * other paste position, retain the copied text as a normal paragraph instead
+ * of creating a second title field.
+ */
+function $normalizeDuplicateTitleNode(titleNode: TitleNode): void {
+  if (!titleNode.isAttached()) return
+
+  const root = $getRoot()
+  const canonicalTitle = $getTitleNode()
+  if (!canonicalTitle || titleNode.is(canonicalTitle)) return
+
+  const children = titleNode.getChildren()
+  if (canonicalTitle.isEmpty()) {
+    canonicalTitle.append(...children)
+
+    const parent = titleNode.getParent()
+    if (parent?.is(root)) {
+      parent.splice(titleNode.getIndexWithinParent(), 1, [])
+    } else {
+      titleNode.replace($createParagraphNode())
+    }
+    return
+  }
+
+  const paragraph = $createParagraphNode()
+  paragraph.append(...children)
+  titleNode.replace(paragraph)
+}
 
 export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): null {
   const [editor] = useLexicalComposerContext()
@@ -51,6 +91,26 @@ export function TitlePlugin({ initialTitle, onTitleChange }: TitlePluginProps): 
       }
     })
   }, [editor, initialTitle])
+
+  // Enforce the single-title invariant for both clipboard insertions and
+  // previously persisted states. Node transforms catch new pasted TitleNodes;
+  // the explicit update also normalizes duplicates already present at mount.
+  useEffect(() => {
+    const unregister = editor.registerNodeTransform(
+      TitleNode,
+      $normalizeDuplicateTitleNode
+    )
+
+    editor.update(() => {
+      for (const child of $getRoot().getChildren()) {
+        if ($isTitleNode(child)) {
+          $normalizeDuplicateTitleNode(child)
+        }
+      }
+    })
+
+    return unregister
+  }, [editor])
 
   // Toggle is-placeholder on TitleNode lifecycle (create/update). Mutation
   // listeners fire after DOM reconciliation, so getElementByKey is safe here —
