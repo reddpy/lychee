@@ -58,17 +58,29 @@ export function TableActionMenuPlugin(): null {
         const row = cell.getParent()
         event.preventDefault()
 
+        // `selectStart()` moves the existing RangeSelection's points but keeps
+        // its pending inline format and style. Clear those at a cell boundary
+        // so text typed in the destination cell cannot inherit formatting from
+        // the cell we just left.
+        const selectCellStart = (destination: TableCellNode) => {
+          const destinationSelection = destination.selectStart()
+          if ($isRangeSelection(destinationSelection)) {
+            destinationSelection.setFormat(0)
+            destinationSelection.setStyle("")
+          }
+        }
+
         if (event.shiftKey) {
           // Previous cell, else the last cell of the previous row. At the very
           // first cell, stay put (but still swallow Tab to protect the selection).
           const prev = cell.getPreviousSibling()
           if ($isTableCellNode(prev)) {
-            prev.selectStart()
+            selectCellStart(prev)
           } else {
             const prevRow = row?.getPreviousSibling()
             if ($isTableRowNode(prevRow)) {
               const last = prevRow.getLastChild()
-              if ($isTableCellNode(last)) last.selectStart()
+              if ($isTableCellNode(last)) selectCellStart(last)
             }
           }
           return true
@@ -77,18 +89,18 @@ export function TableActionMenuPlugin(): null {
         // Forward: next cell, else first cell of the next row, else add a row.
         const next = cell.getNextSibling()
         if ($isTableCellNode(next)) {
-          next.selectStart()
+          selectCellStart(next)
           return true
         }
         const nextRow = row?.getNextSibling()
         if ($isTableRowNode(nextRow)) {
           const first = nextRow.getFirstChild()
-          if ($isTableCellNode(first)) first.selectStart()
+          if ($isTableCellNode(first)) selectCellStart(first)
           return true
         }
         const newRow = $insertTableRowAtSelection(true)
         const firstCell = newRow?.getFirstChild()
-        if ($isTableCellNode(firstCell)) firstCell.selectStart()
+        if ($isTableCellNode(firstCell)) selectCellStart(firstCell)
         return true
       },
       COMMAND_PRIORITY_CRITICAL,
