@@ -394,7 +394,10 @@ export function LinkClickPlugin(): JSX.Element | null {
       >
         <div className="pt-1.5">
           {hoverState.internalDocumentId ? (
-            <div className="w-80 overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-popover shadow-lg">
+            <div
+              data-internal-note-hover-card
+              className="w-80 overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-popover shadow-lg"
+            >
               <div className="flex min-w-0 items-center gap-2.5 px-3 py-2.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[hsl(var(--muted))] text-sm">
                   {hoverState.internalDocumentEmoji ? (

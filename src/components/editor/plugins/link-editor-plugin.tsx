@@ -97,8 +97,25 @@ function clearLinkSelectionHighlight(owner: symbol) {
  */
 function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): DOMRect {
   const rangeRect = range.getBoundingClientRect()
+  const rangeElement = range.startContainer.nodeType === Node.ELEMENT_NODE
+    ? range.startContainer as HTMLElement
+    : range.startContainer.parentElement
+  const rangeStyles = rangeElement ? getComputedStyle(rangeElement) : null
+  const computedLineHeight = rangeStyles ? Number.parseFloat(rangeStyles.lineHeight) : Number.NaN
+  const fallbackLineHeight = rangeStyles
+    ? Number.parseFloat(rangeStyles.fontSize) * 1.4
+    : 0
+  const lineHeight = Number.isFinite(computedLineHeight) && computedLineHeight > 0
+    ? computedLineHeight
+    : fallbackLineHeight
+
   if (rangeRect.height > 0) {
-    return rangeRect
+    return new DOMRect(
+      rangeRect.left,
+      rangeRect.top,
+      0,
+      Math.max(rangeRect.height, lineHeight),
+    )
   }
 
   const { startContainer, startOffset } = range
@@ -116,7 +133,7 @@ function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): 
           hasCaretPosition ? rangeRect.left : characterRect.right,
           characterRect.top,
           0,
-          characterRect.height,
+          Math.max(characterRect.height, lineHeight),
         )
       }
     } else if (startOffset < text.length) {
@@ -128,7 +145,7 @@ function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): 
           hasCaretPosition ? rangeRect.left : characterRect.left,
           characterRect.top,
           0,
-          characterRect.height,
+          Math.max(characterRect.height, lineHeight),
         )
       }
     }
@@ -167,12 +184,12 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
   )
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      setTimeout(() => {
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      }, 0)
-    }
+    if (!isOpen) return
+    const frame = requestAnimationFrame(() => {
+      inputRef.current?.focus({ preventScroll: true })
+      inputRef.current?.select()
+    })
+    return () => cancelAnimationFrame(frame)
   }, [isOpen])
 
   useEffect(() => {
@@ -189,12 +206,21 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
     return () => clearLinkSelectionHighlight(owner)
   }, [])
 
-  const closeLinkEditor = useCallback((refocusEditor = false) => {
+  const closeLinkEditor = useCallback((
+    refocusEditor = false,
+    restoreSelection = false,
+  ) => {
+    const selectionToRestore = savedSelectionRef.current
     setIsOpen(false)
     clearSelectionHighlight()
     savedSelectionRef.current = null
     if (refocusEditor) {
-      requestAnimationFrame(() => editor.focus())
+      requestAnimationFrame(() => {
+        editor.getRootElement()?.focus({ preventScroll: true })
+        if (restoreSelection && selectionToRestore) {
+          withRestoredLinkSelection(editor, selectionToRestore, () => {})
+        }
+      })
     }
   }, [clearSelectionHighlight, editor])
 
@@ -270,7 +296,7 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
         KEY_ESCAPE_COMMAND,
         () => {
           if (isOpen) {
-            closeLinkEditor(true)
+            closeLinkEditor(true, true)
             return true
           }
           return false
@@ -344,7 +370,7 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
   const handleInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       event.preventDefault()
-      closeLinkEditor(true)
+      closeLinkEditor(true, true)
       return
     }
     if (event.key === "ArrowDown" && noteCandidates.length > 0) {
@@ -400,18 +426,35 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
         style={{
           position: "fixed",
           top: anchorRect?.bottom ?? 0,
-          left: anchorRect?.left ?? 0,
+          left: anchorRect && typeof window !== "undefined"
+            ? Math.max(
+                16,
+                Math.min(
+                  anchorRect.left,
+                  window.innerWidth - Math.min(380, window.innerWidth - 32) - 16,
+                ),
+              )
+            : anchorRect?.left ?? 0,
           width: anchorRect?.width ?? 0,
           height: 0,
         }}
       />
       <PopoverContent
-        className="w-[min(380px,calc(100vw-2rem))] overflow-hidden p-0"
+        className="w-[min(380px,calc(100vw-2rem))] overflow-hidden p-0 !animate-none"
         side="bottom"
         align="start"
-        sideOffset={8}
+        sideOffset={20}
         avoidCollisions={false}
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          inputRef.current?.focus({ preventScroll: true })
+          inputRef.current?.select()
+        }}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => {
+          event.preventDefault()
+          closeLinkEditor(true, true)
+        }}
       >
         <form onSubmit={handleSubmit}>
           <div className="flex items-center gap-2 p-2">

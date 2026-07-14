@@ -120,6 +120,9 @@ jobs:
           - name: text-formats
             specs: e2e/text-formats.spec.ts
             workers: 1
+          - name: internal-note-links
+            specs: e2e/internal-note-links.spec.ts
+            workers: 1
           - name: menu-shortcuts
             specs: e2e/menu-shortcuts.spec.ts
           - name: misc
