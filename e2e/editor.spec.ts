@@ -551,6 +551,72 @@ test.describe('Editor — Block Behavior', () => {
     await expect(checkItem).toHaveClass(/editor-list-item-unchecked/);
   });
 
+  test('rapid checklist toggles persist after reopening the note', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.type('Rapid toggle persistence');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('[ ] Persistent task');
+
+    const checkItem = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await expect(checkItem).toHaveCount(1);
+    for (let i = 0; i < 7; i++) {
+      await checkItem.click({ position: { x: 10, y: 10 } });
+    }
+    await expect(checkItem).toHaveClass(/editor-list-item-checked/);
+
+    // Wait for the editor's debounced save, then force a fresh deserialize.
+    await window.waitForTimeout(1000);
+    const activeTab = window.locator('[data-tab-id]').first();
+    await activeTab.hover();
+    await activeTab.locator('[aria-label="Close tab"]').click();
+    await window.locator('[data-note-id]').filter({ hasText: 'Rapid toggle persistence' }).click();
+
+    await expect(window.locator('.ContentEditable__root li[role="checkbox"]'))
+      .toHaveClass(/editor-list-item-checked/);
+  });
+
+  test('rapid toggles on separate checklist items remain independent', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('[ ] First task');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Second task');
+
+    const checkItems = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await expect(checkItems).toHaveCount(2);
+    for (let i = 0; i < 5; i++) {
+      await checkItems.nth(0).click({ position: { x: 10, y: 10 } });
+      await checkItems.nth(1).click({ position: { x: 10, y: 10 } });
+    }
+
+    await expect(checkItems.nth(0)).toHaveClass(/editor-list-item-checked/);
+    await expect(checkItems.nth(1)).toHaveClass(/editor-list-item-checked/);
+  });
+
+  test('a touch pointerup and its synthesized click toggle a checklist item once', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('[ ] Touch task');
+
+    const checkItem = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await expect(checkItem).toHaveCount(1);
+    await checkItem.evaluate((item: HTMLElement) => {
+      const rect = item.getBoundingClientRect();
+      const options = {
+        bubbles: true,
+        clientX: rect.left + 10,
+        clientY: rect.top + rect.height / 2,
+      };
+      item.dispatchEvent(new PointerEvent('pointerup', { ...options, pointerType: 'touch' }));
+      item.dispatchEvent(new MouseEvent('click', options));
+    });
+
+    await expect(checkItem).toHaveClass(/editor-list-item-checked/);
+  });
+
   test('multiple block types in one document', async ({ window }) => {
     const title = window.locator('h1.editor-title');
     await title.click();
