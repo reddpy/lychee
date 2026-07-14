@@ -18,14 +18,14 @@ import { useHoverLock } from '../ui/sidebar';
 export type DocumentMenuProps = {
   docId: string;
   canAddChild: boolean;
-  onAddPageInside?: () => void;
+  onAddNoteInside?: () => void;
 };
 
 function DocumentMenuItems({
   Item,
   docId,
   canAddChild,
-  onAddPageInside,
+  onAddNoteInside,
 }: DocumentMenuProps & {
   Item: React.ComponentType<{ onSelect: () => void; className?: string; children: React.ReactNode }>;
 }) {
@@ -43,10 +43,10 @@ function DocumentMenuItems({
         {isBookmarked ? <BookmarkMinus className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
         <span>{isBookmarked ? 'Remove bookmark' : 'Add to bookmarks'}</span>
       </Item>
-      {canAddChild && onAddPageInside && (
-        <Item onSelect={onAddPageInside}>
+      {canAddChild && onAddNoteInside && (
+        <Item onSelect={onAddNoteInside}>
           <Plus className="h-3.5 w-3.5" />
-          <span>Add page inside</span>
+          <span>Add note inside</span>
         </Item>
       )}
       <Item className="text-destructive focus:text-destructive focus:bg-destructive/10 data-[highlighted]:text-destructive data-[highlighted]:bg-destructive/10" onSelect={() => trashDocument(docId)}>
@@ -60,7 +60,7 @@ function DocumentMenuItems({
 export function DocumentContextMenu({
   docId,
   canAddChild,
-  onAddPageInside,
+  onAddNoteInside,
   children,
 }: DocumentMenuProps & { children: React.ReactNode }) {
   const hoverLock = useHoverLock();
@@ -69,7 +69,7 @@ export function DocumentContextMenu({
     <ContextMenu onOpenChange={hoverLock}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent>
-        <DocumentMenuItems Item={ContextMenuItem} docId={docId} canAddChild={canAddChild} onAddPageInside={onAddPageInside} />
+      <DocumentMenuItems Item={ContextMenuItem} docId={docId} canAddChild={canAddChild} onAddNoteInside={onAddNoteInside} />
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -78,11 +78,11 @@ export function DocumentContextMenu({
 export function DocumentDropdownMenuContent({
   docId,
   canAddChild,
-  onAddPageInside,
+  onAddNoteInside,
 }: DocumentMenuProps) {
   return (
     <DropdownMenuContent align="start">
-      <DocumentMenuItems Item={DropdownMenuItem} docId={docId} canAddChild={canAddChild} onAddPageInside={onAddPageInside} />
+      <DocumentMenuItems Item={DropdownMenuItem} docId={docId} canAddChild={canAddChild} onAddNoteInside={onAddNoteInside} />
     </DropdownMenuContent>
   );
 }

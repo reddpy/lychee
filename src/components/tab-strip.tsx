@@ -99,7 +99,7 @@ const TabPreviewPopup = React.memo(function TabPreviewPopup({
           </div>
         ) : isEmpty ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-[11px] italic text-[hsl(var(--muted-foreground))]/40">Empty page</span>
+            <span className="text-[11px] italic text-[hsl(var(--muted-foreground))]/40">Empty note</span>
           </div>
         ) : null}
       </div>

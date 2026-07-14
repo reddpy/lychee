@@ -3,7 +3,7 @@
  *
  * The preview popup appears when hovering over an inactive tab for 500ms.
  * It shows the note title (with emoji fallback) and a read-only preview
- * of the content. Empty notes show "Empty page" placeholder.
+ * of the content. Empty notes show "Empty note" placeholder.
  *
  * Coverage:
  *   1.  Basic show/hide behavior
@@ -235,7 +235,7 @@ test.describe('Tab Preview', () => {
 
   // ── 3. Empty state variations ──────────────────────────────────────
 
-  test('blank note (no title, no body) shows "Empty page" placeholder', async ({ window }) => {
+  test('blank note (no title, no body) shows "Empty note" placeholder', async ({ window }) => {
     const blankTabId = await createBlankNote(window);
     await createNoteWithBody(window, 'Other Note', ['Has content']);
 
@@ -243,11 +243,11 @@ test.describe('Tab Preview', () => {
     const popup = previewPopup(window);
     await expect(popup).toBeVisible();
     await expect(popup).toContainText('📄');
-    await expect(popup).toContainText('New Page');
-    await expect(popup).toContainText('Empty page');
+    await expect(popup).toContainText('New Note');
+    await expect(popup).toContainText('Empty note');
   });
 
-  test('title-only note (no body) shows title without "Empty page"', async ({ window }) => {
+  test('title-only note (no body) shows title without "Empty note"', async ({ window }) => {
     const noteA = await createNoteWithTitle(window, 'Title Only Note');
     await createNoteWithBody(window, 'Other', ['Has body']);
 
@@ -255,12 +255,12 @@ test.describe('Tab Preview', () => {
     const popup = previewPopup(window);
     await expect(popup).toBeVisible();
     await expect(popup).toContainText('Title Only Note');
-    // Should NOT show "Empty page" — it has a title
+    // Should NOT show "Empty note" — it has a title
     const text = await popup.textContent();
-    expect(text).not.toContain('Empty page');
+    expect(text).not.toContain('Empty note');
   });
 
-  test('body-only note (no title) shows content preview with "New Page" title', async ({ window }) => {
+  test('body-only note (no title) shows content preview with "New Note" title', async ({ window }) => {
     // Create a note, type body but leave title as default
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
@@ -280,7 +280,7 @@ test.describe('Tab Preview', () => {
     await hoverTabAndWait(window, bodyTabId);
     const popup = previewPopup(window);
     await expect(popup).toBeVisible();
-    await expect(popup).toContainText('New Page');
+    await expect(popup).toContainText('New Note');
     await expect(popup).toContainText('Body without title');
   });
 
@@ -313,8 +313,8 @@ test.describe('Tab Preview', () => {
     const popup = previewPopup(window);
     await expect(popup).toBeVisible();
     await expect(popup).toContainText('🔥');
-    await expect(popup).toContainText('New Page');
-    await expect(popup).toContainText('Empty page');
+    await expect(popup).toContainText('New Note');
+    await expect(popup).toContainText('Empty note');
   });
 
   test('multiple blank notes each show their own preview correctly', async ({ window }) => {
@@ -326,7 +326,7 @@ test.describe('Tab Preview', () => {
     await hoverTabAndWait(window, blank1);
     let popup = previewPopup(window);
     await expect(popup).toBeVisible();
-    await expect(popup).toContainText('Empty page');
+    await expect(popup).toContainText('Empty note');
 
     await moveMouseAway(window);
     await window.waitForTimeout(200);
@@ -335,16 +335,16 @@ test.describe('Tab Preview', () => {
     await hoverTabAndWait(window, blank2);
     popup = previewPopup(window);
     await expect(popup).toBeVisible();
-    await expect(popup).toContainText('Empty page');
+    await expect(popup).toContainText('Empty note');
   });
 
   test('blank note transitions to title-only preview after adding title', async ({ window }) => {
     const blankTabId = await createBlankNote(window);
     await createNoteWithBody(window, 'Other', ['Content']);
 
-    // First verify it shows "Empty page"
+    // First verify it shows "Empty note"
     await hoverTabAndWait(window, blankTabId);
-    await expect(previewPopup(window)).toContainText('Empty page');
+    await expect(previewPopup(window)).toContainText('Empty note');
     await moveMouseAway(window);
     await window.waitForTimeout(200);
 
@@ -368,7 +368,7 @@ test.describe('Tab Preview', () => {
     const popup = previewPopup(window);
     await expect(popup).toContainText('Now Has Title');
     const text = await popup.textContent();
-    expect(text).not.toContain('Empty page');
+    expect(text).not.toContain('Empty note');
   });
 
   test('blank note transitions to full preview after adding body', async ({ window }) => {
@@ -377,7 +377,7 @@ test.describe('Tab Preview', () => {
 
     // Verify blank state first
     await hoverTabAndWait(window, blankTabId);
-    await expect(previewPopup(window)).toContainText('Empty page');
+    await expect(previewPopup(window)).toContainText('Empty note');
     await moveMouseAway(window);
     await window.waitForTimeout(200);
 
@@ -402,7 +402,7 @@ test.describe('Tab Preview', () => {
     const popup = previewPopup(window);
     await expect(popup).toContainText('Now has body content');
     const text = await popup.textContent();
-    expect(text).not.toContain('Empty page');
+    expect(text).not.toContain('Empty note');
   });
 
   test('title-only note has same height preview as note with content', async ({ window }) => {

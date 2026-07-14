@@ -147,10 +147,10 @@ test.describe('Trash Bin', () => {
     await window.waitForTimeout(300);
 
     // Confirm dialog should appear
-    await expect(window.getByText('Are you sure you want to delete this page from Trash?')).toBeVisible();
+    await expect(window.getByText('Are you sure you want to delete this note from Trash?')).toBeVisible();
 
     // Confirm deletion
-    await window.getByRole('button', { name: 'Delete page' }).click();
+    await window.getByRole('button', { name: 'Delete note' }).click();
     await window.waitForTimeout(400);
 
     // Completing the dialog closes the popover and releases its floating-sidebar lock.

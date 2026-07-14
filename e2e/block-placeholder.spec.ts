@@ -998,14 +998,14 @@ async function validateHistoryReplay(window: Page, maxSteps = 25): Promise<numbe
 
 // ════════════════════════════════════════════════════════════════════
 // Title interplay: the TitleNode has its OWN persistent placeholder
-// ("New Page" ghost, toggled by emptiness — not focus). The paragraph
+// ("New Note" ghost, toggled by emptiness — not focus). The paragraph
 // placeholder is focus + caret driven. The two share one editor and one
 // history, so the blur/focus behavior change must never cross-contaminate
 // them — especially when undo/redo teleports the caret across the
 // title/body boundary.
 // ════════════════════════════════════════════════════════════════════
 
-/** The title's own ghost placeholder ("New Page"). */
+/** The title's own ghost placeholder ("New Note"). */
 function titleGhost(window: Page) {
   return visibleMain(window).locator('h1.editor-title.is-placeholder');
 }
@@ -1016,7 +1016,7 @@ test.describe('Block placeholder — title interplay', () => {
     await window.waitForTimeout(400);
     // Fresh note: empty title shows its ghost
     await expect(titleGhost(window)).toHaveCount(1);
-    await expect(titleGhost(window).first()).toHaveAttribute('data-placeholder', 'New Page');
+    await expect(titleGhost(window).first()).toHaveAttribute('data-placeholder', 'New Note');
     await expect(paragraphPlaceholders(window)).toHaveCount(0);
 
     // Caret into the body: BOTH placeholders visible at once

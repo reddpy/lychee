@@ -4,7 +4,7 @@
  *
  * What's already in sidebar.spec.ts (not duplicated here):
  *   • Right-click shows menu items (basic smoke test)
- *   • "Add page inside" creates a nested note (basic)
+ *   • "Add note inside" creates a nested note (basic)
  *   • "Open in new tab" opens a second tab (basic)
  *
  * This file adds:
@@ -136,7 +136,7 @@ test.describe('Sidebar Context Menu — All Options', () => {
 
     await expect(window.getByRole('menuitem', { name: /open in new tab/i })).toBeVisible({ timeout: 3000 });
     await expect(window.getByRole('menuitem', { name: /add to bookmarks/i })).toBeVisible({ timeout: 3000 });
-    await expect(window.getByRole('menuitem', { name: /add page inside/i })).toBeVisible({ timeout: 3000 });
+    await expect(window.getByRole('menuitem', { name: /add note inside/i })).toBeVisible({ timeout: 3000 });
     await expect(window.getByRole('menuitem', { name: /move to trash/i })).toBeVisible({ timeout: 3000 });
   });
 
@@ -212,10 +212,10 @@ test.describe('Sidebar Context Menu — All Options', () => {
     }).toPass({ timeout: 5000 });
   });
 
-  test('"Add page inside" creates a child note visible below parent in Notes section', async ({ window }) => {
+  test('"Add note inside" creates a child note visible below parent in Notes section', async ({ window }) => {
     const parentId = await createNoteWithTitle(window, 'CM Parent Note');
     await rightClickNote(window, parentId);
-    await window.getByRole('menuitem', { name: /add page inside/i }).click();
+    await window.getByRole('menuitem', { name: /add note inside/i }).click();
     await window.waitForTimeout(600);
 
     // Two notes visible
@@ -234,12 +234,12 @@ test.describe('Sidebar Context Menu — All Options', () => {
     }).toPass({ timeout: 5000 });
   });
 
-  test('"Add page inside" opens the new child note in an editor tab', async ({ window }) => {
+  test('"Add note inside" opens the new child note in an editor tab', async ({ window }) => {
     const parentId = await createNoteWithTitle(window, 'CM Parent Opens Child');
     const tabsBefore = await window.locator('[data-tab-id]').count();
 
     await rightClickNote(window, parentId);
-    await window.getByRole('menuitem', { name: /add page inside/i }).click();
+    await window.getByRole('menuitem', { name: /add note inside/i }).click();
     await window.waitForTimeout(600);
 
     // A new tab should have opened for the child
@@ -299,7 +299,7 @@ test.describe('Sidebar Context Menu — All Options', () => {
 // ── Context Menu — Conditional Items ─────────────────────────────────
 
 test.describe('Sidebar Context Menu — Conditional Items', () => {
-  test('"Add page inside" is absent at maximum nesting depth (4)', async ({ window }) => {
+  test('"Add note inside" is absent at maximum nesting depth (4)', async ({ window }) => {
     // Build 5 levels: root → L1 → L2 → L3 → L4 (depth 4, canAddChild = false)
     const rootId = await createNoteWithTitle(window, 'Depth Root');
 
@@ -340,14 +340,14 @@ test.describe('Sidebar Context Menu — Conditional Items', () => {
     await deepestNote.click({ button: 'right' });
     await window.waitForTimeout(300);
 
-    // "Add page inside" must NOT appear at depth 4
-    await expect(window.getByRole('menuitem', { name: /add page inside/i })).not.toBeVisible({ timeout: 3000 });
+    // "Add note inside" must NOT appear at depth 4
+    await expect(window.getByRole('menuitem', { name: /add note inside/i })).not.toBeVisible({ timeout: 3000 });
     // Other options still present
     await expect(window.getByRole('menuitem', { name: /open in new tab/i })).toBeVisible();
     await expect(window.getByRole('menuitem', { name: /move to trash/i })).toBeVisible();
   });
 
-  test('Right-click on note in Bookmarks section has no "Add page inside"', async ({ window }) => {
+  test('Right-click on note in Bookmarks section has no "Add note inside"', async ({ window }) => {
     // BACKEND: inject bookmark so the note appears in Bookmarks section
     const docId = await createNoteWithTitle(window, 'BM CM No Add Inside');
     await bookmarkViaBackend(window, docId);
@@ -358,8 +358,8 @@ test.describe('Sidebar Context Menu — Conditional Items', () => {
     await bookmarkSectionItem.click({ button: 'right' });
     await window.waitForTimeout(300);
 
-    // "Add page inside" must not appear — BookmarksSection passes canAddChild={false}
-    await expect(window.getByRole('menuitem', { name: /add page inside/i })).not.toBeVisible({ timeout: 3000 });
+    // "Add note inside" must not appear — BookmarksSection passes canAddChild={false}
+    await expect(window.getByRole('menuitem', { name: /add note inside/i })).not.toBeVisible({ timeout: 3000 });
     // The other 3 options should be there
     await expect(window.getByRole('menuitem', { name: /open in new tab/i })).toBeVisible({ timeout: 3000 });
     await expect(window.getByRole('menuitem', { name: /remove bookmark/i })).toBeVisible({ timeout: 3000 });
@@ -436,7 +436,7 @@ test.describe('Sidebar Hover Dropdown (⋯ Options)', () => {
 
     await expect(window.getByRole('menuitem', { name: /open in new tab/i })).toBeVisible({ timeout: 3000 });
     await expect(window.getByRole('menuitem', { name: /add to bookmarks/i })).toBeVisible({ timeout: 3000 });
-    await expect(window.getByRole('menuitem', { name: /add page inside/i })).toBeVisible({ timeout: 3000 });
+    await expect(window.getByRole('menuitem', { name: /add note inside/i })).toBeVisible({ timeout: 3000 });
     await expect(window.getByRole('menuitem', { name: /move to trash/i })).toBeVisible({ timeout: 3000 });
   });
 
@@ -472,10 +472,10 @@ test.describe('Sidebar Hover Dropdown (⋯ Options)', () => {
     }).toPass({ timeout: 5000 });
   });
 
-  test('⋯ dropdown "Add page inside" creates a child note', async ({ window }) => {
+  test('⋯ dropdown "Add note inside" creates a child note', async ({ window }) => {
     const parentId = await createNoteWithTitle(window, 'Dropdown Add Inside Parent');
     await openOptionsDropdown(window, parentId);
-    await window.getByRole('menuitem', { name: /add page inside/i }).click();
+    await window.getByRole('menuitem', { name: /add note inside/i }).click();
     await window.waitForTimeout(600);
 
     await expect(window.locator('[data-note-id]')).toHaveCount(2, { timeout: 5000 });
@@ -514,7 +514,7 @@ test.describe('Sidebar Hover Dropdown (⋯ Options)', () => {
     await expect(bookmarksSectionHeader(window)).not.toBeVisible({ timeout: 3000 });
   });
 
-  test('hovering a note item reveals the "+" Add Page Inside button for root notes', async ({ window }) => {
+  test('hovering a note item reveals the "+" Add Note Inside button for root notes', async ({ window }) => {
     const docId = await createNoteWithTitle(window, 'Hover Reveals Plus Btn');
     const noteItem = window.locator(`[data-note-id="${docId}"]`).first();
 
@@ -526,7 +526,7 @@ test.describe('Sidebar Hover Dropdown (⋯ Options)', () => {
     await expect(plusBtn).toBeVisible({ timeout: 3000 });
   });
 
-  test('"+" hover button creates a child note (same as context menu "Add page inside")', async ({ window }) => {
+  test('"+" hover button creates a child note (same as context menu "Add note inside")', async ({ window }) => {
     const parentId = await createNoteWithTitle(window, 'Plus Btn Creates Child');
     const noteItem = window.locator(`[data-note-id="${parentId}"]`).first();
 

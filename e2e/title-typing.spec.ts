@@ -487,7 +487,7 @@ test.describe('Title Typing Performance & Persistence', () => {
 
   test('switching tabs preserves correct placeholder state per note', async ({ window }) => {
     // First note: leave empty. beforeEach already created note A (empty).
-    // The empty-title tab renders "New Page" as its visible label.
+    // The empty-title tab renders "New Note" as its visible label.
     const visibleTitle = window.locator('main:visible h1.editor-title');
     await expect(visibleTitle).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
 
@@ -501,7 +501,7 @@ test.describe('Title Typing Performance & Persistence', () => {
 
     // Match tabs by their rendered label (data-tab-id is the tab's own id,
     // not the document id, so filter by hasText is the stable selector).
-    const emptyTab = window.locator('[data-tab-id]').filter({ hasText: 'New Page' });
+    const emptyTab = window.locator('[data-tab-id]').filter({ hasText: 'New Note' });
     const titledTab = window.locator('[data-tab-id]').filter({ hasText: 'Has Title' });
 
     // Switch back to the empty note — placeholder must still be there.

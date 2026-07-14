@@ -1,7 +1,7 @@
 // Canonical label for a note that has no title. This is also the editor's
 // title-field placeholder, so an unnamed note reads identically whether you're
 // editing it or seeing it referenced (sidebar, tabs, search, breadcrumb).
-export const NEW_NOTE_TITLE = "New Page";
+export const NEW_NOTE_TITLE = "New Note";
 
 // Resolve a note's display title. An empty/whitespace title — or the legacy
 // "Untitled" sentinel (older notes and pre-strip data) — falls back to

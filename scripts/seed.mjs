@@ -155,7 +155,7 @@ insert(
     p(""),
     h("h2", "Launch Checklist"),
     check("Editor — rich text, slash commands, drag & drop", true),
-    check("Sidebar — nested pages, emoji icons, search", true),
+    check("Sidebar — nested notes, emoji icons, search", true),
     check("Tabs — open multiple notes side by side", true),
     check("Image embeds with resize handles", true),
     check("Keyboard shortcuts & accessibility", false),
@@ -215,7 +215,7 @@ insert(
     p(""),
     h("h2", "What's next"),
     bullet("Image paste & resize"),
-    bullet("Nested pages in sidebar"),
+    bullet("Nested notes in sidebar"),
     bullet("Emoji picker for note icons"),
   ),
   { parentId: meetingId, sortOrder: 1, daysAgo: 11 },
@@ -398,7 +398,7 @@ insert(
     bullet("Vim keybindings mode for power users"),
     bullet("Template system — start a note from a template"),
     bullet("Backlinks — see which notes reference this one"),
-    bullet("Daily note — auto-created page for today, like Roam/Logseq"),
+    bullet("Daily note — auto-created note for today, like Roam/Logseq"),
     bullet("Focus mode — dim everything except the current block"),
     bullet("Export entire workspace as a static site"),
     bullet("AI summary of a long note (opt-in, not baked in)"),
@@ -466,7 +466,7 @@ insert(
   doc(
     title("Week 3 — Sidebar & navigation"),
     p(
-      "Built the sidebar note tree with nested pages up to 5 levels deep. Drag to reorder, drag to nest.",
+      "Built the sidebar note tree with nested notes up to 5 levels deep. Drag to reorder, drag to nest.",
     ),
     p(""),
     p(
@@ -643,7 +643,7 @@ const researchId = insert(
   doc(
     title("Research"),
     p(
-      "Deep dives on topics I keep coming back to. Each area gets its own sub-pages.",
+      "Deep dives on topics I keep coming back to. Each area gets its own sub-notes.",
     ),
   ),
   { emoji: "🔬", sortOrder: 12, daysAgo: 10 },
@@ -1121,7 +1121,7 @@ insert(
     bullet(
       "What's the maximum practical sync lag? Target: < 5 seconds on decent internet",
     ),
-    bullet("Should we support selective sync (only sync certain pages)?"),
+    bullet("Should we support selective sync (only sync certain notes)?"),
   ),
   { parentId: techSpecId, sortOrder: 0, daysAgo: 10 },
 );

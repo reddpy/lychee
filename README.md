@@ -44,7 +44,7 @@
 | **Slash commands** | Type `/` to insert any block type |
 | **Drag & drop** | Grab the handle to reorder any block |
 | **Images** | Paste or drop images with resize + alignment controls |
-| **Nested pages** | Organize notes up to 5 levels deep |
+| **Nested notes** | Organize notes up to 5 levels deep |
 | **Tabs** | Open multiple notes side by side |
 | **Emoji icons** | Give each note a custom icon |
 | **Trash & restore** | Soft-delete with easy recovery |

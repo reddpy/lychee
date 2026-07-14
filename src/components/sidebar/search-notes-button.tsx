@@ -569,7 +569,7 @@ export function SearchNotesButton() {
   const isPreviewLoading =
     (isPreparingPreviews && !previewPrepared) || isSearching || isPaletteInitializing;
   // A note is empty only when it has neither a real title nor body text — a
-  // brand-new "New Page" renders to a blank preview pane. Emoji is deliberately
+  // brand-new "New Note" renders to a blank preview pane. Emoji is deliberately
   // ignored: an emoji-only note is still empty (its emoji shows above this).
   // Checking the title explicitly keeps a titled-but-bodyless note from being
   // misread as empty regardless of whether bodyText includes the title.

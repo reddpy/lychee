@@ -26,8 +26,8 @@ describe("displayNoteTitle", () => {
     expect(displayNoteTitle("Untitled draft")).toBe("Untitled draft");
   });
 
-  it("uses 'New Page' as the canonical label", () => {
-    expect(NEW_NOTE_TITLE).toBe("New Page");
+  it("uses 'New Note' as the canonical label", () => {
+    expect(NEW_NOTE_TITLE).toBe("New Note");
   });
 });
 

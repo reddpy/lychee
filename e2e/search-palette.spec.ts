@@ -2663,7 +2663,7 @@ test.describe("Search palette empty-note preview", () => {
     await seedDocs(window, [{ title: "", content: "" }]);
     await openPalette(window);
     await waitForResultRows(window, 1);
-    await expect(await selectedItem(window)).toContainText("New Page");
+    await expect(await selectedItem(window)).toContainText("New Note");
     await expect(emptyPreviewState(window)).toBeVisible();
   });
 
@@ -2675,7 +2675,7 @@ test.describe("Search palette empty-note preview", () => {
     await createBlankNoteViaUi(window);
     await openPalette(window);
     await waitForResultRows(window, 1);
-    await expect(await selectedItem(window)).toContainText("New Page");
+    await expect(await selectedItem(window)).toContainText("New Note");
     await expect(emptyPreviewState(window)).toBeVisible();
   });
 
@@ -2705,9 +2705,9 @@ test.describe("Search palette empty-note preview", () => {
     await openPalette(window);
     await paletteInput(window).fill("bodyonlytoken");
     await waitForResultRows(window, 1);
-    // Pairs with the content='' test: same "New Page" title, but the body
+    // Pairs with the content='' test: same "New Note" title, but the body
     // flips it to non-empty — proving the body actually drives the decision.
-    await expect(await selectedItem(window)).toContainText("New Page");
+    await expect(await selectedItem(window)).toContainText("New Note");
     await expect(emptyPreviewState(window)).toHaveCount(0);
   });
 
@@ -2717,7 +2717,7 @@ test.describe("Search palette empty-note preview", () => {
     await seedDocs(window, [{ title: "   ", content: bodyContent("   \n\t  ") }]);
     await openPalette(window);
     await waitForResultRows(window, 1);
-    await expect(await selectedItem(window)).toContainText("New Page");
+    await expect(await selectedItem(window)).toContainText("New Note");
     await expect(emptyPreviewState(window)).toBeVisible();
   });
 
@@ -2744,9 +2744,9 @@ test.describe("Search palette empty-note preview", () => {
     await expect(resultItems(window).filter({ hasText: "Alpha note" }).first()).toBeVisible();
     await expect(previewCounter(window)).toHaveText(/^\d+\/3$/);
 
-    // "new page" matches only the empty note (by its New Page title); the
+    // "new note" matches only the empty note (by its New Note title); the
     // content note drops out, preview falls back to the empty note.
-    await paletteInput(window).fill("new page");
+    await paletteInput(window).fill("new note");
     await waitForResultRows(window, 1);
     await expect(emptyPreviewState(window)).toBeVisible();
     await expect(previewCounter(window)).toHaveText("0/0");
@@ -2768,7 +2768,7 @@ test.describe("Search palette empty-note preview", () => {
 
     for (let i = 0; i < 4; i += 1) {
       await window.keyboard.press("ArrowDown");
-      await expect(await selectedItem(window)).toContainText("New Page");
+      await expect(await selectedItem(window)).toContainText("New Note");
       await expect(emptyPreviewState(window)).toBeVisible();
 
       await window.keyboard.press("ArrowUp");

@@ -14,17 +14,17 @@ describe("Search Preview Utils — Backend Contracts", () => {
       expect(normalizedTitle("  My note  ")).toBe("My note");
     });
 
-    it("falls back to New Page for empty title", () => {
-      expect(normalizedTitle("")).toBe("New Page");
+    it("falls back to New Note for empty title", () => {
+      expect(normalizedTitle("")).toBe("New Note");
     });
 
-    it("falls back to New Page for whitespace-only title", () => {
-      expect(normalizedTitle("   \n\t  ")).toBe("New Page");
+    it("falls back to New Note for whitespace-only title", () => {
+      expect(normalizedTitle("   \n\t  ")).toBe("New Note");
     });
 
-    it("treats the legacy Untitled sentinel as New Page", () => {
-      expect(normalizedTitle("Untitled")).toBe("New Page");
-      expect(normalizedTitle("  Untitled  ")).toBe("New Page");
+    it("treats the legacy Untitled sentinel as New Note", () => {
+      expect(normalizedTitle("Untitled")).toBe("New Note");
+      expect(normalizedTitle("  Untitled  ")).toBe("New Note");
     });
   });
 
@@ -45,8 +45,8 @@ describe("Search Preview Utils — Backend Contracts", () => {
       expect(scoreDocument("Engineering", "roadmap")).toBe(-1);
     });
 
-    it("uses the New Page fallback when title is blank", () => {
-      expect(scoreDocument("   ", "new page")).toBe(300);
+    it("uses the New Note fallback when title is blank", () => {
+      expect(scoreDocument("   ", "new note")).toBe(300);
       // The old "untitled" sentinel no longer matches a blank-titled note.
       expect(scoreDocument("   ", "untitled")).toBe(-1);
     });
@@ -140,7 +140,7 @@ describe("Search Preview Utils — Backend Contracts", () => {
       expect(extractPlainText("")).toBe("");
     });
 
-    // A brand-new "New Page" serializes to a title node + empty paragraph with
+    // A brand-new "New Note" serializes to a title node + empty paragraph with
     // no text. The search preview keys its empty-state off this producing "".
     it("returns empty string for a blank new-page editor state", () => {
       const blankNewPage = JSON.stringify({

@@ -8,7 +8,7 @@ import { NEW_NOTE_TITLE } from "../../shared/note-title";
 import type { DocumentRow } from "../../shared/documents";
 
 // End-to-end coverage that a real note-title display surface renders the shared
-// fallback (not a hardcoded "Untitled"/"New Page"). DragOverlayItem is the
+// fallback (not a hardcoded "Untitled"/"New Note"). DragOverlayItem is the
 // simplest consumer — pure, prop-driven, no store/DnD context — so it stands in
 // for the wiring every list/tab/breadcrumb surface now shares via
 // displayNoteTitle. The fallback logic itself is unit-tested in

@@ -324,7 +324,7 @@ test.describe('BreadcrumbBar — Inline Trail', () => {
     await expect(chevrons).toHaveCount(2);
   });
 
-  test('untitled notes display "New Page"', async ({ window }) => {
+  test('untitled notes display "New Note"', async ({ window }) => {
     const m = await seedTree(window, [
       { title: 'Root' },
       { title: '', parentTitle: 'Root' },
@@ -332,7 +332,7 @@ test.describe('BreadcrumbBar — Inline Trail', () => {
     const childId = m.get('')!;
     await selectDoc(window, childId);
 
-    await expect(window.locator(BREADCRUMB_NAV)).toContainText('New Page');
+    await expect(window.locator(BREADCRUMB_NAV)).toContainText('New Note');
   });
 
   test('emoji is shown next to ancestor title', async ({ window }) => {
@@ -1324,16 +1324,16 @@ test.describe('BreadcrumbBar — Sidebar Integration', () => {
     await expect(window.locator(BREADCRUMB_NAV)).toContainText('Child');
   });
 
-  test('creating child via "Add page inside" updates breadcrumb when selected', async ({ window }) => {
+  test('creating child via "Add note inside" updates breadcrumb when selected', async ({ window }) => {
     const m = await seedTree(window, [{ title: 'Root' }]);
     await selectDoc(window, m.get('Root')!);
 
-    // Right-click and add page inside
+    // Right-click and add note inside
     const rootItem = window.locator(`[data-note-id="${m.get('Root')!}"]`);
     await rootItem.click({ button: 'right' });
     await window.waitForTimeout(200);
 
-    await window.getByText('Add page inside').click();
+    await window.getByText('Add note inside').click();
     await window.waitForTimeout(500);
 
     // New child is auto-selected, breadcrumb should show Root as ancestor
@@ -2133,7 +2133,7 @@ test.describe('BreadcrumbBar — Robustness', () => {
     await expect(window.locator(BREADCRUMB_NAV)).not.toBeVisible();
   });
 
-  test('ancestor renamed to empty string shows "New Page" in breadcrumb', async ({ window }) => {
+  test('ancestor renamed to empty string shows "New Note" in breadcrumb', async ({ window }) => {
     const m = await seedTree(window, [
       { title: 'Named Parent' },
       { title: 'Child', parentTitle: 'Named Parent' },
@@ -2149,7 +2149,7 @@ test.describe('BreadcrumbBar — Robustness', () => {
     }, m.get('Named Parent')!);
     await window.waitForTimeout(300);
 
-    await expect(window.locator(BREADCRUMB_NAV)).toContainText('New Page');
+    await expect(window.locator(BREADCRUMB_NAV)).toContainText('New Note');
     await expect(window.locator(BREADCRUMB_NAV)).not.toContainText('Named Parent');
   });
 

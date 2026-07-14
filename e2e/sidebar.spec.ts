@@ -31,10 +31,10 @@ test.describe('Sidebar — Note Management', () => {
   test('create a new note via New Note button', async ({ window }) => {
     await window.locator('[aria-label="New note"]').click();
 
-    // A note titled "New Page" should appear in the sidebar
+    // A note titled "New Note" should appear in the sidebar
     const noteItem = window.locator('[data-note-id]').first();
     await expect(noteItem).toBeVisible();
-    await expect(noteItem).toContainText('New Page');
+    await expect(noteItem).toContainText('New Note');
 
     // ── Backend: document exists in SQLite ──
     const docs = await listDocumentsFromDb(window);
@@ -49,7 +49,7 @@ test.describe('Sidebar — Note Management', () => {
     // A tab should appear
     const tab = window.locator('[data-tab-id]').first();
     await expect(tab).toBeVisible();
-    await expect(tab).toContainText('New Page');
+    await expect(tab).toContainText('New Note');
 
     // The editor should be visible with the title placeholder
     const title = window.locator('h1.editor-title');
@@ -133,7 +133,7 @@ test.describe('Sidebar — Note Management', () => {
     await expect(window.getByText('Move to Trash Bin')).toBeVisible();
   });
 
-  test('create a nested note via context menu "Add page inside"', async ({ window }) => {
+  test('create a nested note via context menu "Add note inside"', async ({ window }) => {
     // Create parent note
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(300);
@@ -143,8 +143,8 @@ test.describe('Sidebar — Note Management', () => {
     const parentNote = window.locator('[data-note-id]').first();
     await parentNote.click({ button: 'right' });
 
-    // Click "Add page inside"
-    await window.getByText('Add page inside').click();
+    // Click "Add note inside"
+    await window.getByText('Add note inside').click();
     await window.waitForTimeout(400);
 
     // There should now be 2 notes (parent + child)

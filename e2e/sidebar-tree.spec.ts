@@ -8,7 +8,7 @@ async function createNote(window: Page, title: string, parentId?: string): Promi
   if (parentId) {
     const parent = window.locator(`[data-note-id="${parentId}"]`);
     await parent.click({ button: 'right' });
-    await window.getByText('Add page inside').click();
+    await window.getByText('Add note inside').click();
   } else {
     await window.locator('[aria-label="New note"]').click();
   }
@@ -1247,7 +1247,7 @@ test.describe('Sidebar Tree — Selection & Interaction', () => {
 
     // Dropdown menu should show
     await expect(window.getByText('Open in new tab')).toBeVisible();
-    await expect(window.getByText('Add page inside')).toBeVisible();
+    await expect(window.getByText('Add note inside')).toBeVisible();
     await expect(window.getByText('Move to Trash Bin')).toBeVisible();
   });
 
@@ -1791,7 +1791,7 @@ test.describe('Sidebar Tree — Trash Cascading & Restore', () => {
     await window.waitForTimeout(500);
     await window.locator('[aria-label="Permanently delete"]').first().click();
     await window.waitForTimeout(300);
-    await window.getByRole('button', { name: 'Delete page' }).click();
+    await window.getByRole('button', { name: 'Delete note' }).click();
     await window.waitForTimeout(500);
 
     // All 3 should be completely gone
