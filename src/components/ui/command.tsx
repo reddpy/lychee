@@ -11,6 +11,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
+// cmdk scores item values as they register even when automatic filtering is
+// disabled. Keep Lychee's manual-filter path constant-time during registration.
+const manualFilterPassThrough = () => 1
+
 function Command({
   className,
   ...props
@@ -34,8 +38,9 @@ function CommandDialog({
   className,
   commandClassName,
   showCloseButton = true,
-  commandKey,
   shouldFilter,
+  commandValue,
+  onCommandValueChange,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
@@ -43,8 +48,9 @@ function CommandDialog({
   className?: string
   commandClassName?: string
   showCloseButton?: boolean
-  commandKey?: string
   shouldFilter?: boolean
+  commandValue?: string
+  onCommandValueChange?: (value: string) => void
 }) {
   return (
     <Dialog {...props}>
@@ -57,8 +63,10 @@ function CommandDialog({
         showCloseButton={showCloseButton}
       >
         <Command
-          key={commandKey}
           shouldFilter={shouldFilter}
+          filter={shouldFilter === false ? manualFilterPassThrough : undefined}
+          value={commandValue}
+          onValueChange={onCommandValueChange}
           className={cn(
             "[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5",
             commandClassName
