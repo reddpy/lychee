@@ -36,7 +36,6 @@ export class TitleNode extends ElementNode {
     const dom = document.createElement("h1")
     dom.className = "editor-title"
     dom.setAttribute("data-placeholder", NEW_NOTE_TITLE)
-    dom.setAttribute("data-lexical-no-drag", "true")
     return dom
   }
 

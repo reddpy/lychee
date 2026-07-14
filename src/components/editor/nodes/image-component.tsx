@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
-  $addUpdateTag,
   $getNodeByKey,
   type NodeKey,
 } from "lexical"
@@ -135,7 +134,6 @@ export function ImageComponent({
       const fileUrl = toImageUrl(filePath)
       setResolvedSrc(fileUrl)
       editor.update(() => {
-        $addUpdateTag('skip-selection-focus')
         const node = $getNodeByKey(nodeKey)
         if ($isImageNode(node)) node.setSrc(filePath)
       })
