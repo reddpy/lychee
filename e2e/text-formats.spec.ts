@@ -749,6 +749,42 @@ test.describe('Text formats — Stress and recovery', () => {
     await expect(editorRoot.locator('mark'), 'redo should restore the mark').toHaveText('marked');
   });
 
+  test('floating toolbar format buttons apply and toggle every configured format', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('text to format');
+
+    await selectInParagraph(window, -1, 0, 'text to format'.length);
+    await window.locator('.ContentEditable__root p').filter({ hasText: 'text to format' }).click({ button: 'right' });
+
+    const toolbar = window.getByRole('toolbar', { name: 'Text formatting' });
+    await expect(toolbar).toBeVisible();
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    const formats = [
+      { label: 'Bold', selector: '.font-bold, strong' },
+      { label: 'Italic', selector: '.italic, em' },
+      { label: 'Underline', selector: '.underline, u' },
+      { label: 'Strikethrough', selector: '.line-through, s, del' },
+      { label: 'Inline code', selector: 'code' },
+      { label: 'Highlight', selector: 'mark' },
+    ];
+
+    for (const { label, selector } of formats) {
+      const button = toolbar.getByRole('button', { name: label });
+      await expect(button).toHaveAttribute('aria-pressed', 'false');
+
+      await button.click();
+      await expect(editorRoot.locator(selector).filter({ hasText: 'text to format' }).first()).toBeVisible();
+      await expect(button).toHaveAttribute('aria-pressed', 'true');
+
+      await button.click();
+      await expect(editorRoot.locator(selector)).toHaveCount(0);
+      await expect(button).toHaveAttribute('aria-pressed', 'false');
+    }
+  });
+
   test('floating toolbar fits within a narrow viewport', async ({ electronApp, window }) => {
     // Shrink the BrowserWindow to 500×800 — the toolbar is 420px, so the left
     // clamp in floating-toolbar-plugin must actually engage to keep it on-screen.

@@ -152,7 +152,7 @@ export function Plugins({
       <SlashCommandPlugin />
 
       {/* Floating toolbar on selection */}
-      <FloatingToolbarPlugin />
+      <FloatingToolbarPlugin activeTabId={activeTabId} />
 
       {/* Link editor popover */}
       <LinkEditorPlugin />

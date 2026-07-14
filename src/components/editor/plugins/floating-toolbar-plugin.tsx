@@ -9,6 +9,7 @@ import {
   FORMAT_TEXT_COMMAND,
   LexicalEditor,
   $createParagraphNode,
+  type TextFormatType,
 } from "lexical";
 import { $isLinkNode } from "@lexical/link";
 import {
@@ -46,6 +47,7 @@ import {
   ListChecks,
   Quote,
   Code2,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -58,6 +60,59 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+
+interface FormatButtonDefinition {
+  format: TextFormatType;
+  icon: LucideIcon;
+  label: string;
+  shortcut: string;
+}
+
+/** The single source of truth for text formats exposed by the toolbar. */
+const FORMAT_BUTTONS = [
+  { format: "bold", icon: Bold, label: "Bold", shortcut: "⌘B" },
+  { format: "italic", icon: Italic, label: "Italic", shortcut: "⌘I" },
+  { format: "underline", icon: Underline, label: "Underline", shortcut: "⌘U" },
+  { format: "strikethrough", icon: Strikethrough, label: "Strikethrough", shortcut: "⌘⇧S" },
+  { format: "code", icon: Code, label: "Inline code", shortcut: "⌘E" },
+  { format: "highlight", icon: Highlighter, label: "Highlight", shortcut: "⌘⇧H" },
+] as const satisfies readonly FormatButtonDefinition[];
+
+/** A project-defined subset of Lexical's TextFormatType. */
+type ToolbarFormat = (typeof FORMAT_BUTTONS)[number]["format"];
+
+interface FormatButtonProps {
+  format: ToolbarFormat;
+  icon: LucideIcon;
+  label: string;
+  shortcut: string;
+  active: boolean;
+  onFormat: (format: ToolbarFormat) => void;
+}
+
+function FormatButton({ format, icon: Icon, label, shortcut, active, onFormat }: FormatButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => onFormat(format)}
+          className={cn(
+            "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+            active
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted text-foreground"
+          )}
+          aria-label={label}
+          aria-pressed={active}
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent sideOffset={8}>{label} <kbd className="ml-1.5 opacity-60">{shortcut}</kbd></TooltipContent>
+    </Tooltip>
+  );
+}
 
 type BlockType =
   | "paragraph"
@@ -171,12 +226,7 @@ function BlockTypeSelector({
 
 interface ToolbarState {
   isVisible: boolean;
-  isBold: boolean;
-  isItalic: boolean;
-  isUnderline: boolean;
-  isStrikethrough: boolean;
-  isCode: boolean;
-  isHighlight: boolean;
+  activeFormats: ReadonlySet<ToolbarFormat>;
   isLink: boolean;
   blockType: BlockType;
   isSingleBlock: boolean;
@@ -184,12 +234,7 @@ interface ToolbarState {
 
 const HIDDEN_STATE: ToolbarState = {
   isVisible: false,
-  isBold: false,
-  isItalic: false,
-  isUnderline: false,
-  isStrikethrough: false,
-  isCode: false,
-  isHighlight: false,
+  activeFormats: new Set<ToolbarFormat>(),
   isLink: false,
   blockType: "paragraph",
   isSingleBlock: true,
@@ -200,7 +245,13 @@ const TOOLBAR_HEIGHT = 45;
 const TOOLBAR_GAP = 8;
 const TAB_BAR_HEIGHT = 120;
 
-function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
+function FloatingToolbar({
+  editor,
+  activeTabId,
+}: {
+  editor: LexicalEditor;
+  activeTabId: string | null;
+}) {
   const [state, setState] = useState<ToolbarState>(HIDDEN_STATE);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const scrollHiddenRef = useRef(false);
@@ -209,6 +260,15 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
 
   // Keep ref in sync so scroll handler has current value without re-subscribing
   visibleRef.current = state.isVisible;
+
+  // The same editor instance can be shared by duplicate tabs. Dismiss transient
+  // toolbar state whenever the active tab changes so a portal from the outgoing
+  // tab cannot remain visible over the incoming tab.
+  useEffect(() => {
+    pendingContextMenuRef.current = false;
+    scrollHiddenRef.current = false;
+    setState(HIDDEN_STATE);
+  }, [activeTabId]);
 
   // Read current selection state — returns null if no valid selection
   const readSelectionState = useCallback((): Omit<ToolbarState, "isVisible"> | null => {
@@ -248,12 +308,11 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
       }
 
       result = {
-        isBold: selection.hasFormat("bold"),
-        isItalic: selection.hasFormat("italic"),
-        isUnderline: selection.hasFormat("underline"),
-        isStrikethrough: selection.hasFormat("strikethrough"),
-        isCode: selection.hasFormat("code"),
-        isHighlight: selection.hasFormat("highlight"),
+        activeFormats: new Set(
+          FORMAT_BUTTONS
+            .filter(({ format }) => selection.hasFormat(format))
+            .map(({ format }) => format),
+        ),
         isLink: $isLinkNode(anchorNode.getParent()),
         blockType,
         isSingleBlock: anchorElement === focusElement && !$isTitleNode(anchorElement),
@@ -384,7 +443,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   }, []);
 
   const handleFormat = useCallback(
-    (format: "bold" | "italic" | "underline" | "strikethrough" | "code" | "highlight") => {
+    (format: ToolbarFormat) => {
       editor.focus();
       editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
     },
@@ -397,17 +456,11 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
 
   if (!state.isVisible) return null;
 
-  const btnClass = (active: boolean) =>
-    cn(
-      "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
-      active
-        ? "bg-primary text-primary-foreground"
-        : "hover:bg-muted text-foreground"
-    );
-
   return createPortal(
     <div
       ref={toolbarRef}
+      role="toolbar"
+      aria-label="Text formatting"
       className="floating-toolbar fixed z-50 flex items-center gap-0.5 rounded-md border border-[hsl(var(--border))] bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
     >
       {state.isSingleBlock && (
@@ -417,65 +470,28 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
         </>
       )}
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("bold")} className={btnClass(state.isBold)} aria-label="Bold">
-            <Bold className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Bold <kbd className="ml-1.5 opacity-60">⌘B</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("italic")} className={btnClass(state.isItalic)} aria-label="Italic">
-            <Italic className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Italic <kbd className="ml-1.5 opacity-60">⌘I</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("underline")} className={btnClass(state.isUnderline)} aria-label="Underline">
-            <Underline className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Underline <kbd className="ml-1.5 opacity-60">⌘U</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("strikethrough")} className={btnClass(state.isStrikethrough)} aria-label="Strikethrough">
-            <Strikethrough className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Strikethrough <kbd className="ml-1.5 opacity-60">⌘⇧S</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("code")} className={btnClass(state.isCode)} aria-label="Inline code">
-            <Code className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Inline code <kbd className="ml-1.5 opacity-60">⌘E</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("highlight")} className={btnClass(state.isHighlight)} aria-label="Highlight">
-            <Highlighter className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Highlight <kbd className="ml-1.5 opacity-60">⌘⇧H</kbd></TooltipContent>
-      </Tooltip>
+      {FORMAT_BUTTONS.map(({ format, icon, label, shortcut }) => (
+        <FormatButton
+          key={format}
+          format={format}
+          icon={icon}
+          label={label}
+          shortcut={shortcut}
+          active={state.activeFormats.has(format)}
+          onFormat={handleFormat}
+        />
+      ))}
 
       <div className="mx-1 h-6 w-px bg-border" />
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" onClick={handleLink} className={btnClass(state.isLink)} aria-label="Link">
+          <button type="button" onClick={handleLink} className={cn(
+            "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+            state.isLink
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted text-foreground"
+          )} aria-label="Link">
             <Link className="h-4 w-4" />
           </button>
         </TooltipTrigger>
@@ -486,7 +502,11 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   );
 }
 
-export function FloatingToolbarPlugin() {
+export function FloatingToolbarPlugin({
+  activeTabId,
+}: {
+  activeTabId: string | null;
+}) {
   const [editor] = useLexicalComposerContext();
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
 
@@ -500,5 +520,5 @@ export function FloatingToolbarPlugin() {
 
   if (!rootElement) return null;
 
-  return <FloatingToolbar editor={editor} />;
+  return <FloatingToolbar editor={editor} activeTabId={activeTabId} />;
 }
