@@ -532,6 +532,25 @@ test.describe('Editor — Block Behavior', () => {
     await expect(window.locator('.ContentEditable__root li.editor-list-item-checked')).toHaveCount(1);
   });
 
+  test('rapidly toggling the same checklist item does not drop clicks', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('[ ] Rapid task');
+
+    const checkItem = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await expect(checkItem).toHaveCount(1);
+
+    // Keep the pointer on the marker. This reproduces the Windows report:
+    // Lexical previously suppressed every click on the same target for 500ms.
+    for (let i = 0; i < 8; i++) {
+      await checkItem.click({ position: { x: 10, y: 10 } });
+    }
+
+    // An even number of toggles must return to the initial unchecked state.
+    await expect(checkItem).toHaveClass(/editor-list-item-unchecked/);
+  });
+
   test('multiple block types in one document', async ({ window }) => {
     const title = window.locator('h1.editor-title');
     await title.click();
