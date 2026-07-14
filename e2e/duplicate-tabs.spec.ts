@@ -1601,19 +1601,15 @@ test.describe('Duplicate Tabs — Floating Toolbar Plugin', () => {
 
     await selectTab(window, tabA);
     await window.waitForTimeout(200);
-    const editor = activeMain(window).locator('.ContentEditable__root');
-    await editor.click();
-    await window.keyboard.press(`${mod}+a`);
-    await window.waitForTimeout(400);
+    const text = activeMain(window).getByText('selectable text here for toolbar test');
+    await text.click({ clickCount: 3 });
+    await text.click({ button: 'right' });
 
-    const toolbar = window.locator('[role="toolbar"]');
-    const toolbarVisible = await toolbar.isVisible().catch(() => false);
+    const toolbar = window.getByRole('toolbar', { name: 'Text formatting' });
+    await expect(toolbar).toBeVisible();
 
-    if (toolbarVisible) {
-      await selectTab(window, dupTabId);
-      await window.waitForTimeout(300);
-      await expect(toolbar).not.toBeVisible();
-    }
+    await selectTab(window, dupTabId);
+    await expect(toolbar).not.toBeVisible();
   });
 
   test('bold via Cmd+B in one tab visible in duplicate', async ({ window }) => {
