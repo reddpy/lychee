@@ -112,6 +112,25 @@ function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): 
   const rangeElement = range.startContainer.nodeType === Node.ELEMENT_NODE
     ? range.startContainer as HTMLElement
     : range.startContainer.parentElement
+
+  // Chromium can give an empty paragraph's collapsed range a valid height but
+  // no meaningful horizontal extent. Treat the empty block itself as the
+  // anchor so the popup is centered within the editor instead of half a popup
+  // width to its left.
+  let emptyBlock = rangeElement
+  let emptyBlockRect: DOMRect | null = null
+  while (emptyBlock && emptyBlock !== editorRoot) {
+    const display = getComputedStyle(emptyBlock).display
+    if (
+      emptyBlock.textContent?.length === 0 &&
+      (display === "block" || display === "list-item")
+    ) {
+      emptyBlockRect = emptyBlock.getBoundingClientRect()
+      break
+    }
+    emptyBlock = emptyBlock.parentElement
+  }
+
   const rangeStyles = rangeElement ? getComputedStyle(rangeElement) : null
   const computedLineHeight = rangeStyles ? Number.parseFloat(rangeStyles.lineHeight) : Number.NaN
   const fallbackLineHeight = rangeStyles
@@ -120,6 +139,15 @@ function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): 
   const lineHeight = Number.isFinite(computedLineHeight) && computedLineHeight > 0
     ? computedLineHeight
     : fallbackLineHeight
+
+  if (emptyBlockRect) {
+    return new DOMRect(
+      emptyBlockRect.left,
+      rangeRect.height > 0 ? rangeRect.top : emptyBlockRect.top,
+      emptyBlockRect.width,
+      Math.max(emptyBlockRect.height, rangeRect.height, lineHeight),
+    )
+  }
 
   if (rangeRect.height > 0) {
     return new DOMRect(
@@ -170,7 +198,7 @@ function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): 
     : startContainer.parentElement
   const blockRect = block?.getBoundingClientRect() ?? editorRoot?.getBoundingClientRect()
   if (blockRect) {
-    return new DOMRect(blockRect.left, blockRect.top, 0, blockRect.height)
+    return new DOMRect(blockRect.left, blockRect.top, blockRect.width, blockRect.height)
   }
 
   return rangeRect
@@ -181,7 +209,7 @@ function getLinkEditorAnchorLeft(anchorRect: DOMRect | null): number {
 
   const availableWidth = Math.max(0, window.innerWidth - LINK_EDITOR_VIEWPORT_GUTTER * 2)
   const popoverWidth = Math.min(LINK_EDITOR_MAX_WIDTH, availableWidth)
-  const centeredLeft = anchorRect.left - popoverWidth / 2
+  const centeredLeft = anchorRect.left + anchorRect.width / 2 - popoverWidth / 2
   const maximumLeft = Math.max(
     LINK_EDITOR_VIEWPORT_GUTTER,
     window.innerWidth - popoverWidth - LINK_EDITOR_VIEWPORT_GUTTER,
@@ -331,59 +359,78 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
     return withRestoredLinkSelection(editor, savedSelectionRef.current, apply)
   }, [editor])
 
-  const openLinkEditor = useCallback(() => {
-    editor.getEditorState().read(() => {
-      const selection = $getSelection()
-      if (!$isRangeSelection(selection)) return
-      const capturedSelection = captureLinkSelection(selection)
-      savedSelectionRef.current = capturedSelection
-      clearLinkSelectionHighlight(highlightOwnerRef.current)
-      setSelectionOverlayRects(showLinkSelectionHighlight(
-        editor,
-        capturedSelection,
-        highlightOwnerRef.current,
-      ))
+  const getLiveSelection = useCallback((selection: RangeSelection): RangeSelection => {
+    const nativeSelection = window.getSelection()
+    const root = editor.getRootElement()
+    if (
+      !root ||
+      !nativeSelection ||
+      nativeSelection.rangeCount === 0 ||
+      !nativeSelection.anchorNode ||
+      !nativeSelection.focusNode ||
+      !root.contains(nativeSelection.anchorNode) ||
+      !root.contains(nativeSelection.focusNode)
+    ) {
+      return selection
+    }
 
-      // Check if we're in a link
-      const nodes = selection.getNodes()
-      let existingUrl = ""
-      for (const node of nodes) {
-        const link = $isLinkNode(node) ? node : node.getParent()
-        if ($isLinkNode(link)) {
-          existingUrl = link.getURL()
-          break
-        }
+    // Lexical's selectionchange reconciliation is asynchronous. Applying the
+    // DOM range here makes an immediately preceding native selection command
+    // (notably Shift+Home) visible to Cmd+K without waiting a frame.
+    const liveSelection = selection.clone()
+    liveSelection.applyDOMRange(nativeSelection.getRangeAt(0))
+    return liveSelection
+  }, [editor])
+
+  const openLinkEditor = useCallback((selection: RangeSelection) => {
+    const capturedSelection = captureLinkSelection(selection)
+    savedSelectionRef.current = capturedSelection
+    clearLinkSelectionHighlight(highlightOwnerRef.current)
+    setSelectionOverlayRects(showLinkSelectionHighlight(
+      editor,
+      capturedSelection,
+      highlightOwnerRef.current,
+    ))
+
+    // Check if we're in a link
+    const nodes = selection.getNodes()
+    let existingUrl = ""
+    for (const node of nodes) {
+      const link = $isLinkNode(node) ? node : node.getParent()
+      if ($isLinkNode(link)) {
+        existingUrl = link.getURL()
+        break
       }
-      setInitialUrl(existingUrl)
-      // Show a readable title when editing an internal link. The UUID remains
-      // in initialUrl so changing/removing the link still targets the node.
-      const internalTarget = parseInternalNoteUrl(existingUrl)
-      const internalDocument = internalTarget
-        ? documents.find((document) => document.id === internalTarget.documentId)
-        : undefined
-      setQuery(internalDocument?.title.trim() || existingUrl)
-      setActiveCandidateIndex(0)
+    }
+    setInitialUrl(existingUrl)
+    // Show a readable title when editing an internal link. The UUID remains
+    // in initialUrl so changing/removing the link still targets the node.
+    const internalTarget = parseInternalNoteUrl(existingUrl)
+    const internalDocument = internalTarget
+      ? documents.find((document) => document.id === internalTarget.documentId)
+      : undefined
+    setQuery(internalDocument?.title.trim() || existingUrl)
+    setActiveCandidateIndex(0)
 
-      // Build a collapsed DOM range from Lexical's focus point. The browser's
-      // native selection can lag behind (or already be moving toward the popup
-      // input), which makes its rectangle an unreliable popover anchor.
-      const cursorNode = selection.focus.getNode()
-      const range = createDOMRange(
-        editor,
-        cursorNode,
-        selection.focus.offset,
-        cursorNode,
-        selection.focus.offset,
-      )
-      if (!range) return
+    // Build a collapsed DOM range from Lexical's focus point. The browser's
+    // native selection can lag behind (or already be moving toward the popup
+    // input), which makes its rectangle an unreliable popover anchor.
+    const cursorNode = selection.focus.getNode()
+    const range = createDOMRange(
+      editor,
+      cursorNode,
+      selection.focus.offset,
+      cursorNode,
+      selection.focus.offset,
+    )
+    if (!range) return
 
-      const rect = getLinkEditorAnchorRect(range, editor.getRootElement())
-      anchorRangeRef.current = range
-      setAnchorRect(rect)
-      activeLinkEditorOwner = interactionOwnerRef.current
-      emitToolbarExclusive("__link-editor__")
-      setIsOpen(true)
-    })
+    const rect = getLinkEditorAnchorRect(range, editor.getRootElement())
+    anchorRangeRef.current = range
+    setAnchorRect(rect)
+    activeLinkEditorOwner = interactionOwnerRef.current
+    emitToolbarExclusive("__link-editor__")
+    setIsOpen(true)
   }, [documents, editor])
 
   useEffect(() => {
@@ -391,7 +438,13 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
       editor.registerCommand(
         OPEN_LINK_EDITOR_COMMAND,
         () => {
-          openLinkEditor()
+          // Commands already run inside Lexical's current update context.
+          // Reading editor.getEditorState() here would use the last committed
+          // state and miss a just-created keyboard selection (for example,
+          // Shift+Home immediately followed by Cmd+K).
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection)) return false
+          openLinkEditor(getLiveSelection(selection))
           return true
         },
         COMMAND_PRIORITY_HIGH
@@ -418,7 +471,7 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
       unregister()
       unsubTabSwitch()
     }
-  }, [editor, openLinkEditor, isOpen, closeLinkEditor])
+  }, [editor, openLinkEditor, getLiveSelection, isOpen, closeLinkEditor])
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -430,7 +483,7 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
         ? enteredUrl
         : `https://${enteredUrl}`
       const applied = runWithSavedSelection((selection, restoredInfo) => {
-        if (!initialUrl && restoredInfo.isCollapsed) {
+        if (!initialUrl && restoredInfo.shouldInsertText) {
           const link = $createLinkNode(finalUrl)
           link.append($createTextNode(enteredUrl))
           selection.insertNodes([link])
@@ -448,7 +501,7 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
     (targetDocumentId: string, targetTitle: string) => {
       const internalUrl = createInternalNoteUrl(targetDocumentId)
       const applied = runWithSavedSelection((selection, restoredInfo) => {
-        if (!initialUrl && restoredInfo.isCollapsed) {
+        if (!initialUrl && restoredInfo.shouldInsertText) {
           const link = $createLinkNode(internalUrl, { rel: INTERNAL_NOTE_REL })
           link.append($createTextNode(targetTitle))
           selection.insertNodes([link])

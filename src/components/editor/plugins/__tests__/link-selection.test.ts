@@ -80,6 +80,7 @@ describe("link popup selection restoration", () => {
       $toggleLink("https://example.com")
     })).toMatchObject({
       isCollapsed: false,
+      shouldInsertText: false,
     })
 
     expect(firstLink(editor)).toMatchObject({
@@ -134,6 +135,22 @@ describe("link popup selection restoration", () => {
   ])("keeps the caret collapsed at %s", (_case, content, offset) => {
     const editor = createLinkEditor()
     expect(captureCaret(editor, content, offset).isCollapsed()).toBe(true)
+  })
+
+  it.each([
+    ["the end of populated text", "existing line", 13, false],
+    ["trailing whitespace", "Visit ", 6, true],
+    ["a word boundary", "reference later", 9, true],
+    ["the start of populated text", "reference", 0, true],
+  ])("reports whether Cmd+K should insert text at %s", (_case, content, offset, expected) => {
+    const editor = createLinkEditor()
+    const savedSelection = captureCaret(editor, content, offset)
+
+    editor.update(() => $setSelection(null), { discrete: true })
+    expect(withRestoredLinkSelection(editor, savedSelection, () => {})).toMatchObject({
+      isCollapsed: true,
+      shouldInsertText: expected,
+    })
   })
 
   it("removes an entire multi-word link when the caret is inside it", () => {

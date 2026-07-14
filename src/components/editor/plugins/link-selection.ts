@@ -9,6 +9,28 @@ import { $findMatchingParent } from "@lexical/utils"
 
 export type RestoredSelectionInfo = {
   isCollapsed: boolean
+  shouldInsertText: boolean
+}
+
+function shouldInsertTextAtSelection(selection: RangeSelection): boolean {
+  if (!selection.isCollapsed()) return false
+
+  const anchorNode = selection.anchor.getNode()
+  const topLevel = anchorNode.getTopLevelElement()
+  if (!topLevel || topLevel.getTextContent().length === 0) return true
+
+  // Preserve the editor's established Cmd+K behavior at the end of populated
+  // text: applying a URL there links the existing line/list item. At a true
+  // insertion boundary (the start, whitespace, punctuation, or between
+  // children), insert the entered URL/note title instead.
+  if (selection.anchor.type !== "text" || !$isTextNode(anchorNode)) return true
+
+  const { offset } = selection.anchor
+  const text = anchorNode.getTextContent()
+  if (offset === 0 || offset < text.length) return true
+
+  const precedingCharacter = text[offset - 1]
+  return !precedingCharacter || /[\s\p{P}\p{S}]/u.test(precedingCharacter)
 }
 
 type WordSegment = {
@@ -116,6 +138,7 @@ export function withRestoredLinkSelection(
     $setSelection(restoredSelection)
     const info = {
       isCollapsed: restoredSelection.isCollapsed(),
+      shouldInsertText: shouldInsertTextAtSelection(restoredSelection),
     }
     restoredInfo = info
     apply(restoredSelection, info)
