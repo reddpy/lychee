@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
   $getSelection,
@@ -10,17 +11,83 @@ import {
   COMMAND_PRIORITY_LOW,
   KEY_ESCAPE_COMMAND,
   createCommand,
+  type RangeSelection,
 } from "lexical"
-import { $createLinkNode, $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link"
+import { $createLinkNode, $isLinkNode, $toggleLink } from "@lexical/link"
+import { createDOMRange } from "@lexical/selection"
 import { mergeRegister } from "@lexical/utils"
-import { Link, X } from "lucide-react"
+import { FileText, Link, X } from "lucide-react"
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  captureLinkSelection,
+  withRestoredLinkSelection,
+  type RestoredSelectionInfo,
+} from "@/components/editor/plugins/link-selection"
 import { onToolbarExclusive } from "@/components/lexical-editor"
+import { useDocumentStore } from "@/renderer/document-store"
+import {
+  createInternalNoteUrl,
+  INTERNAL_NOTE_REL,
+  parseInternalNoteUrl,
+  rankNoteLinkCandidates,
+} from "@/shared/internal-note-link"
 
 export const OPEN_LINK_EDITOR_COMMAND = createCommand<void>("OPEN_LINK_EDITOR_COMMAND")
+
+const LINK_SELECTION_HIGHLIGHT = "lychee-link-selection"
+let activeHighlightOwner: symbol | null = null
+
+type SelectionOverlayRect = {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+function showLinkSelectionHighlight(
+  editor: Parameters<typeof createDOMRange>[0],
+  selection: RangeSelection,
+  owner: symbol,
+): SelectionOverlayRect[] {
+  if (selection.isCollapsed()) return []
+
+  const range = createDOMRange(
+    editor,
+    selection.anchor.getNode(),
+    selection.anchor.offset,
+    selection.focus.getNode(),
+    selection.focus.offset,
+  )
+  if (!range) return []
+
+  if (
+    typeof CSS !== "undefined" &&
+    "highlights" in CSS &&
+    typeof Highlight !== "undefined"
+  ) {
+    CSS.highlights.set(LINK_SELECTION_HIGHLIGHT, new Highlight(range))
+    activeHighlightOwner = owner
+    return []
+  }
+
+  return Array.from(range.getClientRects())
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => ({
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+    }))
+}
+
+function clearLinkSelectionHighlight(owner: symbol) {
+  if (activeHighlightOwner !== owner) return
+  CSS.highlights.delete(LINK_SELECTION_HIGHLIGHT)
+  activeHighlightOwner = null
+}
 
 /**
  * Browser engines do not consistently return a usable rect for a collapsed
@@ -30,7 +97,7 @@ export const OPEN_LINK_EDITOR_COMMAND = createCommand<void>("OPEN_LINK_EDITOR_CO
  */
 function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): DOMRect {
   const rangeRect = range.getBoundingClientRect()
-  if (rangeRect.width > 0 || rangeRect.height > 0 || rangeRect.left !== 0 || rangeRect.top !== 0) {
+  if (rangeRect.height > 0) {
     return rangeRect
   }
 
@@ -38,20 +105,31 @@ function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): 
   if (startContainer.nodeType === Node.TEXT_NODE) {
     const text = startContainer.textContent ?? ""
     const characterRange = document.createRange()
+    const hasCaretPosition = rangeRect.left !== 0 || rangeRect.top !== 0
 
     if (startOffset > 0) {
       characterRange.setStart(startContainer, startOffset - 1)
       characterRange.setEnd(startContainer, startOffset)
       const characterRect = characterRange.getBoundingClientRect()
       if (characterRect.width > 0 || characterRect.height > 0) {
-        return new DOMRect(characterRect.right, characterRect.top, 0, characterRect.height)
+        return new DOMRect(
+          hasCaretPosition ? rangeRect.left : characterRect.right,
+          characterRect.top,
+          0,
+          characterRect.height,
+        )
       }
     } else if (startOffset < text.length) {
       characterRange.setStart(startContainer, startOffset)
       characterRange.setEnd(startContainer, startOffset + 1)
       const characterRect = characterRange.getBoundingClientRect()
       if (characterRect.width > 0 || characterRect.height > 0) {
-        return new DOMRect(characterRect.left, characterRect.top, 0, characterRect.height)
+        return new DOMRect(
+          hasCaretPosition ? rangeRect.left : characterRect.left,
+          characterRect.top,
+          0,
+          characterRect.height,
+        )
       }
     }
   }
@@ -69,13 +147,24 @@ function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): 
   return rangeRect
 }
 
-export function LinkEditorPlugin() {
+export function LinkEditorPlugin({ documentId }: { documentId: string }) {
   const [editor] = useLexicalComposerContext()
+  const documents = useDocumentStore((state) => state.documents)
   const [isOpen, setIsOpen] = useState(false)
   const [initialUrl, setInitialUrl] = useState("")
-  const [url, setUrl] = useState("")
+  const [query, setQuery] = useState("")
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
+  const [selectionOverlayRects, setSelectionOverlayRects] = useState<SelectionOverlayRect[]>([])
+  const [activeCandidateIndex, setActiveCandidateIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const savedSelectionRef = useRef<RangeSelection | null>(null)
+  const highlightOwnerRef = useRef(Symbol("link-selection-highlight"))
+  const resultsId = useId()
+
+  const noteCandidates = useMemo(
+    () => rankNoteLinkCandidates(documents, query, documentId),
+    [documents, documentId, query],
+  )
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -86,37 +175,86 @@ export function LinkEditorPlugin() {
     }
   }, [isOpen])
 
+  useEffect(() => {
+    setActiveCandidateIndex((index) => Math.min(index, Math.max(0, noteCandidates.length - 1)))
+  }, [noteCandidates.length])
+
+  const clearSelectionHighlight = useCallback(() => {
+    clearLinkSelectionHighlight(highlightOwnerRef.current)
+    setSelectionOverlayRects([])
+  }, [])
+
+  useEffect(() => {
+    const owner = highlightOwnerRef.current
+    return () => clearLinkSelectionHighlight(owner)
+  }, [])
+
+  const closeLinkEditor = useCallback((refocusEditor = false) => {
+    setIsOpen(false)
+    clearSelectionHighlight()
+    savedSelectionRef.current = null
+    if (refocusEditor) {
+      requestAnimationFrame(() => editor.focus())
+    }
+  }, [clearSelectionHighlight, editor])
+
+  const runWithSavedSelection = useCallback((
+    apply: (selection: RangeSelection, info: RestoredSelectionInfo) => void,
+  ): RestoredSelectionInfo | null => {
+    return withRestoredLinkSelection(editor, savedSelectionRef.current, apply)
+  }, [editor])
+
   const openLinkEditor = useCallback(() => {
     editor.getEditorState().read(() => {
       const selection = $getSelection()
       if (!$isRangeSelection(selection)) return
+      const capturedSelection = captureLinkSelection(selection)
+      savedSelectionRef.current = capturedSelection
+      clearLinkSelectionHighlight(highlightOwnerRef.current)
+      setSelectionOverlayRects(showLinkSelectionHighlight(
+        editor,
+        capturedSelection,
+        highlightOwnerRef.current,
+      ))
 
       // Check if we're in a link
       const nodes = selection.getNodes()
       let existingUrl = ""
       for (const node of nodes) {
-        const parent = node.getParent()
-        if ($isLinkNode(parent)) {
-          existingUrl = parent.getURL()
+        const link = $isLinkNode(node) ? node : node.getParent()
+        if ($isLinkNode(link)) {
+          existingUrl = link.getURL()
           break
         }
       }
       setInitialUrl(existingUrl)
-      // Reset on every open. `existingUrl` can be an unchanged empty string,
-      // in which case an effect watching `initialUrl` would not run and the
-      // previous dialog's URL would remain in the input.
-      setUrl(existingUrl)
+      // Show a readable title when editing an internal link. The UUID remains
+      // in initialUrl so changing/removing the link still targets the node.
+      const internalTarget = parseInternalNoteUrl(existingUrl)
+      const internalDocument = internalTarget
+        ? documents.find((document) => document.id === internalTarget.documentId)
+        : undefined
+      setQuery(internalDocument?.title.trim() || existingUrl)
+      setActiveCandidateIndex(0)
 
-      // Get position from native selection
-      const nativeSelection = window.getSelection()
-      if (!nativeSelection || nativeSelection.rangeCount === 0) return
+      // Build a collapsed DOM range from Lexical's focus point. The browser's
+      // native selection can lag behind (or already be moving toward the popup
+      // input), which makes its rectangle an unreliable popover anchor.
+      const cursorNode = selection.focus.getNode()
+      const range = createDOMRange(
+        editor,
+        cursorNode,
+        selection.focus.offset,
+        cursorNode,
+        selection.focus.offset,
+      )
+      if (!range) return
 
-      const range = nativeSelection.getRangeAt(0)
       const rect = getLinkEditorAnchorRect(range, editor.getRootElement())
       setAnchorRect(rect)
       setIsOpen(true)
     })
-  }, [editor])
+  }, [documents, editor])
 
   useEffect(() => {
     const unregister = mergeRegister(
@@ -132,7 +270,7 @@ export function LinkEditorPlugin() {
         KEY_ESCAPE_COMMAND,
         () => {
           if (isOpen) {
-            setIsOpen(false)
+            closeLinkEditor(true)
             return true
           }
           return false
@@ -143,54 +281,121 @@ export function LinkEditorPlugin() {
 
     // Dismiss on tab switch so popover doesn't bleed into duplicate tabs
     const unsubTabSwitch = onToolbarExclusive("__link-editor__", () => {
-      setIsOpen(false)
+      closeLinkEditor()
     })
 
     return () => {
       unregister()
       unsubTabSwitch()
     }
-  }, [editor, openLinkEditor, isOpen])
+  }, [editor, openLinkEditor, isOpen, closeLinkEditor])
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault()
-      const enteredUrl = url.trim()
-      if (enteredUrl) {
-        const finalUrl = enteredUrl.startsWith("http://") || enteredUrl.startsWith("https://") || enteredUrl.startsWith("mailto:")
-          ? enteredUrl
-          : `https://${enteredUrl}`
-        const insertUrlAsText = editor.getEditorState().read(() => {
-          const selection = $getSelection()
-          if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false
-          return selection.anchor.getNode().getTopLevelElement()?.getTextContent().length === 0
-        })
+      const enteredUrl = query.trim()
+      if (!enteredUrl) return
 
-        if (insertUrlAsText) {
-          editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection) || !selection.isCollapsed()) return
-
-            const link = $createLinkNode(finalUrl)
-            link.append($createTextNode(enteredUrl))
-            selection.insertNodes([link])
-          })
+      const finalUrl = enteredUrl.startsWith("http://") || enteredUrl.startsWith("https://") || enteredUrl.startsWith("mailto:")
+        ? enteredUrl
+        : `https://${enteredUrl}`
+      const applied = runWithSavedSelection((selection, restoredInfo) => {
+        if (!initialUrl && restoredInfo.isCollapsed) {
+          const link = $createLinkNode(finalUrl)
+          link.append($createTextNode(enteredUrl))
+          selection.insertNodes([link])
         } else {
-          editor.dispatchCommand(TOGGLE_LINK_COMMAND, finalUrl)
+          $toggleLink(finalUrl)
         }
-      }
-      setIsOpen(false)
+      })
+
+      if (applied) closeLinkEditor(true)
     },
-    [editor, url]
+    [closeLinkEditor, initialUrl, query, runWithSavedSelection]
+  )
+
+  const handleNoteSelect = useCallback(
+    (targetDocumentId: string, targetTitle: string) => {
+      const internalUrl = createInternalNoteUrl(targetDocumentId)
+      const applied = runWithSavedSelection((selection, restoredInfo) => {
+        if (!initialUrl && restoredInfo.isCollapsed) {
+          const link = $createLinkNode(internalUrl, { rel: INTERNAL_NOTE_REL })
+          link.append($createTextNode(targetTitle))
+          selection.insertNodes([link])
+        } else {
+          // Preserve selected or existing link text; only change its destination.
+          $toggleLink({
+            url: internalUrl,
+            rel: INTERNAL_NOTE_REL,
+          })
+        }
+      })
+
+      if (applied) closeLinkEditor(true)
+    },
+    [closeLinkEditor, initialUrl, runWithSavedSelection],
   )
 
   const handleRemove = useCallback(() => {
-    editor.dispatchCommand(TOGGLE_LINK_COMMAND, null)
-    setIsOpen(false)
-  }, [editor])
+    const removed = runWithSavedSelection(() => $toggleLink(null))
+    if (removed) closeLinkEditor(true)
+  }, [closeLinkEditor, runWithSavedSelection])
+
+  const handleInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      closeLinkEditor(true)
+      return
+    }
+    if (event.key === "ArrowDown" && noteCandidates.length > 0) {
+      event.preventDefault()
+      setActiveCandidateIndex((index) => (index + 1) % noteCandidates.length)
+      return
+    }
+    if (event.key === "ArrowUp" && noteCandidates.length > 0) {
+      event.preventDefault()
+      setActiveCandidateIndex((index) => (index - 1 + noteCandidates.length) % noteCandidates.length)
+      return
+    }
+    if (event.key === "Enter" && noteCandidates.length > 0) {
+      event.preventDefault()
+      const candidate = noteCandidates[activeCandidateIndex]
+      if (candidate) {
+        handleNoteSelect(candidate.document.id, candidate.displayTitle)
+      }
+    }
+  }, [activeCandidateIndex, closeLinkEditor, handleNoteSelect, noteCandidates])
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <>
+      {isOpen && selectionOverlayRects.length > 0 && createPortal(
+        <div
+          aria-hidden="true"
+          data-link-selection-overlay
+          className="pointer-events-none fixed inset-0 z-40"
+        >
+          {selectionOverlayRects.map((rect, index) => (
+            <span
+              key={`${rect.left}-${rect.top}-${index}`}
+              className="absolute rounded-[2px] opacity-45"
+              style={{
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+                backgroundColor: "Highlight",
+              }}
+            />
+          ))}
+        </div>,
+        document.body,
+      )}
+      <Popover
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) closeLinkEditor()
+      }}
+    >
       <PopoverAnchor
         style={{
           position: "fixed",
@@ -201,39 +406,93 @@ export function LinkEditorPlugin() {
         }}
       />
       <PopoverContent
-        className="w-auto p-2"
+        className="w-[min(380px,calc(100vw-2rem))] overflow-hidden p-0"
         side="bottom"
         align="start"
         sideOffset={8}
+        avoidCollisions={false}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <form onSubmit={handleSubmit} className="flex items-center gap-2">
-          <Link className="h-4 w-4 text-muted-foreground shrink-0" />
-          <Input
-            ref={inputRef}
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Enter URL..."
-            className="h-8 w-[220px] text-sm"
-          />
-          <Button type="submit" size="sm" className="h-8">
-            Apply
-          </Button>
-          {initialUrl && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={handleRemove}
-              title="Remove link"
-            >
-              <X className="h-4 w-4" />
+        <form onSubmit={handleSubmit}>
+          <div className="flex items-center gap-2 p-2">
+            <Link className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+            <Input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setActiveCandidateIndex(0)
+              }}
+              onKeyDown={handleInputKeyDown}
+              placeholder="Search notes or enter URL..."
+              aria-label="Search notes or enter URL"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={noteCandidates.length > 0}
+              aria-controls={resultsId}
+              aria-activedescendant={noteCandidates[activeCandidateIndex]
+                ? `${resultsId}-${noteCandidates[activeCandidateIndex].document.id}`
+                : undefined}
+              className="h-8 min-w-0 flex-1"
+            />
+            <Button type="submit" size="sm" className="h-8" disabled={!query.trim()}>
+              Apply
             </Button>
-          )}
+            {initialUrl && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={handleRemove}
+                title="Remove link"
+                aria-label="Remove link"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          <div
+            id={resultsId}
+            role="listbox"
+            aria-label={query.trim() ? "Matching notes" : "Recent notes"}
+            className="max-h-56 overflow-y-auto border-t border-[hsl(var(--border))] p-1"
+          >
+            {noteCandidates.length > 0 ? noteCandidates.map(({ document, displayTitle }, index) => (
+              <button
+                key={document.id}
+                id={`${resultsId}-${document.id}`}
+                type="button"
+                role="option"
+                aria-selected={index === activeCandidateIndex}
+                data-note-link-id={document.id}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActiveCandidateIndex(index)}
+                onClick={() => handleNoteSelect(document.id, displayTitle)}
+                className={
+                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors " +
+                  (index === activeCandidateIndex
+                    ? "bg-[hsl(var(--accent))] text-[hsl(var(--accent-foreground))]"
+                    : "hover:bg-[hsl(var(--accent))]")
+                }
+              >
+                {document.emoji ? (
+                  <span className="text-base leading-none">{document.emoji}</span>
+                ) : (
+                  <FileText className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
+              </button>
+            )) : (
+              <div className="px-2 py-3 text-center text-xs text-[hsl(var(--muted-foreground))]">
+                {query.trim() ? "No matching notes." : "No other notes yet."}
+              </div>
+            )}
+          </div>
         </form>
       </PopoverContent>
-    </Popover>
+      </Popover>
+    </>
   )
 }

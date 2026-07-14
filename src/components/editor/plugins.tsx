@@ -112,7 +112,7 @@ export function Plugins({
       <FloatingToolbarPlugin activeTabId={activeTabId} />
 
       {/* Link editor popover */}
-      <LinkEditorPlugin />
+      <LinkEditorPlugin documentId={documentId} />
 
       {/* Image drop, paste, and insert command */}
       <ImagePlugin />

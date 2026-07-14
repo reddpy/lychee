@@ -2,6 +2,13 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Keep Cmd+K's saved editor range looking like a native selection while its
+   input owns focus. The Custom Highlight API does not mutate editor content. */
+::highlight(lychee-link-selection) {
+  background-color: Highlight;
+  color: HighlightText;
+}
+
 @theme {
   /* Make bare `border` utilities resolve to the design token instead of currentColor (Tailwind v4 default). */
   --default-border-color: hsl(var(--border));
