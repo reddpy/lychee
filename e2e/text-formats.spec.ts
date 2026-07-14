@@ -1220,7 +1220,9 @@ test.describe('Text formats — Interactions with other features', () => {
   //
   // Tracked in https://github.com/reddpy/lychee/issues/140 — remove the `.fixme`
   // once fixed to convert this into an active regression assertion.
-  test.fixme(
+  // Activated (was test.fixme) to confirm whether issue #140 still reproduces.
+  // Asserts the CORRECT behaviour, so: passes ⇒ fixed, fails ⇒ still a bug.
+  test(
     'regression: Cmd+A → Cmd+Shift+H → Tab in a table cell deletes the cell text (BUG)',
     async ({ window }) => {
       const title = window.locator('h1.editor-title');

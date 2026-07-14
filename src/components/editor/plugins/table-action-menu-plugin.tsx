@@ -26,6 +26,7 @@ import {
   $findTableNode,
   $insertTableRowAtSelection,
   $isTableCellNode,
+  $isTableRowNode,
   TableCellHeaderStates,
   TableCellNode,
 } from "@lexical/table"
@@ -40,28 +41,54 @@ import {
 export function TableActionMenuPlugin(): null {
   const [editor] = useLexicalComposerContext()
 
-  // Tab on the last cell of the last row creates a new row.
-  // Lexical's built-in hasTabHandler only calls parentTable.selectNext() at the end;
-  // we intercept at CRITICAL priority to insert a row instead.
+  // Tab / Shift+Tab inside a table cell moves between cells (Tab past the last
+  // cell adds a row). We own EVERY in-cell case at CRITICAL priority and return
+  // true so nothing downstream runs. This is the fix for #140: Lexical's built-in
+  // tab handler only advances on a *collapsed* selection, so with a non-collapsed
+  // selection (e.g. after Cmd+A) Tab fell through to TabIndentationPlugin, which
+  // inserted a tab over the selection and deleted the cell's text.
   useEffect(() => {
     return editor.registerCommand(
       KEY_TAB_COMMAND,
       (event) => {
-        if (event.shiftKey) return false
         const selection = $getSelection()
-        if (!$isRangeSelection(selection)) return false
+        if (!$isRangeSelection(selection)) return false // e.g. CellSelection → let Lexical handle
         const cell = $findCellNode(selection.anchor.getNode())
-        if (!cell) return false
-        // Only handle the very last cell in the last row
-        if (cell.getNextSibling() !== null) return false
+        if (!cell) return false // not in a table → normal Tab/indent
         const row = cell.getParent()
-        if (!row || row.getNextSibling() !== null) return false
         event.preventDefault()
-        const newRow = $insertTableRowAtSelection(true)
-        if (newRow) {
-          const firstCell = newRow.getFirstChild()
-          if ($isTableCellNode(firstCell)) firstCell.selectStart()
+
+        if (event.shiftKey) {
+          // Previous cell, else the last cell of the previous row. At the very
+          // first cell, stay put (but still swallow Tab to protect the selection).
+          const prev = cell.getPreviousSibling()
+          if ($isTableCellNode(prev)) {
+            prev.selectStart()
+          } else {
+            const prevRow = row?.getPreviousSibling()
+            if ($isTableRowNode(prevRow)) {
+              const last = prevRow.getLastChild()
+              if ($isTableCellNode(last)) last.selectStart()
+            }
+          }
+          return true
         }
+
+        // Forward: next cell, else first cell of the next row, else add a row.
+        const next = cell.getNextSibling()
+        if ($isTableCellNode(next)) {
+          next.selectStart()
+          return true
+        }
+        const nextRow = row?.getNextSibling()
+        if ($isTableRowNode(nextRow)) {
+          const first = nextRow.getFirstChild()
+          if ($isTableCellNode(first)) first.selectStart()
+          return true
+        }
+        const newRow = $insertTableRowAtSelection(true)
+        const firstCell = newRow?.getFirstChild()
+        if ($isTableCellNode(firstCell)) firstCell.selectStart()
         return true
       },
       COMMAND_PRIORITY_CRITICAL,
