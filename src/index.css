@@ -24,12 +24,14 @@
   --color-destructive: hsl(var(--destructive));
   --color-ring: hsl(var(--ring));
   --color-brand: hsl(var(--brand));
+  --color-brand-hover: hsl(var(--brand-hover));
 }
 
 /* shadcn-style design tokens — warm palette with lychee brand red */
 :root {
   /* Brand red (#C14B55). Constant across light/dark; opacity variants via `bg-brand/<n>` etc. */
   --brand: 355 49% 53%;
+  --brand-hover: 355 49% 45%;
 
   --background: 30 25% 99.5%;
   --foreground: 20 15% 8%;
@@ -76,6 +78,7 @@
 
 .dark {
   --brand: 355 49% 53%;
+  --brand-hover: 355 49% 45%;
 
   --background: 240 6% 10%;
   --foreground: 0 0% 92%;
@@ -240,7 +243,7 @@ body {
 }
 
 .ContentEditable__root::highlight(lychee-find-active) {
-  background: #b7424d;
+  background: hsl(var(--brand-hover));
   color: #fff;
 }
 
@@ -250,7 +253,7 @@ body {
 }
 
 .ContentEditable__root::highlight(lychee-find-transient-active) {
-  background: #b7424d;
+  background: hsl(var(--brand-hover));
   color: #fff;
 }
 
