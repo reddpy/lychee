@@ -370,7 +370,21 @@ export function SidebarTrigger({
 
 export function useHoverLock() {
   const { lockHover, unlockHover } = useSidebar();
+  const lockedRef = React.useRef(false);
+
+  // A menu can unmount while open (for example, after trashing its note).
+  // Always release the lock it owns, without affecting locks from other UI.
+  React.useEffect(() => () => {
+    if (lockedRef.current) {
+      lockedRef.current = false;
+      unlockHover();
+    }
+  }, [unlockHover]);
+
   return React.useCallback((isOpen: boolean) => {
+    if (isOpen === lockedRef.current) return;
+
+    lockedRef.current = isOpen;
     if (isOpen) {
       lockHover();
     } else {
@@ -393,4 +407,3 @@ export function SidebarRail() {
     />
   );
 }
-

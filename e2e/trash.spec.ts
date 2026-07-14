@@ -115,6 +115,12 @@ test.describe('Trash Bin', () => {
   });
 
   test('permanently delete a note from trash', async ({ window }) => {
+    // Reproduce the hover-only sidebar mode from issue #241.
+    await window.locator('[aria-label="Toggle sidebar"]').click();
+    await window.waitForTimeout(300);
+    await window.mouse.move(1, 200);
+    await window.waitForTimeout(300);
+
     // Create and trash a note
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
@@ -122,6 +128,9 @@ test.describe('Trash Bin', () => {
     await window.keyboard.type('Delete Forever');
     await window.waitForTimeout(700);
 
+    // Return to the edge trigger before interacting with the floating sidebar.
+    await window.mouse.move(1, 200);
+    await window.waitForTimeout(300);
     const noteId = await window.locator('[data-note-id]').first().getAttribute('data-note-id');
 
     const note = window.locator('[data-note-id]').filter({ hasText: 'Delete Forever' });
@@ -143,6 +152,12 @@ test.describe('Trash Bin', () => {
     // Confirm deletion
     await window.getByRole('button', { name: 'Delete page' }).click();
     await window.waitForTimeout(400);
+
+    // Completing the dialog closes the popover and releases its floating-sidebar lock.
+    await expect(window.getByPlaceholder('Search trash...')).not.toBeVisible();
+    await window.mouse.move(700, 300);
+    await window.waitForTimeout(300);
+    await expect(window.locator('aside[data-state="collapsed"]')).toHaveClass(/-translate-x-full/);
 
     // Trash should be empty or the note should be gone
     await expect(window.getByText('Delete Forever')).not.toBeVisible();
