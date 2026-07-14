@@ -251,7 +251,7 @@ export function TrashBinPopover() {
                     id="delete-confirm-title"
                     className="text-center text-sm font-semibold leading-snug text-[hsl(var(--popover-foreground))]"
                   >
-                    Are you sure you want to delete this page from Trash?
+                    Are you sure you want to delete this note from Trash?
                   </p>
                   <div className="mt-3 flex flex-col gap-2">
                     <Button
@@ -260,7 +260,7 @@ export function TrashBinPopover() {
                       className="w-full justify-center border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
                       onClick={handleConfirmDelete}
                     >
-                      Delete page
+                      Delete note
                     </Button>
                     <Button
                       variant="outline"

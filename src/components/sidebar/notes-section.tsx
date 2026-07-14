@@ -193,7 +193,7 @@ export function NotesSection({
     });
   }, [setExpandedIds]);
 
-  const handleAddPageInside = React.useCallback(
+  const handleAddNoteInside = React.useCallback(
     (parentId: string) => {
       void createDocument(parentId);
     },
@@ -302,7 +302,7 @@ export function NotesSection({
                             canAddChild={canAddChild}
                             isSelected={selectedId === doc.id}
                             onToggleExpanded={toggleExpanded}
-                            onAddPageInside={handleAddPageInside}
+                            onAddNoteInside={handleAddNoteInside}
                             isRoot={depth === 0}
                             canNestInside={canNestInside}
                             allDescendantsMap={descendantsByDoc}

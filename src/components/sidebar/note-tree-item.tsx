@@ -35,7 +35,7 @@ export type NoteTreeItemProps = {
   canAddChild: boolean;
   isSelected: boolean;
   onToggleExpanded: (id: string) => void;
-  onAddPageInside: (parentId: string) => void;
+  onAddNoteInside: (parentId: string) => void;
   isRoot?: boolean;
   canNestInside: boolean;
   /** Map from doc id to its descendants - used for circular drop prevention */
@@ -52,7 +52,7 @@ export function NoteTreeItem({
   canAddChild,
   isSelected,
   onToggleExpanded,
-  onAddPageInside,
+  onAddNoteInside,
   canNestInside,
   allDescendantsMap,
   isFirstInList = false,
@@ -197,10 +197,10 @@ export function NoteTreeItem({
     };
   }, [hoverLock]);
 
-  const handleAddPageInside = React.useCallback(() => {
+  const handleAddNoteInside = React.useCallback(() => {
     onToggleExpanded(doc.id);
-    onAddPageInside(doc.id);
-  }, [doc.id, onToggleExpanded, onAddPageInside]);
+    onAddNoteInside(doc.id);
+  }, [doc.id, onToggleExpanded, onAddNoteInside]);
 
   const handleClick = React.useCallback((e: React.MouseEvent) => {
     // Don't open note if any drag is in progress or just ended
@@ -244,7 +244,7 @@ export function NoteTreeItem({
     <DocumentContextMenu
       docId={doc.id}
       canAddChild={canAddChild}
-      onAddPageInside={handleAddPageInside}
+      onAddNoteInside={handleAddNoteInside}
     >
       <div
         ref={ref}
@@ -369,7 +369,7 @@ export function NoteTreeItem({
                   <DocumentDropdownMenuContent
                     docId={doc.id}
                     canAddChild={canAddChild}
-                    onAddPageInside={handleAddPageInside}
+                    onAddNoteInside={handleAddNoteInside}
                   />
                 </DropdownMenu>
                 {canAddChild && (
@@ -381,7 +381,7 @@ export function NoteTreeItem({
                         className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md outline-hidden border border-transparent hover:scale-110 hover:shadow-lg hover:border-[hsl(var(--border))] hover:text-[hsl(var(--foreground))] transition-[transform,box-shadow,border-color,color]"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onAddPageInside(doc.id);
+                          onAddNoteInside(doc.id);
                         }}
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -393,7 +393,7 @@ export function NoteTreeItem({
                         sideOffset={4}
                         className="z-50 rounded-md bg-[hsl(var(--foreground))] px-2 py-1 text-xs text-[hsl(var(--background))] shadow"
                       >
-                        Add Page Inside
+                        Add Note Inside
                         <TooltipPrimitive.Arrow className="fill-[hsl(var(--foreground))]" />
                       </TooltipPrimitive.Content>
                     </TooltipPrimitive.Portal>

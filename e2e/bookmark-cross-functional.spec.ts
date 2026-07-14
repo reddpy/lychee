@@ -185,7 +185,7 @@ test.describe('Bookmark Cross-Functional — Title Sync', () => {
     }).toPass({ timeout: 4000 });
   });
 
-  test('title cleared in editor shows "New Page" placeholder in Bookmarks section', async ({
+  test('title cleared in editor shows "New Note" placeholder in Bookmarks section', async ({
     window,
   }) => {
     const docId = await createNoteWithTitle(window, 'Will Be Cleared');
@@ -200,10 +200,10 @@ test.describe('Bookmark Cross-Functional — Title Sync', () => {
     await window.keyboard.press('Backspace');
     await window.waitForTimeout(800);
 
-    // Bookmarks section shows "New Page" fallback
+    // Bookmarks section shows "New Note" fallback
     const bookmarkItem = window.locator(`[data-note-id="${docId}"]`).last();
     await expect(async () => {
-      await expect(bookmarkItem).toContainText('New Page');
+      await expect(bookmarkItem).toContainText('New Note');
     }).toPass({ timeout: 4000 });
   });
 
@@ -951,7 +951,7 @@ test.describe('Bookmark Cross-Functional — Section Interplay', () => {
     }).toPass({ timeout: 3000 });
   });
 
-  test('right-click on Bookmarks section item shows context menu (no "Add page inside")', async ({
+  test('right-click on Bookmarks section item shows context menu (no "Add note inside")', async ({
     window,
   }) => {
     const docId = await createNoteWithTitle(window, 'Context In Bookmarks');
@@ -977,8 +977,8 @@ test.describe('Bookmark Cross-Functional — Section Interplay', () => {
       timeout: 3000,
     });
 
-    // "Add page inside" must NOT appear in Bookmarks section (canAddChild=false)
-    await expect(window.getByRole('menuitem', { name: /add page inside/i })).not.toBeVisible();
+    // "Add note inside" must NOT appear in Bookmarks section (canAddChild=false)
+    await expect(window.getByRole('menuitem', { name: /add note inside/i })).not.toBeVisible();
 
     // Close context menu
     await window.keyboard.press('Escape');
@@ -1584,7 +1584,7 @@ test.describe('Bookmark Cross-Functional — Edge Cases: Search Palette', () => 
 //
 // The Bookmarks section now has a ⋯ hover button (MoreHorizontal) on each item,
 // matching the Notes section. Tests cover the button's reveal, all menu actions,
-// stopPropagation (note doesn't open on button click), and absence of "Add page inside".
+// stopPropagation (note doesn't open on button click), and absence of "Add note inside".
 
 /** Hover over the Bookmarks-section occurrence of a note and click its ⋯ button. */
 async function openBookmarksOptionsDropdown(window: Page, docId: string) {
@@ -1635,7 +1635,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     await window.keyboard.press('Escape');
   });
 
-  test('⋯ dropdown never shows "Add page inside" (canAddChild=false)', async ({ window }) => {
+  test('⋯ dropdown never shows "Add note inside" (canAddChild=false)', async ({ window }) => {
     const docId = await createNoteWithTitle(window, 'NoAddInside Bookmark');
     await bookmarkViaBackend(window, docId);
 
@@ -1645,12 +1645,12 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
 
     await openBookmarksOptionsDropdown(window, docId);
 
-    await expect(window.getByRole('menuitem', { name: /add page inside/i })).not.toBeVisible();
+    await expect(window.getByRole('menuitem', { name: /add note inside/i })).not.toBeVisible();
 
     await window.keyboard.press('Escape');
   });
 
-  test('no + (Add Page Inside) hover button on Bookmarks section items', async ({ window }) => {
+  test('no + (Add Note Inside) hover button on Bookmarks section items', async ({ window }) => {
     const docId = await createNoteWithTitle(window, 'NoPlusButton Bookmark');
     await bookmarkViaBackend(window, docId);
 
@@ -1890,7 +1890,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     for (const name of expectedItems) {
       await expect(window.getByRole('menuitem', { name })).toBeVisible({ timeout: 3000 });
     }
-    await expect(window.getByRole('menuitem', { name: /add page inside/i })).not.toBeVisible();
+    await expect(window.getByRole('menuitem', { name: /add note inside/i })).not.toBeVisible();
     await window.keyboard.press('Escape');
     await window.waitForTimeout(200);
 
@@ -1899,7 +1899,7 @@ test.describe('Bookmark Cross-Functional — Bookmarks Section ⋯ Options Dropd
     for (const name of expectedItems) {
       await expect(window.getByRole('menuitem', { name })).toBeVisible({ timeout: 3000 });
     }
-    await expect(window.getByRole('menuitem', { name: /add page inside/i })).not.toBeVisible();
+    await expect(window.getByRole('menuitem', { name: /add note inside/i })).not.toBeVisible();
     await window.keyboard.press('Escape');
   });
 });

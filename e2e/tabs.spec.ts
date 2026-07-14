@@ -94,7 +94,7 @@ test.describe('Tab Management', () => {
     await window.waitForTimeout(400);
 
     const tab = window.locator('[data-tab-id]').first();
-    await expect(tab).toContainText('New Page');
+    await expect(tab).toContainText('New Note');
 
     // Type a title
     const title = window.locator('h1.editor-title');

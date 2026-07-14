@@ -541,7 +541,7 @@ test.describe('Document Bookmark — Context Menu', () => {
 // ── Edge Cases ────────────────────────────────────────────────────────
 
 test.describe('Document Bookmark — Edge Cases', () => {
-  test('bookmarking a note with no title appears in section as "New Page"', async ({ window }) => {
+  test('bookmarking a note with no title appears in section as "New Note"', async ({ window }) => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(600);
 
