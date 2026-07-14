@@ -9,3 +9,6 @@ allowBuilds:
   fs-xattr: true
   macos-alias: true
   msw: true
+
+patchedDependencies:
+  '@lexical/list@0.44.0': patches/@lexical__list@0.44.0.patch
