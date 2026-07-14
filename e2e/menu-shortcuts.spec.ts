@@ -129,7 +129,7 @@ test.describe('Menu — Close Tab', () => {
     await clickMenuItem(electronApp, 'Close Tab');
 
     await expect(window.locator('[data-tab-id]')).toHaveCount(0);
-    await expect(window.getByText('Start writing')).toBeVisible();
+    await expect(window.getByTestId('empty-state')).toBeVisible();
   });
 
   test('closes only the active tab when multiple are open', async ({ electronApp, window }) => {
@@ -153,7 +153,7 @@ test.describe('Menu — Close Tab', () => {
     // then prove the no-op behavior held.
     await expect.poll(getFires).toBe(1);
     await expect(window.locator('[data-tab-id]')).toHaveCount(0);
-    await expect(window.getByText('Start writing')).toBeVisible();
+    await expect(window.getByTestId('empty-state')).toBeVisible();
   });
 });
 
@@ -234,7 +234,7 @@ test.describe('Menu — Reopen Closed Tab', () => {
 
     await expect.poll(getFires).toBe(1);
     await expect(window.locator('[data-tab-id]')).toHaveCount(0);
-    await expect(window.getByText('Start writing')).toBeVisible();
+    await expect(window.getByTestId('empty-state')).toBeVisible();
   });
 
   test('skips entries whose underlying note was trashed', async ({ electronApp, window }) => {
@@ -293,7 +293,7 @@ test.describe('Menu — edge cases & stress', () => {
       await clickMenuItem(electronApp, 'Close Tab');
       await expect(window.locator('[data-tab-id]')).toHaveCount(i);
     }
-    await expect(window.getByText('Start writing')).toBeVisible();
+    await expect(window.getByTestId('empty-state')).toBeVisible();
 
     // Burst-reopen all 20 — the uncapped stack must restore every one.
     for (let i = 1; i <= 20; i++) {

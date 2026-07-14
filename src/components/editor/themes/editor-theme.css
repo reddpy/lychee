@@ -9,14 +9,20 @@
   border-collapse: collapse;
   border-spacing: 0;
   table-layout: fixed;
-  width: 100%;
+  /* Grow to the columns' total width (so the wrapper can scroll horizontally)
+     but never narrower than the content column. `width: 100%` would instead
+     force every new column to squeeze the others thinner. */
+  width: max-content;
+  min-width: 100%;
 }
 
 .EditorTheme__tableCell,
 .EditorTheme__tableCellHeader {
   border: 1px solid hsl(var(--border));
   padding: 6px 10px;
-  min-width: 60px;
+  /* Wide default so tables fill comfortably and scroll horizontally sooner;
+     also the floor the column resizer clamps to (keep the two in sync). */
+  min-width: 160px;
   vertical-align: top;
   text-align: left;
   position: relative;
@@ -72,8 +78,100 @@
   background-color: hsl(var(--primary) / 0.5);
 }
 
-body[data-col-resizing] .table-action-menu {
+/* Hide the hover controls while a column is being resized to avoid clashes. */
+body[data-col-resizing] .table-controls {
   display: none !important;
+}
+
+/* ── Table hover controls ──
+   Small grip / "+" buttons that sit on the table's own edges. Modeled on the
+   block drag handle: a quiet icon that fills in on hover. Each button's hit
+   area equals its visible footprint. */
+
+/* Reorder handles: GripHorizontal (columns) / GripVertical (rows). */
+.table-ctl-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--background));
+  box-shadow: 0 0 0 1px hsl(var(--border) / 0.7);
+  cursor: grab;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+.table-ctl-handle:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+.table-ctl-handle:active {
+  cursor: grabbing;
+}
+.table-ctl-handle.is-selected {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: none;
+}
+
+/* Add buttons: full-edge bars — a tall bar on the right (add column) and a
+   wide bar along the bottom (add row). The whole bar is the button. */
+.table-ctl-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.6);
+  box-shadow: 0 0 0 1px hsl(var(--border) / 0.7);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+.table-ctl-add:hover {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: none;
+}
+
+.table-ctl-dropline {
+  background: hsl(var(--primary));
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px hsl(var(--background));
+}
+
+.table-ctl-selection {
+  background: hsl(var(--primary) / 0.1);
+  border: 1px solid hsl(var(--primary) / 0.5);
+  border-radius: 2px;
+}
+.table-ctl-selection.is-dragging {
+  opacity: 0.6;
+}
+
+.table-ctl-menu {
+  display: flex;
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover));
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+}
+.table-ctl-menu button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: hsl(var(--destructive));
+  cursor: pointer;
+}
+.table-ctl-menu button:hover {
+  background: hsl(var(--destructive) / 0.1);
 }
 
 .EditorTheme__tableSelection {

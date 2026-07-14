@@ -217,7 +217,10 @@ function EditorArea() {
 
   if (activeDocId == null) {
     return (
-      <main className="flex h-full flex-1 items-start justify-center bg-[hsl(var(--background))] pt-[30vh]">
+      <main
+        data-testid="empty-state"
+        className="flex h-full flex-1 items-start justify-center bg-[hsl(var(--background))] pt-[30vh]"
+      >
         <div
           className="flex flex-col items-center gap-6 select-none"
           style={
@@ -227,15 +230,6 @@ function EditorArea() {
           }
         >
           <LycheeLogoHorizontal className="h-20 opacity-15" />
-          <div className="ml-10 h-px w-36 bg-[hsl(var(--muted-foreground))]/10" />
-          <p className="ml-10 text-xl text-[hsl(var(--muted-foreground))]/40">
-            Start writing
-            <span className="inline-flex w-5">
-              <span className="animate-[ellipsis_1.5s_steps(4,end)_infinite] overflow-hidden whitespace-nowrap">
-                ...
-              </span>
-            </span>
-          </p>
         </div>
       </main>
     );

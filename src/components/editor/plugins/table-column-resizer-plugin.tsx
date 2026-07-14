@@ -10,7 +10,7 @@ import {
   $isTableNode,
 } from "@lexical/table"
 
-const MIN_COL_WIDTH = 60
+const MIN_COL_WIDTH = 160
 const RESIZER_CLASS = "EditorTheme__tableCellResizer"
 
 export function TableColumnResizerPlugin(): null {
@@ -104,38 +104,41 @@ export function TableColumnResizerPlugin(): null {
 
         const startX = e.clientX
         let rafId = 0
+        // Resize just the grabbed column; the table's total width follows (and
+        // the wrapper scrolls if it grows past the viewport). The old "steal from
+        // the neighbour" model fought the scrollable layout.
+        let latestWidth = startWidths[colIndex]
         document.body.style.cursor = "col-resize"
         document.body.style.userSelect = "none"
         document.body.setAttribute("data-col-resizing", "")
         resizer.classList.add("active")
 
+        const applyWidth = (w: number) => {
+          editor.update(
+            () => {
+              const tableNode = $getNodeByKey(tableNodeKey!) as TableNode | null
+              if (!tableNode || !$isTableNode(tableNode)) return
+              const newWidths = [...startWidths]
+              newWidths[colIndex] = w
+              tableNode.setColWidths(newWidths)
+            },
+            { tag: "history-merge" }
+          )
+        }
+
         const onPointerMove = (moveEvent: PointerEvent) => {
+          latestWidth = Math.max(
+            MIN_COL_WIDTH,
+            startWidths[colIndex] + (moveEvent.clientX - startX)
+          )
           cancelAnimationFrame(rafId)
-          rafId = requestAnimationFrame(() => {
-            const dx = moveEvent.clientX - startX
-            const maxDx = startWidths[colIndex + 1] - MIN_COL_WIDTH
-            const minDx = -(startWidths[colIndex] - MIN_COL_WIDTH)
-            const clampedDx = Math.max(minDx, Math.min(maxDx, dx))
-
-            const leftWidth = startWidths[colIndex] + clampedDx
-            const rightWidth = startWidths[colIndex + 1] - clampedDx
-
-            editor.update(
-              () => {
-                const tableNode = $getNodeByKey(tableNodeKey!) as TableNode | null
-                if (!tableNode || !$isTableNode(tableNode)) return
-                const newWidths = [...startWidths]
-                newWidths[colIndex] = leftWidth
-                newWidths[colIndex + 1] = rightWidth
-                tableNode.setColWidths(newWidths)
-              },
-              { tag: "history-merge" }
-            )
-          })
+          rafId = requestAnimationFrame(() => applyWidth(latestWidth))
         }
 
         const onPointerUp = () => {
           cancelAnimationFrame(rafId)
+          // Commit the final position — the last move's rAF may not have run.
+          applyWidth(latestWidth)
           document.removeEventListener("pointermove", onPointerMove)
           document.removeEventListener("pointerup", onPointerUp)
           document.body.style.cursor = ""

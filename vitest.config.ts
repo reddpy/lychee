@@ -14,6 +14,11 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // The Yjs spike suites under src/spike/ are research/exploration harnesses
+    // (long adversarial fuzzes), not CI gates — keep them out of the default run.
+    // To run them, drop 'src/spike/**' below. The first two globs are vitest's
+    // defaults, restated because setting `exclude` replaces them.
+    exclude: ['**/node_modules/**', '**/dist/**', 'src/spike/**'],
     environment: 'node',
   },
 });
