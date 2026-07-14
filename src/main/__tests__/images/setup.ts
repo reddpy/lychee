@@ -36,6 +36,7 @@ import { createTestDb, closeTestDb, getTestDb } from '../helpers';
 import {
   saveImage,
   getImagePath,
+  getImageDataUrl,
   downloadImage,
   deleteImage,
 } from '../../repos/images';
@@ -104,6 +105,7 @@ export {
   net,
   saveImage,
   getImagePath,
+  getImageDataUrl,
   downloadImage,
   deleteImage,
   validImageBase64,

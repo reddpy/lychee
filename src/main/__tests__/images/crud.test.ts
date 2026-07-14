@@ -15,10 +15,12 @@ vi.mock('fs', () => ({
   default: {
     mkdirSync: vi.fn(),
     writeFileSync: vi.fn(),
+    readFileSync: vi.fn(),
     unlinkSync: vi.fn(),
   },
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
+  readFileSync: vi.fn(),
   unlinkSync: vi.fn(),
 }));
 import { getTestDb } from '../helpers';
@@ -28,8 +30,9 @@ vi.mock('../../db', () => ({
 
 import {
   setupImageDb, getDb, fs,
-  saveImage, getImagePath, deleteImage,
+  saveImage, getImagePath, getImageDataUrl, deleteImage,
   validImageBase64,
+  validImageBuffer,
 } from './setup';
 
 describe('Image CRUD', () => {
@@ -335,6 +338,32 @@ describe('Image CRUD', () => {
 
       expect(r1.filePath).toBe(r2.filePath);
       expect(r2.filePath).toBe(r3.filePath);
+    });
+  });
+
+  describe('getImageDataUrl', () => {
+    it.each(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])(
+      'embeds stored %s bytes and MIME type for clipboard export',
+      (mimeType) => {
+        const saved = saveImage(validImageBase64(mimeType), mimeType);
+        const bytes = validImageBuffer(mimeType, 'clipboard');
+        (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(bytes);
+
+        expect(getImageDataUrl(saved.id)).toEqual({
+          dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
+        });
+      },
+    );
+
+    it('rejects files whose bytes no longer match their stored MIME type', () => {
+      const saved = saveImage(validImageBase64('image/png'), 'image/png');
+      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+        Buffer.from('not an image'),
+      );
+
+      expect(() => getImageDataUrl(saved.id)).toThrow(
+        'Content does not match image/png magic bytes',
+      );
     });
   });
 

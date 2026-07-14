@@ -818,6 +818,36 @@ test.describe('Editor — Edge Cases', () => {
     expect(hasImage).toBe(true);
   });
 
+  test('copying a note embeds local images in native clipboard HTML', async ({ window, electronApp }) => {
+    const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    await window.evaluate(async (base64: string) => {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'image/png' });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    }, pngBase64);
+
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Text before image');
+    await window.keyboard.press('Enter');
+    await window.keyboard.press(`${mod}+v`);
+    await window.waitForTimeout(2000);
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot.locator('.image-container')).toBeVisible();
+    await editorRoot.click();
+    await window.keyboard.press(`${mod}+a`);
+    await window.keyboard.press(`${mod}+c`);
+
+    const clipboardHtml = await electronApp.evaluate(({ clipboard }) =>
+      clipboard.readHTML(),
+    );
+    expect(clipboardHtml).toContain('Text before image');
+    expect(clipboardHtml).toContain('src="data:image/png;base64,');
+    expect(clipboardHtml).not.toContain('lychee-image://');
+  });
+
   test('link insertion via Cmd+K', async ({ window }) => {
     const title = window.locator('h1.editor-title');
     await title.click();

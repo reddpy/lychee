@@ -132,7 +132,14 @@ export class ImageNode extends DecoratorNode<ReactElement | null> {
 
   exportDOM(_editor: LexicalEditor): DOMExportOutput {
     const img = document.createElement("img")
-    img.src = this.__src
+    // lychee-image:// is private to this Electron app. Embed local image bytes
+    // into clipboard HTML so rich-text targets outside Lychee can render them.
+    // Keep the source URL as the best fallback for a remote image that has not
+    // finished hydrating to local storage yet.
+    const clipboardSrc = this.__imageId
+      ? window.lychee?.getImageDataUrl?.(this.__imageId)
+      : null
+    img.src = clipboardSrc || this.__sourceUrl || this.__src
     img.alt = this.__altText
     if (this.__width) img.width = this.__width
     if (this.__height) img.height = this.__height

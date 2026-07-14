@@ -252,6 +252,25 @@ test.describe('Image Embed', () => {
     const src = await img.getAttribute('src');
     expect(src).toMatch(/^lychee-image:\/\/image\//);
   });
+
+  test('copying a converted image URL embeds the downloaded bytes', async ({ window, electronApp }) => {
+    await createNoteWithTitle(window, 'URL Image Copy Test');
+    await typeUrlInBody(window, 'https://placehold.co/100x100.png');
+    await expect(window.locator('.ContentEditable__root a').first()).toBeVisible({ timeout: 5000 });
+    await clickEmbed(window);
+
+    const editorRoot = window.locator('main:visible .ContentEditable__root');
+    await expect(editorRoot.locator('.image-container img')).toBeVisible({ timeout: 15000 });
+    await editorRoot.click();
+    await window.keyboard.press('ControlOrMeta+a');
+    await window.keyboard.press('ControlOrMeta+c');
+
+    const clipboardHtml = await electronApp.evaluate(({ clipboard }) =>
+      clipboard.readHTML(),
+    );
+    expect(clipboardHtml).toContain('src="data:image/png;base64,');
+    expect(clipboardHtml).not.toContain('lychee-image://');
+  });
 });
 
 // ── Bookmark Embed Tests ────────────────────────────────────────────
@@ -541,7 +560,7 @@ test.describe('Image Edge Cases', () => {
     await expect(imageContainer).toHaveClass(/selected/);
   });
 
-  test('multiple images in the same note', async ({ window }) => {
+  test('multiple images in the same note', async ({ window, electronApp }) => {
     await createNoteWithTitle(window, 'Multi Image');
 
     // Embed first image
@@ -568,6 +587,18 @@ test.describe('Image Edge Cases', () => {
     // Wait for both images
     await expect(window.locator('.image-container')).toHaveCount(2, { timeout: 15000 });
     await expect(window.locator('.image-container img')).toHaveCount(2, { timeout: 15000 });
+
+    // Select-all copy exports every local image, preserving each MIME type.
+    const editorRoot = window.locator('main:visible .ContentEditable__root');
+    await editorRoot.click();
+    await window.keyboard.press('ControlOrMeta+a');
+    await window.keyboard.press('ControlOrMeta+c');
+    const clipboardHtml = await electronApp.evaluate(({ clipboard }) =>
+      clipboard.readHTML(),
+    );
+    expect(clipboardHtml.match(/src="data:image\//g)).toHaveLength(2);
+    expect(clipboardHtml).toContain('src="data:image/png;base64,');
+    expect(clipboardHtml).toContain('src="data:image/jpeg;base64,');
   });
 
   test('image resize via right handle changes dimensions', async ({ window }) => {

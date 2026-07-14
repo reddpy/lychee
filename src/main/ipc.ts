@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from 'electron';
 import type { IpcContract, IpcChannel } from '../shared/ipc-types';
 import { applyChromeToAllWindows, setChromeColors, setOverlayDimmed } from './window-chrome';
 import {
@@ -13,7 +13,7 @@ import {
   trashDocument,
   updateDocument,
 } from './repos/documents';
-import { saveImage, getImagePath, deleteImage, downloadImage } from './repos/images';
+import { saveImage, getImagePath, getImageDataUrl, deleteImage, downloadImage } from './repos/images';
 import { resolveUrl } from './repos/url-resolver';
 import { fetchUrlMetadata } from './repos/url-metadata';
 import { getSetting, setSetting, getAllSettings } from './repos/settings';
@@ -204,3 +204,36 @@ export function registerIpcHandlers() {
   });
 }
 
+export const IMAGE_DATA_URL_SYNC_CHANNEL = 'images.getDataUrlSync';
+
+type ImageDataUrlSyncResult =
+  | { ok: true; dataUrl: string }
+  | { ok: false; error: string };
+
+/**
+ * Register the one synchronous bridge needed by clipboard serialization.
+ * ClipboardEvent.clipboardData can only be populated during the copy event, so
+ * an async ipcRenderer.invoke() would resolve too late for the browser to accept
+ * the HTML. Keep this separate from the regular typed invoke contract so sync
+ * IPC does not spread to application features that do not require it.
+ */
+export function registerClipboardIpcHandler(): void {
+  ipcMain.on(
+    IMAGE_DATA_URL_SYNC_CHANNEL,
+    (event: IpcMainEvent, payload: { id?: unknown } | undefined) => {
+      let result: ImageDataUrlSyncResult;
+      try {
+        if (typeof payload?.id !== 'string' || payload.id.length === 0) {
+          throw new Error('Missing required field: id');
+        }
+        result = { ok: true, ...getImageDataUrl(payload.id) };
+      } catch (error) {
+        result = {
+          ok: false,
+          error: error instanceof Error ? error.message : 'Failed to read image',
+        };
+      }
+      event.returnValue = result;
+    },
+  );
+}
