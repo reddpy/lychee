@@ -147,6 +147,42 @@ async function readActiveMainScrollTop(window: any): Promise<number> {
   });
 }
 
+async function createChecklistFindRegressionNote(window: any, title: string) {
+  await createNoteWithBody(
+    window,
+    title,
+    Array.from(
+      { length: 32 },
+      (_, index) => `Filler line ${index + 1} keeps the checklist below the fold.`,
+    ),
+  );
+
+  // Use several checklist items so the matching item is updated in place in a
+  // real checklist, rather than testing the degenerate one-item-list case.
+  await window.keyboard.type("[ ] first checklist item");
+  await window.keyboard.press("Enter");
+  await window.keyboard.type("final checklist item");
+  await window.keyboard.press("Enter");
+  await window.keyboard.type("third checklist item");
+
+  const checklistItems = activeMain(window).locator('li[role="checkbox"]');
+  await expect(checklistItems).toHaveCount(3);
+  const matchingItem = checklistItems.filter({ hasText: "final checklist item" });
+  await expect(matchingItem).toHaveCount(1);
+  return { checklistItems, matchingItem };
+}
+
+async function expectToggleKeepsScroll(window: any, checkbox: any, checked: boolean) {
+  await expect(checkbox).toBeVisible();
+  const scrollBefore = await readActiveMainScrollTop(window);
+  await checkbox.click({ position: { x: 10, y: 10 } });
+  await expect(checkbox).toHaveClass(
+    checked ? /editor-list-item-checked/ : /editor-list-item-unchecked/,
+  );
+  const scrollAfter = await readActiveMainScrollTop(window);
+  expect(Math.abs(scrollAfter - scrollBefore)).toBeLessThan(50);
+}
+
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -229,6 +265,69 @@ test.describe("In-note search", () => {
     await findNext(window).click();
     await findNext(window).click();
     await expect(findCounter(window)).toHaveText("3/5");
+  });
+
+  test("checking a single find match does not apply a delayed scroll request", async ({
+    window,
+  }) => {
+    const { checklistItems, matchingItem } = await createChecklistFindRegressionNote(
+      window,
+      "Checklist find scroll regression",
+    );
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("final");
+    await expect(findCounter(window)).toHaveText("1/1");
+
+    // With a single match, Enter emits a scroll request without changing the
+    // active index. The request must settle before the following checkbox click.
+    await window.keyboard.press("Enter");
+    await expectToggleKeepsScroll(window, matchingItem, true);
+
+    // Updating the same item back to unchecked must be equally stable, and
+    // neighboring checklist items must remain intact.
+    await expectToggleKeepsScroll(window, matchingItem, false);
+    await expect(checklistItems.filter({ hasText: "first checklist item" }))
+      .toHaveClass(/editor-list-item-unchecked/);
+    await expect(checklistItems.filter({ hasText: "third checklist item" }))
+      .toHaveClass(/editor-list-item-unchecked/);
+    await expect(findInput(window)).toBeVisible();
+    await expect(findCounter(window)).toHaveText("1/1");
+  });
+
+  test("Shift+Enter single-match navigation settles before checking a checklist item", async ({
+    window,
+  }) => {
+    const { matchingItem } = await createChecklistFindRegressionNote(
+      window,
+      "Checklist find previous regression",
+    );
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("final");
+    await expect(findCounter(window)).toHaveText("1/1");
+
+    await window.keyboard.press("Shift+Enter");
+    await expectToggleKeepsScroll(window, matchingItem, true);
+  });
+
+  test("find navigation buttons settle before checking a single matching checklist item", async ({
+    window,
+  }) => {
+    const { matchingItem } = await createChecklistFindRegressionNote(
+      window,
+      "Checklist find button regression",
+    );
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("final");
+    await expect(findCounter(window)).toHaveText("1/1");
+
+    await findNext(window).click();
+    await expectToggleKeepsScroll(window, matchingItem, true);
+
+    await findPrev(window).click();
+    await expectToggleKeepsScroll(window, matchingItem, false);
   });
 
   test("opening from search palette keeps in-note find usable", async ({
