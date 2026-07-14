@@ -13,8 +13,6 @@
  *  3. Two independent Y.Docs with divergent edits merge to convergence (proves
  *     CRDT lineage works with our node tree).
  *
- * YouTubeNode is intentionally out of scope.
- *
  * Run: pnpm exec vitest run src/spike/yjs-binding.spike.test.ts
  */
 import { describe, it, expect, vi } from "vitest";
@@ -55,7 +53,7 @@ import {
   $createBookmarkNode,
 } from "@/components/editor/nodes/bookmark-node";
 
-// Built-ins + the custom nodes we care about (no YouTube).
+// Built-ins + the custom nodes we care about.
 const NODES = [
   TitleNode,
   HeadingNode,

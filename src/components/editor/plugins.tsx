@@ -45,7 +45,6 @@ import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
 import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highlight-plugin"
 import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
-import { YouTubePlugin } from "@/components/editor/plugins/youtube-plugin"
 import { ClickToAppendPlugin } from "@/components/editor/plugins/click-to-append-plugin"
 import { TableActionMenuPlugin } from "@/components/editor/plugins/table-action-menu-plugin"
 import { TableControlsPlugin } from "@/components/editor/plugins/table-controls-plugin"
@@ -159,9 +158,6 @@ export function Plugins({
 
       {/* Image drop, paste, and insert command */}
       <ImagePlugin />
-
-      {/* YouTube video embed on paste */}
-      <YouTubePlugin />
 
       {/* Block highlight (shared by the section indicator and other features) */}
       <BlockHighlightPlugin />

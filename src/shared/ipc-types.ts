@@ -4,7 +4,6 @@ import type { DocumentRow, NoteMetadata } from './documents';
 
 export type ResolvedUrlResult =
   | { type: 'image'; id: string; filePath: string; sourceUrl: string }
-  | { type: 'youtube'; videoId: string; url: string }
   | { type: 'bookmark'; url: string; title: string; description: string; imageUrl: string; faviconUrl: string }
   | { type: 'unsupported'; url: string; reason: string };
 

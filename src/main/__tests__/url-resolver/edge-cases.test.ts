@@ -2,7 +2,7 @@
  * Edge cases for the URL resolver handler chain.
  *
  * These test weird, real-world URLs and tricky scenarios that could
- * break the YouTube regex, bookmark fallback, or handler priority.
+ * break image detection, bookmark fallback, or handler priority.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -47,98 +47,6 @@ describe("URL Resolver — Edge Cases", () => {
   });
 
   // ────────────────────────────────────────────────────────
-  // YouTube: music.youtube.com
-  // ────────────────────────────────────────────────────────
-
-  // Skipped: in-app YouTube player is hidden for alpha; YouTube URLs now
-  // route through the bookmark fallback (see url-resolver.ts).
-  it.skip("detects music.youtube.com/watch URL", async () => {
-    // YouTube Music shares the same watch?v= format
-    const result = await resolveUrl(
-      "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
-    );
-    // The regex anchors to youtube.com — music subdomain should still match
-    expect(result.type).toBe("youtube");
-    if (result.type === "youtube") {
-      expect(result.videoId).toBe("dQw4w9WgXcQ");
-    }
-  });
-
-  // ────────────────────────────────────────────────────────
-  // YouTube: tricky non-matches
-  // ────────────────────────────────────────────────────────
-
-  it("does not match youtube.com URL with 10-char ID (too short)", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      headers: { get: () => "text/html" },
-    });
-
-    const result = await resolveUrl(
-      "https://www.youtube.com/watch?v=dQw4w9WgX",
-    );
-    expect(result.type).not.toBe("youtube");
-  });
-
-  it("does not match youtube.com/results (search page)", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      headers: { get: () => "text/html" },
-    });
-
-    const result = await resolveUrl(
-      "https://www.youtube.com/results?search_query=cats",
-    );
-    expect(result.type).not.toBe("youtube");
-  });
-
-  it("does not match youtube.com/@channel URLs", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      headers: { get: () => "text/html" },
-    });
-
-    const result = await resolveUrl("https://www.youtube.com/@MrBeast");
-    expect(result.type).not.toBe("youtube");
-  });
-
-  // YouTube live URLs use the same watch?v= format — should work
-  it.skip("detects YouTube live stream URL (watch?v= format)", async () => {
-    const result = await resolveUrl(
-      "https://www.youtube.com/watch?v=jfKfPfyJRdk&ab_channel=LofiGirl",
-    );
-    expect(result.type).toBe("youtube");
-    if (result.type === "youtube") {
-      expect(result.videoId).toBe("jfKfPfyJRdk");
-    }
-  });
-
-  // Duplicate v= param — greedy `.*v=` picks the last one.
-  // Both IDs are valid; the regex greedily consumes to the last v=.
-  it.skip("extracts last video ID when v= appears multiple times (greedy match)", async () => {
-    const result = await resolveUrl(
-      "https://www.youtube.com/watch?v=dQw4w9WgXcQ&v=AAAAAAAAAA1",
-    );
-    expect(result.type).toBe("youtube");
-    if (result.type === "youtube") {
-      expect(result.videoId).toBe("AAAAAAAAAA1");
-    }
-  });
-
-  // youtube-nocookie.com is used for privacy-enhanced embeds
-  it("does not match youtube-nocookie.com (different domain)", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      headers: { get: () => "text/html" },
-    });
-
-    const result = await resolveUrl(
-      "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
-    );
-    expect(result.type).not.toBe("youtube");
-  });
-
-  // ────────────────────────────────────────────────────────
   // URL with fragment (#) — fragments are part of the URL string
   // ────────────────────────────────────────────────────────
 
@@ -151,16 +59,6 @@ describe("URL Resolver — Edge Cases", () => {
 
     const result = await resolveUrl("https://example.com/image.png#section");
     expect(result.type).toBe("image");
-  });
-
-  it.skip("handles YouTube URL with fragment", async () => {
-    const result = await resolveUrl(
-      "https://www.youtube.com/watch?v=dQw4w9WgXcQ#t=30",
-    );
-    expect(result.type).toBe("youtube");
-    if (result.type === "youtube") {
-      expect(result.videoId).toBe("dQw4w9WgXcQ");
-    }
   });
 
   // ────────────────────────────────────────────────────────
@@ -303,20 +201,6 @@ describe("URL Resolver — Edge Cases", () => {
   });
 
   // ────────────────────────────────────────────────────────
-  // Handler priority: URL that looks like both image and YouTube
-  // ────────────────────────────────────────────────────────
-
-  it.skip("YouTube handler wins over image extension for YouTube thumbnail URLs", async () => {
-    // Unlikely but technically possible — a YouTube watch URL that
-    // also ends with .jpg shouldn't happen, but let's verify priority
-    const result = await resolveUrl(
-      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    );
-    expect(result.type).toBe("youtube");
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  // ────────────────────────────────────────────────────────
   // URL encoding
   // ────────────────────────────────────────────────────────
 
@@ -381,36 +265,19 @@ describe("URL Resolver — Edge Cases", () => {
   // Concurrent resolution of same URL
   // ────────────────────────────────────────────────────────
 
-  it.skip("handles concurrent resolution of the same YouTube URL", async () => {
-    const url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-    const [r1, r2, r3] = await Promise.all([
-      resolveUrl(url),
-      resolveUrl(url),
-      resolveUrl(url),
-    ]);
-
-    expect(r1.type).toBe("youtube");
-    expect(r2.type).toBe("youtube");
-    expect(r3.type).toBe("youtube");
-    // YouTube handler is pure regex — no fetch calls even with 3 concurrent
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
   it("handles concurrent resolution of different URL types", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       headers: { get: () => "text/html" },
     });
 
-    const [yt, img, bm] = await Promise.all([
+    const [youtubeBookmark, img, bm] = await Promise.all([
       resolveUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
       resolveUrl("https://example.com/photo.png"),
       resolveUrl("https://example.com/article"),
     ]);
 
-    // YouTube URLs now route through the bookmark fallback for alpha
-    // (in-app player hidden — see url-resolver.ts).
-    expect(yt.type).toBe("bookmark");
+    expect(youtubeBookmark.type).toBe("bookmark");
     expect(img.type).toBe("image");
     expect(bm.type).toBe("bookmark");
   });
