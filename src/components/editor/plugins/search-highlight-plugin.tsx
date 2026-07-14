@@ -217,6 +217,11 @@ export function SearchHighlightPlugin({
     ? transientJump?.activeIndex ?? 0
     : activeIndex;
   const isHighlightVisible = isOpenForDoc || isTransientActive;
+  // Deferred work must consult the latest visibility and refresh callback. A
+  // scheduled frame may otherwise run after this panel has closed with values
+  // captured from an earlier render.
+  const isHighlightVisibleRef = React.useRef(isHighlightVisible);
+  isHighlightVisibleRef.current = isHighlightVisible;
 
   const clearAllHighlights = React.useCallback(() => {
     if (!supportsCustomHighlightApi()) return;
@@ -401,6 +406,15 @@ export function SearchHighlightPlugin({
     ],
   );
 
+  const refreshHighlightsRef = React.useRef(refreshHighlights);
+  refreshHighlightsRef.current = refreshHighlights;
+  const scheduleRefreshHighlights = React.useCallback((shouldScroll: boolean) => {
+    return requestAnimationFrame(() => {
+      if (!isHighlightVisibleRef.current) return;
+      refreshHighlightsRef.current(false, shouldScroll);
+    });
+  }, []);
+
   React.useEffect(() => {
     return () => {
       clearAllHighlights();
@@ -457,16 +471,25 @@ export function SearchHighlightPlugin({
 
   React.useEffect(() => {
     const wasVisible = wasVisibleRef.current;
+    let frame: number | undefined;
     if (wasVisible && !isHighlightVisible) {
       clearAllHighlights();
     }
     if (!wasVisible && isHighlightVisible) {
       // Scroll to the match on initial reveal when activated via transient jump
       // (palette preview open), but not when regular find opens.
-      requestAnimationFrame(() => refreshHighlights(false, isTransientActive));
+      frame = scheduleRefreshHighlights(isTransientActive);
     }
     wasVisibleRef.current = isHighlightVisible;
-  }, [clearAllHighlights, isHighlightVisible, isTransientActive, refreshHighlights]);
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, [
+    clearAllHighlights,
+    isHighlightVisible,
+    isTransientActive,
+    scheduleRefreshHighlights,
+  ]);
 
   React.useEffect(() => {
     if (!isOpenForDoc && !isTransientActive) return;
@@ -494,11 +517,17 @@ export function SearchHighlightPlugin({
 
   React.useEffect(() => {
     if (!isOpenForDoc && !isTransientActive) return;
-    return editor.registerRootListener((nextRoot) => {
+    const frames = new Set<number>();
+    const unregister = editor.registerRootListener((nextRoot) => {
       if (!nextRoot) return;
-      requestAnimationFrame(() => refreshHighlights(false, false));
+      const frame = scheduleRefreshHighlights(false);
+      frames.add(frame);
     });
-  }, [editor, isOpenForDoc, isTransientActive, refreshHighlights]);
+    return () => {
+      unregister();
+      for (const frame of frames) cancelAnimationFrame(frame);
+    };
+  }, [editor, isOpenForDoc, isTransientActive, scheduleRefreshHighlights]);
 
   React.useEffect(() => {
     if (!isTransientActive || !transientJump) return;
