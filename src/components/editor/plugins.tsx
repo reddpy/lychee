@@ -52,6 +52,7 @@ import { TableControlsPlugin } from "@/components/editor/plugins/table-controls-
 import { TableColumnResizerPlugin } from "@/components/editor/plugins/table-column-resizer-plugin"
 import { SearchHighlightPlugin } from "@/components/editor/plugins/search-highlight-plugin"
 import { TabSelectionPlugin } from "@/components/editor/plugins/tab-selection-plugin"
+import { MenuHistoryPlugin } from "@/components/editor/plugins/menu-history-plugin"
 import { IMAGE, IMAGE_EXPORT } from "@/components/editor/plugins/image-markdown-transformer"
 import { TABLE, TABLE_EXPORT } from "@/components/editor/plugins/table-markdown-transformer"
 
@@ -130,6 +131,7 @@ export function Plugins({
 
       {/* Core plugins */}
       <HistoryPlugin />
+      <MenuHistoryPlugin isActive={isActive} />
       <ListPlugin />
       <CheckListPlugin />
       <TabIndentationPlugin />

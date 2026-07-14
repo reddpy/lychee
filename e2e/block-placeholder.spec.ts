@@ -1,5 +1,5 @@
 import { test, expect } from './electron-app';
-import type { Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 
 /**
  * Tests for BlockPlaceholderPlugin — specifically the blur/focus fix:
@@ -26,6 +26,26 @@ function paragraphPlaceholders(window: Page) {
 /** The visible (non-hidden) <main> — editors for other tabs stay mounted with display:none. */
 function visibleMain(window: Page) {
   return window.locator('main:not([style*="display: none"])').first();
+}
+
+async function clickMenuItem(electronApp: ElectronApplication, label: string): Promise<void> {
+  await electronApp.evaluate(({ Menu }, itemLabel) => {
+    const menu = Menu.getApplicationMenu();
+    if (!menu) throw new Error('No application menu set');
+    const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+      for (const item of items) {
+        if (item.label === itemLabel) return item;
+        if (item.submenu) {
+          const found = find(item.submenu.items);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const item = find(menu.items);
+    if (!item) throw new Error(`Menu item not found: ${itemLabel}`);
+    item.click();
+  }, label);
 }
 
 /**
@@ -315,6 +335,92 @@ test.describe('Block placeholder — Escape and blur (the fix)', () => {
 });
 
 test.describe('Block placeholder — undo/redo consistency', () => {
+  test('Edit menu undo works while the editor is focused', async ({ electronApp, window }) => {
+    await enterEmptyBody(window);
+    await window.keyboard.type('menu undo');
+    await clickMenuItem(electronApp, 'Undo');
+    await expect(paragraphPlaceholders(window)).toHaveCount(1);
+  });
+
+  test('Edit menu undo restores a checklist toggle after Escape', async ({ electronApp, window }) => {
+    await enterEmptyBody(window);
+    await window.keyboard.type('[ ] Task');
+    const checkItem = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await expect(checkItem).toHaveClass(/editor-list-item-unchecked/);
+
+    await checkItem.click({ position: { x: 10, y: 10 } });
+    await expect(checkItem).toHaveClass(/editor-list-item-checked/);
+    await window.keyboard.press('Escape');
+    await clickMenuItem(electronApp, 'Undo');
+
+    await expect(checkItem).toHaveClass(/editor-list-item-unchecked/);
+    await expectInvariants(window);
+  });
+
+  test('Edit menu undo continues through Lexical history after Escape blurs the editor', async ({ electronApp, window }) => {
+    await enterEmptyBody(window);
+    await window.keyboard.type('s');
+    // HistoryPlugin merges closely-spaced edits, so separate these two steps.
+    await window.waitForTimeout(1500);
+    await window.keyboard.type('tuff');
+    await expect(window.locator('.ContentEditable__root')).toContainText('stuff');
+
+    await window.keyboard.press('Escape');
+    await clickMenuItem(electronApp, 'Undo');
+    await expect(window.locator('.ContentEditable__root')).toContainText('s');
+
+    // Blur again to make sure the first menu undo did not fall back to the
+    // browser's native undo stack, which cannot continue through Lexical's.
+    await window.keyboard.press('Escape');
+    await clickMenuItem(electronApp, 'Undo');
+    await expect(window.locator('.ContentEditable__root')).not.toContainText('s');
+    await expect(paragraphPlaceholders(window)).toHaveCount(1);
+    await expectInvariants(window);
+  });
+
+  test('Edit menu redo restores a Lexical undo after Escape', async ({ electronApp, window }) => {
+    await enterEmptyBody(window);
+    await window.keyboard.type('before redo');
+    await window.keyboard.press('Escape');
+    await clickMenuItem(electronApp, 'Undo');
+    await expect(paragraphPlaceholders(window)).toHaveCount(1);
+
+    await window.keyboard.press('Escape');
+    await clickMenuItem(electronApp, 'Redo');
+    await expect(window.locator('.ContentEditable__root')).toContainText('before redo');
+    await expectInvariants(window);
+  });
+
+  test('Edit menu history commands target only the active note', async ({ electronApp, window }) => {
+    await enterEmptyBody(window, 'Menu history A');
+    await window.keyboard.type('alpha body');
+    await window.waitForTimeout(300);
+    await enterEmptyBody(window, 'Menu history B');
+    await window.keyboard.type('bravo body');
+    await window.waitForTimeout(300);
+
+    await window.locator('[data-tab-id]').filter({ hasText: 'Menu history A' }).click();
+    await window.keyboard.press('Escape');
+    await clickMenuItem(electronApp, 'Undo');
+    await expect(visibleMain(window).locator('.ContentEditable__root')).not.toContainText('alpha body');
+
+    await window.locator('[data-tab-id]').filter({ hasText: 'Menu history B' }).click();
+    await expect(visibleMain(window).locator('.ContentEditable__root')).toContainText('bravo body');
+  });
+
+  test('Edit menu undo preserves a focused find field instead of undoing the note', async ({ electronApp, window }) => {
+    await enterEmptyBody(window);
+    await window.keyboard.type('document text');
+    await window.keyboard.press(`${mod}+f`);
+    const findInput = window.getByPlaceholder('Find...');
+    await expect(findInput).toBeFocused();
+    await findInput.fill('find query');
+
+    await clickMenuItem(electronApp, 'Undo');
+    await expect(findInput).toHaveValue('');
+    await expect(visibleMain(window).locator('.ContentEditable__root')).toContainText('document text');
+  });
+
   test('undo of typing restores the placeholder; redo hides it again', async ({ window }) => {
     await enterEmptyBody(window);
     await window.keyboard.type('Hello world');
