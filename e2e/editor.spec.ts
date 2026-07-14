@@ -312,6 +312,47 @@ test.describe('Editor — Slash Commands', () => {
     await expect(window.getByRole('option', { name: 'Code Block' })).toBeVisible();
     await expect(window.getByRole('option', { name: 'Text' })).not.toBeVisible();
   });
+
+  test('slash command matches concatenated labels and selects the intended heading', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('/heading3');
+
+    await expect(window.getByRole('option', { name: 'Heading 3' })).toBeVisible();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Compact heading');
+
+    await expect(window.locator('.ContentEditable__root h3')).toContainText('Compact heading');
+  });
+
+  test('slash command matches common aliases', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('/todo');
+
+    await expect(window.getByRole('option', { name: 'Check List' })).toBeVisible();
+    await expect(window.getByRole('option', { name: 'Code Block' })).not.toBeVisible();
+
+    await window.keyboard.press('Escape');
+    await window.keyboard.press('End');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('/sheet');
+
+    await expect(window.getByRole('option', { name: 'Table' })).toBeVisible();
+    await expect(window.getByRole('option', { name: 'Check List' })).not.toBeVisible();
+  });
+
+  test('slash command supports fuzzy abbreviations', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('/buli');
+
+    await expect(window.getByRole('option', { name: 'Bullet List' })).toBeVisible();
+    await expect(window.getByRole('option', { name: 'Numbered List' })).not.toBeVisible();
+  });
 });
 
 test.describe('Editor — Markdown Shortcuts', () => {
