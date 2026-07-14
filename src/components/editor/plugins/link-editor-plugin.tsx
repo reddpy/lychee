@@ -26,7 +26,7 @@ import {
   withRestoredLinkSelection,
   type RestoredSelectionInfo,
 } from "@/components/editor/plugins/link-selection"
-import { onToolbarExclusive } from "@/components/lexical-editor"
+import { emitToolbarExclusive, onToolbarExclusive } from "@/components/lexical-editor"
 import { useDocumentStore } from "@/renderer/document-store"
 import {
   createInternalNoteUrl,
@@ -37,7 +37,19 @@ import {
 
 export const OPEN_LINK_EDITOR_COMMAND = createCommand<void>("OPEN_LINK_EDITOR_COMMAND")
 
+let activeLinkEditorOwner: symbol | null = null
+
+export function isLinkEditorPopoverOpen(): boolean {
+  return activeLinkEditorOwner !== null
+}
+
 const LINK_SELECTION_HIGHLIGHT = "lychee-link-selection"
+const LINK_EDITOR_MAX_WIDTH = 380
+const LINK_EDITOR_VIEWPORT_GUTTER = 16
+const LINK_EDITOR_SIDE_OFFSET = 20
+const LINK_EDITOR_HEADER_HEIGHT = 48
+const LINK_EDITOR_MIN_USABLE_HEIGHT = 96
+const LINK_EDITOR_RESULTS_MAX_HEIGHT = 224
 let activeHighlightOwner: symbol | null = null
 
 type SelectionOverlayRect = {
@@ -164,6 +176,65 @@ function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): 
   return rangeRect
 }
 
+function getLinkEditorAnchorLeft(anchorRect: DOMRect | null): number {
+  if (!anchorRect || typeof window === "undefined") return anchorRect?.left ?? 0
+
+  const availableWidth = Math.max(0, window.innerWidth - LINK_EDITOR_VIEWPORT_GUTTER * 2)
+  const popoverWidth = Math.min(LINK_EDITOR_MAX_WIDTH, availableWidth)
+  const centeredLeft = anchorRect.left - popoverWidth / 2
+  const maximumLeft = Math.max(
+    LINK_EDITOR_VIEWPORT_GUTTER,
+    window.innerWidth - popoverWidth - LINK_EDITOR_VIEWPORT_GUTTER,
+  )
+
+  return Math.max(
+    LINK_EDITOR_VIEWPORT_GUTTER,
+    Math.min(centeredLeft, maximumLeft),
+  )
+}
+
+function getLinkEditorPlacement(anchorRect: DOMRect | null): {
+  side: "top" | "bottom"
+  availableHeight: number | undefined
+  resultsMaxHeight: number
+} {
+  if (!anchorRect || typeof window === "undefined") {
+    return {
+      side: "bottom",
+      availableHeight: undefined,
+      resultsMaxHeight: LINK_EDITOR_RESULTS_MAX_HEIGHT,
+    }
+  }
+
+  const spaceBelow = Math.max(
+    0,
+    window.innerHeight - anchorRect.bottom - LINK_EDITOR_SIDE_OFFSET - LINK_EDITOR_VIEWPORT_GUTTER,
+  )
+  const spaceAbove = Math.max(
+    0,
+    anchorRect.top - LINK_EDITOR_SIDE_OFFSET - LINK_EDITOR_VIEWPORT_GUTTER,
+  )
+  // Keep the popup below the caret unless that cannot accommodate the input
+  // row plus one useful result. In that exceptional case, place it above the
+  // line instead of clipping it or covering the caret.
+  const side = spaceBelow < LINK_EDITOR_MIN_USABLE_HEIGHT && spaceAbove > spaceBelow
+    ? "top"
+    : "bottom"
+  const availableHeight = side === "bottom" ? spaceBelow : spaceAbove
+
+  return {
+    side,
+    availableHeight,
+    resultsMaxHeight: Math.max(
+      0,
+      Math.min(
+        LINK_EDITOR_RESULTS_MAX_HEIGHT,
+        availableHeight - LINK_EDITOR_HEADER_HEIGHT,
+      ),
+    ),
+  }
+}
+
 export function LinkEditorPlugin({ documentId }: { documentId: string }) {
   const [editor] = useLexicalComposerContext()
   const documents = useDocumentStore((state) => state.documents)
@@ -175,7 +246,9 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const savedSelectionRef = useRef<RangeSelection | null>(null)
+  const anchorRangeRef = useRef<Range | null>(null)
   const highlightOwnerRef = useRef(Symbol("link-selection-highlight"))
+  const interactionOwnerRef = useRef(Symbol("link-editor-interaction"))
   const resultsId = useId()
 
   const noteCandidates = useMemo(
@@ -193,6 +266,26 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
   }, [isOpen])
 
   useEffect(() => {
+    if (!isOpen) return
+    let frame = 0
+    const refreshAnchor = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const range = anchorRangeRef.current
+        if (range) setAnchorRect(getLinkEditorAnchorRect(range, editor.getRootElement()))
+      })
+    }
+
+    window.addEventListener("resize", refreshAnchor)
+    window.addEventListener("scroll", refreshAnchor, true)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener("resize", refreshAnchor)
+      window.removeEventListener("scroll", refreshAnchor, true)
+    }
+  }, [editor, isOpen])
+
+  useEffect(() => {
     setActiveCandidateIndex((index) => Math.min(index, Math.max(0, noteCandidates.length - 1)))
   }, [noteCandidates.length])
 
@@ -203,7 +296,11 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
 
   useEffect(() => {
     const owner = highlightOwnerRef.current
-    return () => clearLinkSelectionHighlight(owner)
+    const interactionOwner = interactionOwnerRef.current
+    return () => {
+      clearLinkSelectionHighlight(owner)
+      if (activeLinkEditorOwner === interactionOwner) activeLinkEditorOwner = null
+    }
   }, [])
 
   const closeLinkEditor = useCallback((
@@ -214,6 +311,10 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
     setIsOpen(false)
     clearSelectionHighlight()
     savedSelectionRef.current = null
+    anchorRangeRef.current = null
+    if (activeLinkEditorOwner === interactionOwnerRef.current) {
+      activeLinkEditorOwner = null
+    }
     if (refocusEditor) {
       requestAnimationFrame(() => {
         editor.getRootElement()?.focus({ preventScroll: true })
@@ -277,7 +378,10 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
       if (!range) return
 
       const rect = getLinkEditorAnchorRect(range, editor.getRootElement())
+      anchorRangeRef.current = range
       setAnchorRect(rect)
+      activeLinkEditorOwner = interactionOwnerRef.current
+      emitToolbarExclusive("__link-editor__")
       setIsOpen(true)
     })
   }, [documents, editor])
@@ -392,6 +496,8 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
     }
   }, [activeCandidateIndex, closeLinkEditor, handleNoteSelect, noteCandidates])
 
+  const placement = getLinkEditorPlacement(anchorRect)
+
   return (
     <>
       {isOpen && selectionOverlayRects.length > 0 && createPortal(
@@ -425,25 +531,18 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
       <PopoverAnchor
         style={{
           position: "fixed",
-          top: anchorRect?.bottom ?? 0,
-          left: anchorRect && typeof window !== "undefined"
-            ? Math.max(
-                16,
-                Math.min(
-                  anchorRect.left,
-                  window.innerWidth - Math.min(380, window.innerWidth - 32) - 16,
-                ),
-              )
-            : anchorRect?.left ?? 0,
+          top: anchorRect?.top ?? 0,
+          left: getLinkEditorAnchorLeft(anchorRect),
           width: anchorRect?.width ?? 0,
-          height: 0,
+          height: anchorRect?.height ?? 0,
         }}
       />
       <PopoverContent
         className="w-[min(380px,calc(100vw-2rem))] overflow-hidden p-0 !animate-none"
-        side="bottom"
+        style={{ maxHeight: placement.availableHeight }}
+        side={placement.side}
         align="start"
-        sideOffset={20}
+        sideOffset={LINK_EDITOR_SIDE_OFFSET}
         avoidCollisions={false}
         onOpenAutoFocus={(event) => {
           event.preventDefault()
@@ -500,7 +599,8 @@ export function LinkEditorPlugin({ documentId }: { documentId: string }) {
             id={resultsId}
             role="listbox"
             aria-label={query.trim() ? "Matching notes" : "Recent notes"}
-            className="max-h-56 overflow-y-auto border-t border-[hsl(var(--border))] p-1"
+            className="box-border overflow-y-auto border-t border-[hsl(var(--border))] p-1"
+            style={{ maxHeight: placement.resultsMaxHeight }}
           >
             {noteCandidates.length > 0 ? noteCandidates.map(({ document, displayTitle }, index) => (
               <button

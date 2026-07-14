@@ -22,6 +22,7 @@ import { onToolbarExclusive } from "@/components/lexical-editor"
 import { $createImageNode } from "@/components/editor/nodes/image-node"
 import { $createBookmarkNode } from "@/components/editor/nodes/bookmark-node"
 import { ReadOnlyNotePreview } from "@/components/editor/read-only-note-preview"
+import { isLinkEditorPopoverOpen } from "@/components/editor/plugins/link-editor-plugin"
 import { classifyUrl } from "@/shared/classify-url"
 import { parseInternalNoteUrl } from "@/shared/internal-note-link"
 import { displayNoteTitle } from "@/shared/note-title"
@@ -93,11 +94,38 @@ interface HoverState {
 const BTN =
   "flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs hover:bg-accent hover:text-accent-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
 
+function eventTargetElement(target: EventTarget | null): Element | null {
+  if (target instanceof Element) return target
+  if (target instanceof Node) return target.parentElement
+  return null
+}
+
+function getInternalPreviewPlacement(
+  linkEl: HTMLAnchorElement | undefined,
+  isPreviewOpen: boolean,
+  viewportHeight: number,
+): { side: "top" | "bottom"; cardHeight?: number } {
+  if (!isPreviewOpen || !linkEl || viewportHeight <= 0) return { side: "bottom" }
+
+  const linkRect = linkEl.getBoundingClientRect()
+  const spaceAbove = Math.max(0, linkRect.top - 16)
+  const spaceBelow = Math.max(0, viewportHeight - linkRect.bottom - 16)
+  const side = spaceBelow >= spaceAbove ? "bottom" : "top"
+  const availableHeight = side === "bottom" ? spaceBelow : spaceAbove
+
+  return {
+    side,
+    // Account for the 6px visual bridge between the link and the card.
+    cardHeight: Math.min(312, Math.max(0, availableHeight - 6)),
+  }
+}
+
 export function LinkClickPlugin(): JSX.Element | null {
   const [editor] = useLexicalComposerContext()
   const [hoverState, setHoverState] = useState<HoverState | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
+  const [viewportHeight, setViewportHeight] = useState(0)
   const hoveredInternalDocument = useDocumentStore((state) => {
     if (!hoverState?.internalDocumentId) return undefined
     return state.documents.find((document) => document.id === hoverState.internalDocumentId)
@@ -111,6 +139,7 @@ export function LinkClickPlugin(): JSX.Element | null {
   const anchorRef = useRef<HTMLAnchorElement>(null)
   anchorRef.current = hoverState?.linkEl ?? null
   const popoverContentRef = useRef<HTMLDivElement>(null)
+  const blockedHoverLinkRef = useRef<HTMLAnchorElement | null>(null)
 
   const keyProp = `__lexicalKey_${(editor as any)._key}`
 
@@ -122,6 +151,14 @@ export function LinkClickPlugin(): JSX.Element | null {
       dismissTimerRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (!hoverState) return
+    const updateViewportHeight = () => setViewportHeight(window.innerHeight)
+    updateViewportHeight()
+    window.addEventListener("resize", updateViewportHeight)
+    return () => window.removeEventListener("resize", updateViewportHeight)
+  }, [hoverState])
 
   const dismiss = useCallback((refocus = false) => {
     clearDismissTimer()
@@ -147,7 +184,7 @@ export function LinkClickPlugin(): JSX.Element | null {
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (!e.metaKey && !e.ctrlKey) return
-      const a = (e.target as HTMLElement).closest("a") as HTMLAnchorElement | null
+      const a = eventTargetElement(e.target)?.closest("a") as HTMLAnchorElement | null
       const href = a?.getAttribute("href")
       if (!href) return
       e.preventDefault()
@@ -162,8 +199,9 @@ export function LinkClickPlugin(): JSX.Element | null {
     }
 
     function handleMouseOver(e: MouseEvent) {
-      const a = (e.target as HTMLElement).closest("a") as HTMLAnchorElement | null
+      const a = eventTargetElement(e.target)?.closest("a") as HTMLAnchorElement | null
       if (!a) return
+      if (isLinkEditorPopoverOpen() || blockedHoverLinkRef.current === a) return
       const href = a.getAttribute("href")
       if (!href) return
 
@@ -227,9 +265,15 @@ export function LinkClickPlugin(): JSX.Element | null {
     }
 
     function handleMouseOut(e: MouseEvent) {
-      const a = (e.target as HTMLElement).closest("a")
+      const a = eventTargetElement(e.target)?.closest("a")
       if (!a) return
-      const related = e.relatedTarget as HTMLElement | null
+      const related = eventTargetElement(e.relatedTarget)
+      if (
+        blockedHoverLinkRef.current === a &&
+        (!related || !a.contains(related))
+      ) {
+        blockedHoverLinkRef.current = null
+      }
       if (related?.closest("[data-slot='popover-content']")) return
       if (related && a.contains(related)) return
       scheduleDismiss()
@@ -247,7 +291,7 @@ export function LinkClickPlugin(): JSX.Element | null {
 
   // ── Popover mouse leave ──
   const onPopoverMouseLeave = useCallback((e: React.MouseEvent) => {
-    const related = e.relatedTarget as HTMLElement | null
+    const related = eventTargetElement(e.relatedTarget)
     if (related && hoverRef.current?.linkEl.contains(related)) return
     scheduleDismiss()
   }, [scheduleDismiss])
@@ -278,7 +322,12 @@ export function LinkClickPlugin(): JSX.Element | null {
 
   // ── Dismiss on tab switch so popover doesn't bleed into duplicate tabs ──
   useEffect(() => {
-    return onToolbarExclusive("__link-hover__", () => dismiss())
+    return onToolbarExclusive("__link-hover__", () => {
+      if (hoverRef.current?.linkEl) {
+        blockedHoverLinkRef.current = hoverRef.current.linkEl
+      }
+      dismiss()
+    })
   }, [dismiss])
 
   // ── Core: replace a link node with a block-level replacement ──
@@ -377,6 +426,12 @@ export function LinkClickPlugin(): JSX.Element | null {
     ? extractPlainText(hoveredInternalDocument.content).length > 0
     : false
 
+  const previewPlacement = getInternalPreviewPlacement(
+    hoverState?.linkEl,
+    isPreviewOpen,
+    viewportHeight,
+  )
+
   if (!hoverState) return null
 
   return (
@@ -384,21 +439,26 @@ export function LinkClickPlugin(): JSX.Element | null {
       <PopoverAnchor virtualRef={anchorRef} />
       <PopoverContent
         ref={popoverContentRef}
-        className="w-auto p-0 bg-transparent border-none shadow-none"
-        side="bottom"
+        data-link-hover-popover
+        className="max-h-[calc(100vh-2rem)] w-auto overflow-hidden p-0 bg-transparent border-none shadow-none"
+        side={previewPlacement.side}
         align="start"
         sideOffset={0}
+        collisionPadding={16}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onMouseEnter={clearDismissTimer}
         onMouseLeave={onPopoverMouseLeave}
       >
-        <div className="pt-1.5">
+        <div className="box-border flex max-h-[calc(100vh-2rem)] overflow-hidden pt-1.5">
           {hoverState.internalDocumentId ? (
             <div
               data-internal-note-hover-card
-              className="w-80 overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-popover shadow-lg"
+              className="flex w-80 flex-col overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-popover shadow-lg"
+              style={isPreviewOpen ? {
+                height: previewPlacement.cardHeight,
+              } : undefined}
             >
-              <div className="flex min-w-0 items-center gap-2.5 px-3 py-2.5">
+              <div className="flex min-w-0 shrink-0 items-center gap-2.5 px-3 py-2.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[hsl(var(--muted))] text-sm">
                   {hoverState.internalDocumentEmoji ? (
                     <span className="leading-none">{hoverState.internalDocumentEmoji}</span>
@@ -429,7 +489,7 @@ export function LinkClickPlugin(): JSX.Element | null {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 p-1.5">
+              <div className="flex shrink-0 items-center gap-1.5 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 p-1.5">
                 <button
                   type="button"
                   className="inline-flex h-8 w-[78px] shrink-0 items-center justify-center gap-1.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 text-xs font-medium text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] disabled:pointer-events-none disabled:opacity-50"
@@ -467,7 +527,7 @@ export function LinkClickPlugin(): JSX.Element | null {
               {isPreviewOpen && (
                 <div
                   data-note-link-preview
-                  className="h-52 overflow-x-hidden overflow-y-auto border-t border-[hsl(var(--border))] bg-[hsl(var(--background))]"
+                  className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto border-t border-[hsl(var(--border))] bg-[hsl(var(--background))]"
                 >
                   {hasPreviewContent && hoveredInternalDocument ? (
                     <div className="text-sm [&_.ContentEditable\_\_root]:!leading-relaxed [&_.ContentEditable\_\_root]:!text-[hsl(var(--foreground))] [&>div>div]:!px-3 [&>div>div]:!py-2">

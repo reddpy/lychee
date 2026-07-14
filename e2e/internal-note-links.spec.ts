@@ -104,8 +104,29 @@ async function createInternalLink(
   return link;
 }
 
-async function hoverNoteCard(window: Page, link: Locator) {
+async function createWebLink(window: Page, title: string, label: string, url: string) {
+  await createNote(window, title, label);
+  await window.keyboard.press('Shift+Home');
+  const input = await openLinkPopup(window);
+  await input.fill(url);
+  await linkPopover(window).getByRole('button', { name: 'Apply' }).click();
+  const normalizedUrl = url.startsWith('http://') || url.startsWith('https://')
+    ? url
+    : `https://${url}`;
+  const link = activeEditor(window).locator(`a[href="${normalizedUrl}"]`);
+  await expect(link).toHaveText(label);
+  return link;
+}
+
+async function hoverLinkPopover(window: Page, link: Locator) {
   await link.hover();
+  const popover = window.locator('[data-link-hover-popover]');
+  await expect(popover).toBeVisible();
+  return popover;
+}
+
+async function hoverNoteCard(window: Page, link: Locator) {
+  await hoverLinkPopover(window, link);
   const card = window.locator('[data-internal-note-hover-card]');
   await expect(card).toBeVisible();
   return card;
@@ -162,18 +183,207 @@ async function hasSavedSelectionHighlight(window: Page) {
   );
 }
 
+async function textEndX(line: Locator) {
+  return line.evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let text = walker.nextNode();
+    let lastText: Text | null = null;
+    while (text) {
+      if (text instanceof Text && text.data.length > 0) lastText = text;
+      text = walker.nextNode();
+    }
+    if (!lastText) throw new Error('Expected line text');
+    const range = document.createRange();
+    range.setStart(lastText, lastText.data.length - 1);
+    range.setEnd(lastText, lastText.data.length);
+    return range.getBoundingClientRect().right;
+  });
+}
+
+async function textStartX(line: Locator) {
+  return line.evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let text = walker.nextNode();
+    while (text && (!(text instanceof Text) || text.data.length === 0)) {
+      text = walker.nextNode();
+    }
+    if (!(text instanceof Text)) throw new Error('Expected line text');
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 1);
+    return range.getBoundingClientRect().left;
+  });
+}
+
 test.describe('Cmd+K links — ergonomics, edge cases, and stress', () => {
-  test('collapsed caret opens one focused input below the current text line', async ({ window }) => {
-    await createNote(window, 'Caret Position', 'Place the cursor here');
-    const line = activeEditor(window).locator('p').last();
+  test('collapsed caret opens one focused input centered below the current text line', async ({ window }) => {
+    const label = 'Place the cursor here';
+    await createNote(window, 'Caret Position', label);
+    const line = activeEditor(window).locator('p').filter({ hasText: label });
+    await placeCaretInEditorText(window, label, label.length);
     const lineBox = await line.boundingBox();
+    const caretX = await textEndX(line);
     expect(lineBox).not.toBeNull();
 
     const input = await openLinkPopup(window);
     await expect(linkPopover(window).locator('input')).toHaveCount(1);
     const inputBox = await input.boundingBox();
+    const popoverBox = await linkPopover(window).boundingBox();
     expect(inputBox).not.toBeNull();
+    expect(popoverBox).not.toBeNull();
     expect(inputBox!.y).toBeGreaterThanOrEqual(lineBox!.y + lineBox!.height + 4);
+    expect(Math.abs(popoverBox!.x + popoverBox!.width / 2 - caretX)).toBeLessThanOrEqual(2);
+  });
+
+  test('far-right caret keeps the centered popup fully inside the viewport', async ({ window }) => {
+    const label = 'Right edge caret';
+    await createNote(window, 'Right Edge Position', label);
+    const line = activeEditor(window).locator('p').filter({ hasText: label });
+    await line.evaluate((element) => { (element as HTMLElement).style.textAlign = 'right'; });
+    await placeCaretInEditorText(window, label, label.length);
+    const lineBox = await line.boundingBox();
+    const caretX = await textEndX(line);
+    expect(lineBox).not.toBeNull();
+
+    await openLinkPopup(window);
+    const popoverBox = await linkPopover(window).boundingBox();
+    const viewportWidth = await window.evaluate(() => innerWidth);
+    expect(popoverBox).not.toBeNull();
+    expect(popoverBox!.x).toBeGreaterThanOrEqual(16);
+    expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(viewportWidth - 16);
+    expect(caretX).toBeGreaterThanOrEqual(popoverBox!.x);
+    expect(caretX).toBeLessThanOrEqual(popoverBox!.x + popoverBox!.width);
+    expect(popoverBox!.y).toBeGreaterThanOrEqual(lineBox!.y + lineBox!.height + 4);
+  });
+
+  test('far-left caret clamps the centered popup to the viewport gutter', async ({ window }) => {
+    const label = 'Left edge caret';
+    await createNote(window, 'Left Edge Position', label);
+    const line = activeEditor(window).locator('p').filter({ hasText: label });
+    await line.evaluate((element) => {
+      const style = (element as HTMLElement).style;
+      style.position = 'fixed';
+      style.left = '20px';
+      style.top = '220px';
+      style.width = 'max-content';
+    });
+    await placeCaretInEditorText(window, label, 0);
+    const caretX = await textStartX(line);
+
+    await openLinkPopup(window);
+    const popoverBox = await linkPopover(window).boundingBox();
+    const viewportWidth = await window.evaluate(() => innerWidth);
+    expect(popoverBox).not.toBeNull();
+    expect(Math.abs(popoverBox!.x - 16)).toBeLessThanOrEqual(1);
+    expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(viewportWidth - 16);
+    expect(caretX).toBeGreaterThanOrEqual(popoverBox!.x);
+  });
+
+  test('bottom-edge caret places the popup above without overlapping the caret line', async ({ window }) => {
+    const label = 'Bottom edge caret';
+    await createNote(window, 'Bottom Edge Position', label);
+    const line = activeEditor(window).locator('p').filter({ hasText: label });
+    await line.evaluate((element) => {
+      const style = (element as HTMLElement).style;
+      style.position = 'fixed';
+      style.left = '50%';
+      style.bottom = '8px';
+      style.width = 'max-content';
+    });
+    await placeCaretInEditorText(window, label, label.length);
+    const lineBox = await line.boundingBox();
+    expect(lineBox).not.toBeNull();
+
+    await openLinkPopup(window);
+    const popoverBox = await linkPopover(window).boundingBox();
+    expect(popoverBox).not.toBeNull();
+    expect(popoverBox!.y).toBeGreaterThanOrEqual(16);
+    expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(lineBox!.y - 12);
+  });
+
+  test('open popup reanchors and remains fully visible when the window is resized', async ({ electronApp, window }) => {
+    const originalSize = await electronApp.evaluate(({ BrowserWindow }) => (
+      BrowserWindow.getAllWindows()[0]?.getContentSize() ?? [1200, 800]
+    ));
+    const label = 'Resize-aware caret';
+
+    try {
+      await createNote(window, 'Responsive Popup', label);
+      const line = activeEditor(window).locator('p').filter({ hasText: label });
+      await line.evaluate((element) => { (element as HTMLElement).style.textAlign = 'right'; });
+      await placeCaretInEditorText(window, label, label.length);
+      await openLinkPopup(window);
+
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(680, 480);
+      });
+      await expect.poll(() => window.evaluate(() => ({ width: innerWidth, height: innerHeight })))
+        .toEqual({ width: 680, height: 480 });
+
+      const popoverBox = await linkPopover(window).boundingBox();
+      const resizedLineBox = await line.boundingBox();
+      expect(popoverBox).not.toBeNull();
+      expect(resizedLineBox).not.toBeNull();
+      expect(popoverBox!.x).toBeGreaterThanOrEqual(16);
+      expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(680 - 16);
+      expect(popoverBox!.y).toBeGreaterThanOrEqual(16);
+      expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(480 - 16);
+
+      const isBelow = popoverBox!.y >= resizedLineBox!.y + resizedLineBox!.height;
+      const isAbove = popoverBox!.y + popoverBox!.height <= resizedLineBox!.y;
+      expect(isBelow || isAbove).toBe(true);
+    } finally {
+      await electronApp.evaluate(({ BrowserWindow }, size) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(size[0], size[1]);
+      }, originalSize);
+    }
+  });
+
+  test('small-window candidate list remains in bounds and scrolls independently', async ({ electronApp, window }) => {
+    const originalSize = await electronApp.evaluate(({ BrowserWindow }) => (
+      BrowserWindow.getAllWindows()[0]?.getContentSize() ?? [1200, 800]
+    ));
+
+    try {
+      await window.evaluate(async () => {
+        const store = (window as any).__documentStore;
+        for (let index = 0; index < 9; index += 1) {
+          await store.getState().createDocument();
+        }
+      });
+      await createNote(window, 'Small Candidate Source', 'candidate anchor');
+      const line = activeEditor(window).locator('p').filter({ hasText: 'candidate anchor' });
+      await line.evaluate((element) => {
+        const style = (element as HTMLElement).style;
+        style.position = 'fixed';
+        style.left = '50%';
+        style.bottom = '8px';
+      });
+      await placeCaretInEditorText(window, 'candidate anchor', 'candidate anchor'.length);
+
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(680, 480);
+      });
+      await expect.poll(() => window.evaluate(() => ({ width: innerWidth, height: innerHeight })))
+        .toEqual({ width: 680, height: 480 });
+
+      await openLinkPopup(window);
+      const popover = linkPopover(window);
+      const results = popover.getByRole('listbox');
+      // Candidate ranking deliberately caps the recent-note list at eight.
+      await expect(results.getByRole('option')).toHaveCount(8);
+      const popoverBox = await popover.boundingBox();
+      expect(popoverBox).not.toBeNull();
+      expect(popoverBox!.x).toBeGreaterThanOrEqual(16);
+      expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(680 - 16);
+      expect(popoverBox!.y).toBeGreaterThanOrEqual(16);
+      expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(480 - 16);
+      expect(await results.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+    } finally {
+      await electronApp.evaluate(({ BrowserWindow }, size) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(size[0], size[1]);
+      }, originalSize);
+    }
   });
 
   test('explicit selection stays visibly selected while input owns focus and clears on Escape', async ({ window }) => {
@@ -367,6 +577,189 @@ test.describe('Cmd+K links — ergonomics, edge cases, and stress', () => {
 });
 
 test.describe('Internal-link hover card, preview, and tab flows', () => {
+  test('Cmd+K suppresses an unpinned external-link card until outside dismissal moves the pointer away', async ({ window }) => {
+    const link = await createWebLink(
+      window,
+      'External Exclusivity',
+      'external exclusivity link',
+      'external.example/path',
+    );
+    const hover = await hoverLinkPopover(window, link);
+
+    await placeCaretInsideLink(link, 5);
+    await openLinkPopup(window);
+    await expect(hover).toHaveCount(0);
+
+    await link.hover();
+    await window.waitForTimeout(250);
+    await expect(window.locator('[data-link-hover-popover]')).toHaveCount(0);
+
+    await window.locator('aside').click({ position: { x: 10, y: 80 } });
+    await expect(linkInput(window)).toHaveCount(0);
+    await link.hover();
+    await expect(window.locator('[data-link-hover-popover]')).toBeVisible();
+  });
+
+  test('applying an edited destination clears hover suppression for the updated link', async ({ window }) => {
+    const target = await createNote(window, 'Apply Exclusivity Target');
+    await createNote(window, 'Apply Exclusivity Source', 'apply exclusivity link');
+    let link = await createInternalLink(
+      window,
+      target,
+      'apply exclusivity link',
+      'Apply Exclusivity Target',
+    );
+    await hoverNoteCard(window, link);
+
+    await placeCaretInsideLink(link, 5);
+    const input = await openLinkPopup(window);
+    await expect(window.locator('[data-link-hover-popover]')).toHaveCount(0);
+    await input.fill('updated-destination.example');
+    await linkPopover(window).getByRole('button', { name: 'Apply' }).click();
+
+    link = activeEditor(window).locator('a[href="https://updated-destination.example"]');
+    await expect(link).toHaveText('apply exclusivity link');
+    await window.mouse.move(5, 5);
+    await hoverLinkPopover(window, link);
+    await expect(linkInput(window)).toHaveCount(0);
+  });
+
+  test('switching tabs while Cmd+K is open clears global suppression in the source editor', async ({ window }) => {
+    const target = await createNote(window, 'Tab Cleanup Target');
+    const source = await createNote(window, 'Tab Cleanup Source', 'tab cleanup link');
+    let link = await createInternalLink(window, target, 'tab cleanup link', 'Tab Cleanup Target');
+    await placeCaretInsideLink(link, 4);
+    await openLinkPopup(window);
+
+    await window.evaluate((id) => {
+      (window as any).__documentStore.getState().openOrSelectTab(id);
+    }, target.docId);
+    await expect(activeTitle(window)).toHaveText('Tab Cleanup Target');
+    await expect(linkInput(window)).toHaveCount(0);
+
+    await window.evaluate((id) => {
+      (window as any).__documentStore.getState().openOrSelectTab(id);
+    }, source.docId);
+    await expect(activeTitle(window)).toHaveText('Tab Cleanup Source');
+    link = activeEditor(window).locator(
+      `a[href="https://note.lychee.invalid/${target.docId}"]`,
+    );
+    await window.mouse.move(5, 5);
+    await hoverNoteCard(window, link);
+  });
+
+  test('repeated hover-to-Cmd+K transitions never render both overlays', async ({ window }) => {
+    const target = await createNote(window, 'Exclusive Stress Target', 'Stress preview');
+    await createNote(window, 'Exclusive Stress Source', 'exclusive stress link');
+    const link = await createInternalLink(
+      window,
+      target,
+      'exclusive stress link',
+      'Exclusive Stress Target',
+    );
+
+    for (let index = 0; index < 5; index += 1) {
+      await hoverNoteCard(window, link);
+      await placeCaretInsideLink(link, 4);
+      const input = await openLinkPopup(window);
+      await expect(window.locator('[data-link-hover-popover]')).toHaveCount(0);
+      await expect(linkPopover(window)).toBeVisible();
+
+      await input.press('Escape');
+      await expect(linkPopover(window)).toHaveCount(0);
+      await expect(window.locator('[data-link-hover-popover]')).toHaveCount(0);
+      await window.mouse.move(5, 5);
+    }
+
+    await hoverNoteCard(window, link);
+  });
+
+  test('Cmd+K dismisses and suppresses a pinned hover preview until the pointer re-enters', async ({ window }) => {
+    const target = await createNote(window, 'Exclusive Target', 'Preview content');
+    await createNote(window, 'Exclusive Source', 'exclusive link');
+    const link = await createInternalLink(window, target, 'exclusive link', 'Exclusive Target');
+
+    const card = await hoverNoteCard(window, link);
+    await card.getByRole('button', { name: 'Preview' }).click();
+    await expect(card.locator('[data-note-link-preview]')).toBeVisible();
+
+    await placeCaretInsideLink(link, 4);
+    const input = await openLinkPopup(window);
+    await expect(card).toHaveCount(0);
+
+    await link.hover();
+    await window.waitForTimeout(250);
+    await expect(window.locator('[data-internal-note-hover-card]')).toHaveCount(0);
+
+    await input.press('Escape');
+    await window.waitForTimeout(250);
+    await expect(window.locator('[data-internal-note-hover-card]')).toHaveCount(0);
+
+    await window.mouse.move(5, 5);
+    await link.hover();
+    await expect(window.locator('[data-internal-note-hover-card]')).toBeVisible();
+  });
+
+  test('preview remains stable in a small window when mouseout has a non-Node related target', async ({ electronApp, window }) => {
+    const originalSize = await electronApp.evaluate(({ BrowserWindow }) => (
+      BrowserWindow.getAllWindows()[0]?.getContentSize() ?? [1200, 800]
+    ));
+    const pageErrors: string[] = [];
+    window.on('pageerror', (error) => pageErrors.push(error.message));
+
+    try {
+      const target = await createNote(
+        window,
+        'Small Window Preview',
+        'Preview content that remains readable and stable in a constrained window.',
+      );
+      await createNote(window, 'Small Preview Source', 'small preview link');
+      const link = await createInternalLink(window, target, 'small preview link', 'Small Window Preview');
+
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(680, 480);
+      });
+      await expect.poll(() => window.evaluate(() => ({ width: innerWidth, height: innerHeight })))
+        .toEqual({ width: 680, height: 480 });
+
+      const card = await hoverNoteCard(window, link);
+      await card.getByRole('button', { name: 'Preview' }).click();
+      const preview = card.locator('[data-note-link-preview]');
+      await expect(preview).toBeVisible();
+
+      const cardBox = await card.boundingBox();
+      expect(cardBox).not.toBeNull();
+      expect(cardBox!.x).toBeGreaterThanOrEqual(16);
+      expect(cardBox!.x + cardBox!.width).toBeLessThanOrEqual(680 - 16);
+      expect(cardBox!.y).toBeGreaterThanOrEqual(16);
+      expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(480 - 16);
+
+      // Chromium can report Window as relatedTarget when expanding content
+      // changes what is underneath the pointer. It is an EventTarget, but not a
+      // Node, so hover dismissal must not pass it to Node.contains().
+      await link.evaluate((element) => {
+        element.dispatchEvent(new MouseEvent('mouseout', {
+          bubbles: true,
+          relatedTarget: window,
+        }));
+      });
+      await window.locator('[data-link-hover-popover]').evaluate((element) => {
+        element.dispatchEvent(new MouseEvent('mouseout', {
+          bubbles: true,
+          relatedTarget: window,
+        }));
+      });
+      await window.waitForTimeout(200);
+
+      await expect(card).toBeVisible();
+      expect(pageErrors).toEqual([]);
+    } finally {
+      await electronApp.evaluate(({ BrowserWindow }, size) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(size[0], size[1]);
+      }, originalSize);
+    }
+  });
+
   test('long current note title truncates, preview pins, Hide preserves card, and close dismisses it', async ({ window }) => {
     const longTitle = `A deliberately long linked note title ${'with context '.repeat(8)}`.trim();
     const target = await createNote(window, longTitle, 'Preview body with enough context to identify the linked note.');
