@@ -641,6 +641,41 @@ test.describe("Search palette e2e", () => {
     }
   });
 
+  test("sequential short query stays responsive across long note bodies", async ({
+    window,
+  }) => {
+    test.slow();
+    const longBody = `st marker ${"s alpha t beta ".repeat(120)}`;
+    await seedDocs(
+      window,
+      Array.from({ length: 42 }, (_, index) => ({
+        title: `Scalable query note ${index + 1}`,
+        content: bodyContent(longBody),
+      })),
+    );
+
+    await openPalette(window);
+    await waitForResultRows(window, 1);
+    const hidePreview = palette(window).getByRole("button", {
+      name: "Hide preview pane",
+    });
+    if ((await hidePreview.count()) > 0) {
+      await hidePreview.click();
+    }
+
+    const input = paletteInput(window);
+    const searching = palette(window).getByText("Searching...", { exact: true });
+    await input.pressSequentially("s");
+    await expect(searching).toBeVisible({ timeout: 2_000 });
+
+    const startedAt = Date.now();
+    await input.pressSequentially("t");
+    await expect(input).toHaveValue("st");
+    await expect(searching).toHaveCount(0, { timeout: 3_000 });
+    await expect(resultItems(window)).toHaveCount(42);
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+  });
+
   test("long single-note body payload does not degrade palette responsiveness", async ({
     electronApp,
     window,

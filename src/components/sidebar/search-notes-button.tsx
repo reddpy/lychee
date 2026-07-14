@@ -69,7 +69,7 @@ export function SearchNotesButton() {
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(true);
   const [isPaletteInitializing, setIsPaletteInitializing] =
     React.useState(false);
-  const [commandResetKey, setCommandResetKey] = React.useState("initial");
+  const [selectedCommandValue, setSelectedCommandValue] = React.useState("");
   const [previewDocId, setPreviewDocId] = React.useState<string | null>(null);
   const [previewMatchCount, setPreviewMatchCount] = React.useState(0);
   const [previewActiveMatchIndex, setPreviewActiveMatchIndex] =
@@ -91,12 +91,12 @@ export function SearchNotesButton() {
     new Map(),
   );
   const previewNavRef = React.useRef<ReadOnlyNotePreviewHandle>(null);
-  const resultsContainerRef = React.useRef<HTMLDivElement>(null);
   const dialogContentRef = React.useRef<HTMLDivElement>(null);
   const lastPointerPosRef = React.useRef<{ x: number; y: number } | null>(null);
   const openInNewTabRef = React.useRef(false);
   const closeRequestedByShortcutRef = React.useRef(false);
   const lastResolvedIdsRef = React.useRef<string[]>([]);
+  const lastSelectionScopeRef = React.useRef<string | null>(null);
   const getPreviewCacheEntry = React.useCallback((key: string) => {
     const cache = previewCacheRef.current;
     if (!cache.has(key)) return undefined;
@@ -318,9 +318,22 @@ export function SearchNotesButton() {
   }, [open, isPaletteInitializing, isSearching, resolvedDocuments]);
 
   React.useEffect(() => {
-    if (!open || isPaletteInitializing || isSearching) return;
-    const firstId = renderedDocuments[0]?.doc.id ?? "none";
-    setCommandResetKey(`${deferredQuery.trim().toLowerCase()}|${firstId}`);
+    if (!open) {
+      lastSelectionScopeRef.current = null;
+      setSelectedCommandValue("");
+      return;
+    }
+    if (isPaletteInitializing || isSearching) return;
+    const firstId = renderedDocuments[0]?.doc.id ?? "";
+    // Reset to the first result once per settled query/result head without
+    // remounting cmdk or disturbing selection during unrelated document saves.
+    const nextScope = JSON.stringify([
+      deferredQuery.trim().toLowerCase(),
+      firstId,
+    ]);
+    if (lastSelectionScopeRef.current === nextScope) return;
+    lastSelectionScopeRef.current = nextScope;
+    setSelectedCommandValue(firstId);
   }, [
     open,
     deferredQuery,
@@ -470,6 +483,14 @@ export function SearchNotesButton() {
     setPreviewDocId((current) => (current === id ? current : id));
   }, []);
 
+  const handleCommandValueChange = React.useCallback(
+    (id: string) => {
+      setSelectedCommandValue(id);
+      if (id) handlePreviewTarget(id);
+    },
+    [handlePreviewTarget],
+  );
+
   const handlePreviewPointerMove = React.useCallback(
     (id: string, event: React.MouseEvent | React.PointerEvent) => {
       const point = { x: event.clientX, y: event.clientY };
@@ -514,37 +535,6 @@ export function SearchNotesButton() {
     },
     [closePaletteAfterSelection, maybeTransferPreviewJump, openOrCreateTab, openTab],
   );
-
-  const syncPreviewWithKeyboardSelection = React.useCallback(() => {
-    const container = resultsContainerRef.current;
-    if (!container) return;
-    const selectedItem = container.querySelector<HTMLElement>(
-      '[cmdk-item][data-selected="true"]',
-    );
-    const id = selectedItem?.getAttribute("data-doc-id");
-    if (id) handlePreviewTarget(id);
-  }, [handlePreviewTarget]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const container = resultsContainerRef.current;
-    if (!container) return;
-
-    const observer = new MutationObserver(() => {
-      syncPreviewWithKeyboardSelection();
-    });
-    observer.observe(container, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ["data-selected"],
-    });
-
-    // Initial sync when opening/changing query.
-    requestAnimationFrame(syncPreviewWithKeyboardSelection);
-
-    return () => observer.disconnect();
-  }, [open, query, resolvedDocuments, syncPreviewWithKeyboardSelection]);
 
   const isMac =
     typeof navigator !== "undefined" &&
@@ -645,8 +635,9 @@ export function SearchNotesButton() {
         }
         showCloseButton={false}
         shouldFilter={false}
+        commandValue={selectedCommandValue}
+        onCommandValueChange={handleCommandValueChange}
         commandClassName="bg-transparent shadow-none"
-        commandKey={commandResetKey}
       >
         <div
           ref={dialogContentRef}
@@ -677,18 +668,6 @@ export function SearchNotesButton() {
                 </span>
               )
             }
-            onKeyDown={(event) => {
-              if (
-                event.key === "ArrowDown" ||
-                event.key === "ArrowUp" ||
-                event.key === "Home" ||
-                event.key === "End"
-              ) {
-                requestAnimationFrame(() =>
-                  requestAnimationFrame(syncPreviewWithKeyboardSelection),
-                );
-              }
-            }}
           />
           <div
             className={
@@ -749,7 +728,6 @@ export function SearchNotesButton() {
               ) : null}
             </div>
             <div
-              ref={resultsContainerRef}
               className="flex h-[min(560px,68vh)] min-h-0"
             >
               <CommandList
@@ -806,7 +784,7 @@ export function SearchNotesButton() {
                   return (
                     <CommandItem
                       key={doc.id}
-                      value={`${title} ${bodyText} ${doc.id}`}
+                      value={doc.id}
                       className="rounded-md transition-[transform,background-color,color] duration-100 ease-out hover:scale-[1.01] data-[selected=true]:bg-[hsl(var(--primary)/0.1)]"
                       data-doc-id={doc.id}
                       onMouseDown={(event) => {
