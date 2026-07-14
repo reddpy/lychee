@@ -849,6 +849,143 @@ test.describe('Editor — Edge Cases', () => {
     expect(contentStr).toContain('link');
   });
 
+  test('Cmd+K on an empty line inserts the entered URL as linked text', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await window.keyboard.press(`${mod}+k`);
+
+    const urlInput = window.getByPlaceholder('Enter URL...');
+    await expect(urlInput).toBeVisible();
+
+    // A collapsed native range must anchor the dialog in the editor rather
+    // than at the application's top-left corner.
+    const [editorBox, inputBox] = await Promise.all([
+      editorRoot.boundingBox(),
+      urlInput.boundingBox(),
+    ]);
+    expect(editorBox).not.toBeNull();
+    expect(inputBox).not.toBeNull();
+    expect(inputBox!.x).toBeGreaterThanOrEqual(editorBox!.x - 8);
+    expect(inputBox!.y).toBeGreaterThanOrEqual(editorBox!.y - 8);
+
+    await urlInput.fill('example.com');
+    await window.getByRole('button', { name: 'Apply' }).click();
+
+    const link = editorRoot.locator('a[href="https://example.com"]');
+    await expect(link).toHaveText('example.com');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    const content = JSON.parse(doc!.content);
+    const linkNode = content.root.children
+      .flatMap((node: any) => node.children ?? [])
+      .find((node: any) => node.type === 'link');
+    expect(linkNode).toMatchObject({
+      type: 'link',
+      url: 'https://example.com',
+      children: [{ type: 'text', text: 'example.com' }],
+    });
+  });
+
+  test('Cmd+K clears an unsubmitted URL when reopened on an empty line', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.press(`${mod}+k`);
+
+    const urlInput = window.getByPlaceholder('Enter URL...');
+    await urlInput.fill('https://stale.example');
+    await window.keyboard.press('Escape');
+    await expect(urlInput).not.toBeVisible();
+
+    // Restore editor focus before opening the shortcut again.
+    await window.locator('.ContentEditable__root').click();
+    await window.keyboard.press(`${mod}+k`);
+    await expect(urlInput).toHaveValue('');
+  });
+
+  test('Cmd+K at a collapsed caret in non-empty text keeps the existing line-link behavior', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('existing line');
+
+    await window.keyboard.press(`${mod}+k`);
+    await window.getByPlaceholder('Enter URL...').fill('https://example.com');
+    await window.getByRole('button', { name: 'Apply' }).click();
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot.locator('a[href="https://example.com"]')).toHaveText('existing line');
+  });
+
+  test('Cmd+K after a long paragraph inserts only into the following empty paragraph', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+
+    // This is deliberately longer than a viewport and wraps across many lines.
+    // The new empty paragraph must not inherit a link for any of this text.
+    const longParagraph = 'A deliberately long paragraph segment. '.repeat(500);
+    await window.keyboard.insertText(longParagraph);
+    await window.keyboard.press('Enter');
+    await window.keyboard.press(`${mod}+k`);
+    const urlInput = window.getByPlaceholder('Enter URL...');
+    await expect(urlInput).toBeVisible();
+    const [editorBox, inputBox] = await Promise.all([
+      window.locator('.ContentEditable__root').boundingBox(),
+      urlInput.boundingBox(),
+    ]);
+    expect(editorBox).not.toBeNull();
+    expect(inputBox).not.toBeNull();
+    expect(inputBox!.x).toBeGreaterThanOrEqual(editorBox!.x - 8);
+
+    await urlInput.fill('https://separate.example');
+    await window.getByRole('button', { name: 'Apply' }).click();
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    const link = editorRoot.locator('a[href="https://separate.example"]');
+    await expect(link).toHaveText('https://separate.example');
+    await expect(editorRoot).toContainText(longParagraph);
+    await expect(link).not.toContainText('deliberately long paragraph segment');
+
+    await window.waitForTimeout(1000);
+    const doc = await getLatestDocumentFromDb(window);
+    const content = JSON.parse(doc!.content);
+    expect(JSON.stringify(content)).toContain(longParagraph);
+    expect(JSON.stringify(content)).toContain('https://separate.example');
+  });
+
+  test('Cmd+K inserts linked text into an empty list item', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('- ');
+    await window.keyboard.press(`${mod}+k`);
+    await window.getByPlaceholder('Enter URL...').fill('list.example');
+    await window.getByRole('button', { name: 'Apply' }).click();
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    const listLink = editorRoot.locator('li a[href="https://list.example"]');
+    await expect(listLink).toHaveText('list.example');
+  });
+
+  test('Cmd+K at a collapsed caret links a populated list item without changing its text', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('- list item with existing text');
+    await window.keyboard.press(`${mod}+k`);
+    await window.getByPlaceholder('Enter URL...').fill('https://list-item.example');
+    await window.getByRole('button', { name: 'Apply' }).click();
+
+    const editorRoot = window.locator('.ContentEditable__root');
+    await expect(editorRoot.locator('li a[href="https://list-item.example"]'))
+      .toHaveText('list item with existing text');
+  });
+
   test('markdown image ![](url) inserts image', async ({ window }) => {
     const title = window.locator('h1.editor-title');
     await title.click();

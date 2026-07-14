@@ -5,12 +5,13 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import {
   $getSelection,
   $isRangeSelection,
+  $createTextNode,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   KEY_ESCAPE_COMMAND,
   createCommand,
 } from "lexical"
-import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link"
+import { $createLinkNode, $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link"
 import { mergeRegister } from "@lexical/utils"
 import { Link, X } from "lucide-react"
 
@@ -21,6 +22,53 @@ import { onToolbarExclusive } from "@/components/lexical-editor"
 
 export const OPEN_LINK_EDITOR_COMMAND = createCommand<void>("OPEN_LINK_EDITOR_COMMAND")
 
+/**
+ * Browser engines do not consistently return a usable rect for a collapsed
+ * Range. Electron can return an all-zero rect, which causes a fixed popover
+ * anchor to be placed at the top-left corner of the window. When that happens,
+ * derive the caret position from an adjacent character or its containing block.
+ */
+function getLinkEditorAnchorRect(range: Range, editorRoot: HTMLElement | null): DOMRect {
+  const rangeRect = range.getBoundingClientRect()
+  if (rangeRect.width > 0 || rangeRect.height > 0 || rangeRect.left !== 0 || rangeRect.top !== 0) {
+    return rangeRect
+  }
+
+  const { startContainer, startOffset } = range
+  if (startContainer.nodeType === Node.TEXT_NODE) {
+    const text = startContainer.textContent ?? ""
+    const characterRange = document.createRange()
+
+    if (startOffset > 0) {
+      characterRange.setStart(startContainer, startOffset - 1)
+      characterRange.setEnd(startContainer, startOffset)
+      const characterRect = characterRange.getBoundingClientRect()
+      if (characterRect.width > 0 || characterRect.height > 0) {
+        return new DOMRect(characterRect.right, characterRect.top, 0, characterRect.height)
+      }
+    } else if (startOffset < text.length) {
+      characterRange.setStart(startContainer, startOffset)
+      characterRange.setEnd(startContainer, startOffset + 1)
+      const characterRect = characterRange.getBoundingClientRect()
+      if (characterRect.width > 0 || characterRect.height > 0) {
+        return new DOMRect(characterRect.left, characterRect.top, 0, characterRect.height)
+      }
+    }
+  }
+
+  // Empty paragraphs have no adjacent character. Their block still gives us
+  // the correct line position, unlike the native collapsed range.
+  const block = startContainer.nodeType === Node.ELEMENT_NODE
+    ? startContainer as HTMLElement
+    : startContainer.parentElement
+  const blockRect = block?.getBoundingClientRect() ?? editorRoot?.getBoundingClientRect()
+  if (blockRect) {
+    return new DOMRect(blockRect.left, blockRect.top, 0, blockRect.height)
+  }
+
+  return rangeRect
+}
+
 export function LinkEditorPlugin() {
   const [editor] = useLexicalComposerContext()
   const [isOpen, setIsOpen] = useState(false)
@@ -28,10 +76,6 @@ export function LinkEditorPlugin() {
   const [url, setUrl] = useState("")
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    setUrl(initialUrl)
-  }, [initialUrl])
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -58,13 +102,17 @@ export function LinkEditorPlugin() {
         }
       }
       setInitialUrl(existingUrl)
+      // Reset on every open. `existingUrl` can be an unchanged empty string,
+      // in which case an effect watching `initialUrl` would not run and the
+      // previous dialog's URL would remain in the input.
+      setUrl(existingUrl)
 
       // Get position from native selection
       const nativeSelection = window.getSelection()
       if (!nativeSelection || nativeSelection.rangeCount === 0) return
 
       const range = nativeSelection.getRangeAt(0)
-      const rect = range.getBoundingClientRect()
+      const rect = getLinkEditorAnchorRect(range, editor.getRootElement())
       setAnchorRect(rect)
       setIsOpen(true)
     })
@@ -107,11 +155,29 @@ export function LinkEditorPlugin() {
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault()
-      if (url.trim()) {
-        const finalUrl = url.startsWith("http://") || url.startsWith("https://") || url.startsWith("mailto:")
-          ? url
-          : `https://${url}`
-        editor.dispatchCommand(TOGGLE_LINK_COMMAND, finalUrl)
+      const enteredUrl = url.trim()
+      if (enteredUrl) {
+        const finalUrl = enteredUrl.startsWith("http://") || enteredUrl.startsWith("https://") || enteredUrl.startsWith("mailto:")
+          ? enteredUrl
+          : `https://${enteredUrl}`
+        const insertUrlAsText = editor.getEditorState().read(() => {
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false
+          return selection.anchor.getNode().getTopLevelElement()?.getTextContent().length === 0
+        })
+
+        if (insertUrlAsText) {
+          editor.update(() => {
+            const selection = $getSelection()
+            if (!$isRangeSelection(selection) || !selection.isCollapsed()) return
+
+            const link = $createLinkNode(finalUrl)
+            link.append($createTextNode(enteredUrl))
+            selection.insertNodes([link])
+          })
+        } else {
+          editor.dispatchCommand(TOGGLE_LINK_COMMAND, finalUrl)
+        }
       }
       setIsOpen(false)
     },
