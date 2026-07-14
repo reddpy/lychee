@@ -89,7 +89,7 @@ export function BookmarkComponent({
     // rejection signals a transient failure (network down, backend hiccup),
     // not a definitive "no metadata exists." Leaving hydrationAttempted=false
     // lets the next mount retry — recovering when the user comes back online.
-    // Definitive negative answers from the backend (youtube/unsupported below)
+    // Definitive negative answers from the backend (`unsupported` below)
     // DO mark attempted because they describe the resource, not the network.
     if (autoResolve) {
       window.lychee.invoke("url.resolve", { url }).then((result) => {
@@ -116,7 +116,7 @@ export function BookmarkComponent({
             })
             return
           }
-          // youtube / unsupported: leave as bare bookmark — the backend gave
+          // Unsupported: leave as a bare bookmark — the backend gave
           // us a definitive answer about the resource type, so mark attempted.
           node.markHydrationAttempted()
         }, { tag: ["history-merge", LYCHEE_SAVE_TAG] })

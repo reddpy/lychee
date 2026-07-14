@@ -133,7 +133,7 @@ function build(b: Bound, fn: () => void) {
 }
 
 describe("Yjs node-type coverage", () => {
-  it("round-trips a document containing EVERY node type (no YouTube)", () => {
+  it("round-trips a document containing every registered node type", () => {
     const a = makeBoundEditor("doc1");
     build(a, () => {
       const root = $getRoot();

@@ -58,10 +58,10 @@ export function ImageComponent({
 
   // ── Shared hooks ──
   const applySize = useCallback(
-    (w: number, h: number | undefined) => {
+    (w: number, h: number) => {
       editor.update(() => {
         const node = $getNodeByKey(nodeKey)
-        if ($isImageNode(node)) node.setWidthAndHeight(w, h ?? node.__height)
+        if ($isImageNode(node)) node.setWidthAndHeight(w, h)
       })
     },
     [editor, nodeKey],
@@ -70,7 +70,6 @@ export function ImageComponent({
   const { isResizing, onResizeStart } = useBlockResize({
     resizeRef: imageRef,
     containerRef,
-    aspectMode: "preserve",
     applySize,
   })
 

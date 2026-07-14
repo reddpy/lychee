@@ -9,7 +9,6 @@ import type { EditorState, SerializedEditorState } from "lexical";
 
 import { Editor } from "@/components/editor/editor";
 import { NoteEmojiPicker } from "@/components/sidebar/note-emoji-picker";
-import { NoteContext } from "@/renderer/note-context";
 import { BreadcrumbBar } from "@/components/breadcrumb-bar";
 import { BookmarkButton } from "@/components/editor/plugins/bookmark-button-plugin";
 
@@ -251,11 +250,6 @@ export function LexicalEditor({
   const prevActiveTabId = React.useRef<string | null>(null);
   const updateDocumentInStore = useDocumentStore(
     (s) => s.updateDocumentInStore,
-  );
-
-  const noteContextValue = React.useMemo(
-    () => ({ documentId, title: document.title || "" }),
-    [documentId, document.title],
   );
 
   const editorSerializedState = React.useMemo(
@@ -550,18 +544,16 @@ export function LexicalEditor({
         )}
 
         {/* Editor with title as first block */}
-        <NoteContext.Provider value={noteContextValue}>
-          <Editor
-            documentId={documentId}
-            tabId={activeTabId ?? documentId}
-            activeTabId={activeTabId}
-            isActive={!hidden}
-            editorSerializedState={editorSerializedState}
-            onEditorStateChange={handleEditorStateChange}
-            initialTitle={initialTitle}
-            onTitleChange={handleTitleChange}
-          />
-        </NoteContext.Provider>
+        <Editor
+          documentId={documentId}
+          tabId={activeTabId ?? documentId}
+          activeTabId={activeTabId}
+          isActive={!hidden}
+          editorSerializedState={editorSerializedState}
+          onEditorStateChange={handleEditorStateChange}
+          initialTitle={initialTitle}
+          onTitleChange={handleTitleChange}
+        />
       </div>
     </main>
   );
