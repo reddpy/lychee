@@ -277,6 +277,246 @@ test.describe('List backspace → paragraph in place (#222)', () => {
     ).toHaveCount(0);
   });
 
+  test('checklist: Enter at the start preserves a checked task state, while Enter at its end starts unchecked (#240)', async ({ window }) => {
+    await window.keyboard.type('/');
+    await window.waitForTimeout(200);
+    await window.getByRole('option', { name: 'Check List' }).click();
+    await window.waitForTimeout(200);
+    await window.keyboard.type('Done');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Next');
+
+    // Complete the first task through the real checklist click path.
+    const items = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await items.nth(0).click({ position: { x: 10, y: 10 } });
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+
+    // Splitting at its start creates a checked blank task above the checked
+    // content, which is how Notion preserves the task state.
+    await caretToItemStart(window, 0);
+    await window.keyboard.press('Enter');
+    await expectStructure(window, 'CHECK[,Done,Next]');
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-checked/);
+    await expect(items.nth(2)).toHaveClass(/editor-list-item-unchecked/);
+
+    // A normal split at the end instead creates a fresh unchecked task.
+    await items.nth(1).click();
+    await window.keyboard.press('End');
+    await window.waitForTimeout(60);
+    await window.keyboard.press('Enter');
+    await expectStructure(window, 'CHECK[,Done,,Next]');
+    await expect(items.nth(2)).toHaveClass(/editor-list-item-unchecked/);
+  });
+
+  for (const splitIndex of [0, 1, 2]) {
+    test(`checklist: splitting checked item ${splitIndex + 1} of 3 at its start preserves all task states (#240)`, async ({ window }) => {
+      await window.keyboard.type('/');
+      await window.waitForTimeout(200);
+      await window.getByRole('option', { name: 'Check List' }).click();
+      await window.waitForTimeout(200);
+      await window.keyboard.type('A');
+      await window.keyboard.press('Enter');
+      await window.keyboard.type('B');
+      await window.keyboard.press('Enter');
+      await window.keyboard.type('C');
+
+      const items = window.locator('.ContentEditable__root li[role="checkbox"]');
+      await items.nth(splitIndex).click({ position: { x: 10, y: 10 } });
+      await expect(items.nth(splitIndex)).toHaveClass(/editor-list-item-checked/);
+
+      await caretToItemStart(window, splitIndex);
+      await window.keyboard.press('Enter');
+
+      const expectedItems = ['A', 'B', 'C'];
+      expectedItems.splice(splitIndex, 0, '');
+      await expectStructure(window, `CHECK[${expectedItems.join(',')}]`);
+      await expect(items).toHaveCount(4);
+      for (let index = 0; index < 4; index++) {
+        const shouldBeChecked = index === splitIndex || index === splitIndex + 1;
+        await expect(items.nth(index)).toHaveClass(
+          shouldBeChecked ? /editor-list-item-checked/ : /editor-list-item-unchecked/,
+        );
+      }
+    });
+  }
+
+  test('checklist: splitting an unchecked item at its start leaves both items unchecked (#240)', async ({ window }) => {
+    await window.keyboard.type('/');
+    await window.waitForTimeout(200);
+    await window.getByRole('option', { name: 'Check List' }).click();
+    await window.waitForTimeout(200);
+    await window.keyboard.type('A');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('B');
+
+    await caretToItemStart(window, 1);
+    await window.keyboard.press('Enter');
+
+    const items = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await expectStructure(window, 'CHECK[A,,B]');
+    await expect(items).toHaveCount(3);
+    for (let index = 0; index < 3; index++) {
+      await expect(items.nth(index)).toHaveClass(/editor-list-item-unchecked/);
+    }
+  });
+
+  test('checklist: splitting a checked nested item keeps the new item nested and checked (#240)', async ({ window }) => {
+    await window.keyboard.type('/');
+    await window.waitForTimeout(200);
+    await window.getByRole('option', { name: 'Check List' }).click();
+    await window.waitForTimeout(200);
+    await window.keyboard.type('Parent');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Nested task');
+    await caretToItemStart(window, 1);
+    await window.keyboard.press('Tab');
+    await expect(window.locator('.ContentEditable__root li.editor-nested-list-item')).toHaveCount(1);
+
+    const items = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await items.nth(1).click({ position: { x: 10, y: 10 } });
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-checked/);
+
+    await caretToItemStart(window, 1);
+    await window.keyboard.press('Enter');
+
+    await expect(items).toHaveCount(3);
+    // Lexical keeps a wrapper list item for the nested <ul>, alongside the
+    // visible parent task at the outer level.
+    await expect(window.locator('.ContentEditable__root > ul > li')).toHaveCount(2);
+    await expect(window.locator('.ContentEditable__root > ul > li > ul > li')).toHaveCount(2);
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-unchecked/);
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-checked/);
+    await expect(items.nth(2)).toHaveClass(/editor-list-item-checked/);
+  });
+
+  test('checklist: a mid-text split uses the normal unchecked continuation (#240)', async ({ window }) => {
+    await window.keyboard.type('/');
+    await window.waitForTimeout(200);
+    await window.getByRole('option', { name: 'Check List' }).click();
+    await window.waitForTimeout(200);
+    await window.keyboard.type('Done');
+
+    const items = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await items.nth(0).click({ position: { x: 10, y: 10 } });
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+
+    await caretToItemStart(window, 0);
+    await window.keyboard.press('ArrowRight');
+    await window.waitForTimeout(60);
+    await window.keyboard.press('ArrowRight');
+    await window.waitForTimeout(60);
+    await window.keyboard.press('Enter');
+
+    await expectStructure(window, 'CHECK[Do,ne]');
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-unchecked/);
+  });
+
+  test('checklist: repeated start-splits keep every created task checked (#240)', async ({ window }) => {
+    await window.keyboard.type('/');
+    await window.waitForTimeout(200);
+    await window.getByRole('option', { name: 'Check List' }).click();
+    await window.waitForTimeout(200);
+    await window.keyboard.type('Done');
+
+    const items = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await items.nth(0).click({ position: { x: 10, y: 10 } });
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+
+    await caretToItemStart(window, 0);
+    await window.keyboard.press('Enter');
+    await window.keyboard.press('Enter');
+
+    await expectStructure(window, 'CHECK[,,Done]');
+    await expect(items).toHaveCount(3);
+    for (let index = 0; index < 3; index++) {
+      await expect(items.nth(index)).toHaveClass(/editor-list-item-checked/);
+    }
+  });
+
+  test('checklist: undo and redo restore a start-split and both checked states (#240)', async ({ window }) => {
+    await window.keyboard.type('/');
+    await window.waitForTimeout(200);
+    await window.getByRole('option', { name: 'Check List' }).click();
+    await window.waitForTimeout(200);
+    await window.keyboard.type('Done');
+
+    const items = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await items.nth(0).click({ position: { x: 10, y: 10 } });
+    await caretToItemStart(window, 0);
+    await window.keyboard.press('Enter');
+    await expectStructure(window, 'CHECK[,Done]');
+
+    await window.keyboard.press(`${MOD}+z`);
+    await expectStructure(window, 'CHECK[Done]');
+    await expect(items).toHaveCount(1);
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+
+    await window.keyboard.press(`${MOD}+Shift+z`);
+    await expectStructure(window, 'CHECK[,Done]');
+    await expect(items).toHaveCount(2);
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-checked/);
+  });
+
+  test('checklist: undo and redo preserve nesting and checked states after a nested start-split (#240)', async ({ window }) => {
+    await window.keyboard.type('/');
+    await window.waitForTimeout(200);
+    await window.getByRole('option', { name: 'Check List' }).click();
+    await window.waitForTimeout(200);
+    await window.keyboard.type('Parent');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Nested task');
+    await caretToItemStart(window, 1);
+    await window.keyboard.press('Tab');
+    await expect(window.locator('.ContentEditable__root li.editor-nested-list-item')).toHaveCount(1);
+
+    const items = window.locator('.ContentEditable__root li[role="checkbox"]');
+    await items.nth(1).click({ position: { x: 10, y: 10 } });
+    await caretToItemStart(window, 1);
+    await window.keyboard.press('Enter');
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-checked/);
+    await expect(items.nth(2)).toHaveClass(/editor-list-item-checked/);
+
+    await window.keyboard.press(`${MOD}+z`);
+    await expect(items).toHaveCount(2);
+    await expect(window.locator('.ContentEditable__root > ul > li > ul > li')).toHaveCount(1);
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-unchecked/);
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-checked/);
+
+    await window.keyboard.press(`${MOD}+Shift+z`);
+    await expect(items).toHaveCount(3);
+    await expect(window.locator('.ContentEditable__root > ul > li > ul > li')).toHaveCount(2);
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-unchecked/);
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-checked/);
+    await expect(items.nth(2)).toHaveClass(/editor-list-item-checked/);
+  });
+
+  test('checklist: a checked task in a table cell splits in place and stays checked (#240)', async ({ window }) => {
+    await insertTable(window);
+    const cell = window.locator('table.EditorTheme__table td').first();
+    await cell.click();
+    await window.keyboard.type('[ ] Done');
+
+    const items = cell.locator('li[role="checkbox"]');
+    await expect(items).toHaveCount(1);
+    await items.nth(0).click({ position: { x: 10, y: 10 } });
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+
+    await items.nth(0).click();
+    await window.keyboard.press('Home');
+    await window.waitForTimeout(60);
+    await window.keyboard.press('Enter');
+
+    await expect.poll(() => cellStructure(window), { timeout: 4000 }).toBe('CHECK[,Done]');
+    await expect(items).toHaveCount(2);
+    await expect(items.nth(0)).toHaveClass(/editor-list-item-checked/);
+    await expect(items.nth(1)).toHaveClass(/editor-list-item-checked/);
+    await expect(window.locator('table.EditorTheme__table')).toHaveCount(1);
+  });
+
   test('indented item: Backspace OUTDENTS (default), it does NOT convert to a paragraph', async ({ window }) => {
     await buildList(window, '- ', ['A', 'B']);
 

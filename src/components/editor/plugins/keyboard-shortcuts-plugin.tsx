@@ -19,6 +19,7 @@ import {
   $convertListItemToParagraph,
   $isCaretAtListItemStart,
 } from "./list-backspace"
+import { $insertMatchingChecklistItemBefore } from "./list-enter"
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin"
 
 /**
@@ -108,6 +109,20 @@ export function KeyboardShortcutsPlugin(): null {
           const selection = $getSelection()
           if ($isRangeSelection(selection) && selection.isCollapsed()) {
             const anchorNode = selection.anchor.getNode()
+            const listItem = $findMatchingParent(anchorNode, $isListItemNode)
+
+            // Enter at the start of a checked task creates a new checked task
+            // above it. The original task and its checked state remain with
+            // its content below, matching Notion (#240).
+            if (
+              $isListItemNode(listItem) &&
+              $isCaretAtListItemStart(listItem, anchorNode, selection.anchor.offset) &&
+              $insertMatchingChecklistItemBefore(listItem)
+            ) {
+              event.preventDefault()
+              return true
+            }
+
             const topElement = anchorNode.getTopLevelElement()
             if (
               topElement &&
