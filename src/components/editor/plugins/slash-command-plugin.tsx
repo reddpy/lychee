@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils"
 import { $isTitleNode } from "@/components/editor/nodes/title-node"
 import { $insertNodes } from "lexical"
+import { filterSlashCommands } from "./slash-command-search"
 
 class SlashCommandOption extends MenuOption {
   title: string
@@ -91,7 +92,15 @@ function getBaseOptions(): SlashCommandOption[] {
   return [
     new SlashCommandOption("Text", {
       icon: <Type className="h-4 w-4" />,
-      keywords: ["paragraph", "normal", "text"],
+      keywords: [
+        "text",
+        "p",
+        "paragraph",
+        "normal",
+        "plain",
+        "plain text",
+        "body",
+      ],
       onSelect: (editor) => {
         editor.update(() => {
           const selection = $getSelection()
@@ -103,7 +112,7 @@ function getBaseOptions(): SlashCommandOption[] {
     }),
     new SlashCommandOption("Heading 1", {
       icon: <Heading1 className="h-4 w-4" />,
-      keywords: ["h1", "heading", "title"],
+      keywords: ["h1", "heading", "heading1", "header", "header1", "title"],
       onSelect: (editor) => {
         editor.update(() => {
           const selection = $getSelection()
@@ -115,7 +124,7 @@ function getBaseOptions(): SlashCommandOption[] {
     }),
     new SlashCommandOption("Heading 2", {
       icon: <Heading2 className="h-4 w-4" />,
-      keywords: ["h2", "heading", "subtitle"],
+      keywords: ["h2", "heading", "heading2", "header2", "subtitle"],
       onSelect: (editor) => {
         editor.update(() => {
           const selection = $getSelection()
@@ -127,7 +136,7 @@ function getBaseOptions(): SlashCommandOption[] {
     }),
     new SlashCommandOption("Heading 3", {
       icon: <Heading3 className="h-4 w-4" />,
-      keywords: ["h3", "heading"],
+      keywords: ["h3", "heading", "heading3", "header3", "subheading"],
       onSelect: (editor) => {
         editor.update(() => {
           const selection = $getSelection()
@@ -139,28 +148,53 @@ function getBaseOptions(): SlashCommandOption[] {
     }),
     new SlashCommandOption("Bullet List", {
       icon: <List className="h-4 w-4" />,
-      keywords: ["ul", "unordered", "bullet", "list"],
+      keywords: [
+        "ul",
+        "unordered",
+        "unorderedlist",
+        "bullet",
+        "bullets",
+        "bulletlist",
+        "list",
+      ],
       onSelect: (editor) => {
         editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
       },
     }),
     new SlashCommandOption("Numbered List", {
       icon: <ListOrdered className="h-4 w-4" />,
-      keywords: ["ol", "ordered", "numbered", "list"],
+      keywords: [
+        "ol",
+        "ordered",
+        "orderedlist",
+        "number",
+        "numbered",
+        "number list",
+        "numberedlist",
+        "list",
+      ],
       onSelect: (editor) => {
         editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
       },
     }),
     new SlashCommandOption("Check List", {
       icon: <CheckSquare className="h-4 w-4" />,
-      keywords: ["todo", "check", "checkbox", "task"],
+      keywords: [
+        "todo",
+        "to-do",
+        "check",
+        "checkbox",
+        "checklist",
+        "task",
+        "tasklist",
+      ],
       onSelect: (editor) => {
         editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined)
       },
     }),
     new SlashCommandOption("Quote", {
       icon: <Quote className="h-4 w-4" />,
-      keywords: ["blockquote", "quote"],
+      keywords: ["quote", "blockquote"],
       onSelect: (editor) => {
         editor.update(() => {
           const selection = $getSelection()
@@ -172,7 +206,7 @@ function getBaseOptions(): SlashCommandOption[] {
     }),
     new SlashCommandOption("Code Block", {
       icon: <Code className="h-4 w-4" />,
-      keywords: ["code", "codeblock", "snippet"],
+      keywords: ["code", "codeblock", "snippet", "pre", "preformatted"],
       onSelect: (editor) => {
         editor.update(() => {
           const node = $createCodeNode()
@@ -182,14 +216,23 @@ function getBaseOptions(): SlashCommandOption[] {
     }),
     new SlashCommandOption("Divider", {
       icon: <Minus className="h-4 w-4" />,
-      keywords: ["hr", "divider", "horizontal", "rule", "line"],
+      keywords: [
+        "div",
+        "hr",
+        "divider",
+        "horizontal",
+        "horizontal rule",
+        "rule",
+        "line",
+        "separator",
+      ],
       onSelect: (editor) => {
         editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)
       },
     }),
     new SlashCommandOption("Table", {
       icon: <Table className="h-4 w-4" />,
-      keywords: ["table", "grid", "spreadsheet"],
+      keywords: ["table", "sheet", "grid", "spreadsheet"],
       onSelect: (editor) => {
         editor.dispatchCommand(INSERT_TABLE_COMMAND, {
           rows: "3",
@@ -226,16 +269,7 @@ export function SlashCommandPlugin() {
 
   const options = useMemo(() => {
     const baseOptions = getBaseOptions()
-    if (!queryString) {
-      return baseOptions
-    }
-
-    const regex = new RegExp(queryString, "i")
-    return baseOptions.filter(
-      (option) =>
-        regex.test(option.title) ||
-        option.keywords.some((keyword) => regex.test(keyword))
-    )
+    return filterSlashCommands(baseOptions, queryString)
   }, [queryString])
 
   const onSelectOption = useCallback(
