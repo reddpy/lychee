@@ -59,6 +59,60 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+/** Toolbar text formats — a subset of Lexical's TextFormatType that the toolbar exposes. */
+type ToolbarFormat = "bold" | "italic" | "underline" | "strikethrough" | "code" | "highlight";
+
+/** Maps each ToolbarFormat to its state key in ToolbarState. */
+const FORMAT_STATE_KEY: Record<ToolbarFormat, "isBold" | "isItalic" | "isUnderline" | "isStrikethrough" | "isCode" | "isHighlight"> = {
+  bold: "isBold",
+  italic: "isItalic",
+  underline: "isUnderline",
+  strikethrough: "isStrikethrough",
+  code: "isCode",
+  highlight: "isHighlight",
+};
+
+const FORMAT_BUTTONS: { format: ToolbarFormat; icon: React.ElementType; label: string; shortcut: string }[] = [
+  { format: "bold", icon: Bold, label: "Bold", shortcut: "⌘B" },
+  { format: "italic", icon: Italic, label: "Italic", shortcut: "⌘I" },
+  { format: "underline", icon: Underline, label: "Underline", shortcut: "⌘U" },
+  { format: "strikethrough", icon: Strikethrough, label: "Strikethrough", shortcut: "⌘⇧S" },
+  { format: "code", icon: Code, label: "Inline code", shortcut: "⌘E" },
+  { format: "highlight", icon: Highlighter, label: "Highlight", shortcut: "⌘⇧H" },
+];
+
+interface FormatButtonProps {
+  format: ToolbarFormat;
+  icon: React.ElementType;
+  label: string;
+  shortcut: string;
+  active: boolean;
+  onFormat: (format: ToolbarFormat) => void;
+}
+
+function FormatButton({ format, icon: Icon, label, shortcut, active, onFormat }: FormatButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => onFormat(format)}
+          className={cn(
+            "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+            active
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted text-foreground"
+          )}
+          aria-label={label}
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent sideOffset={8}>{label} <kbd className="ml-1.5 opacity-60">{shortcut}</kbd></TooltipContent>
+    </Tooltip>
+  );
+}
+
 type BlockType =
   | "paragraph"
   | "h1"
@@ -384,7 +438,7 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   }, []);
 
   const handleFormat = useCallback(
-    (format: "bold" | "italic" | "underline" | "strikethrough" | "code" | "highlight") => {
+    (format: ToolbarFormat) => {
       editor.focus();
       editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
     },
@@ -396,14 +450,6 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
   }, [editor]);
 
   if (!state.isVisible) return null;
-
-  const btnClass = (active: boolean) =>
-    cn(
-      "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
-      active
-        ? "bg-primary text-primary-foreground"
-        : "hover:bg-muted text-foreground"
-    );
 
   return createPortal(
     <div
@@ -417,65 +463,28 @@ function FloatingToolbar({ editor }: { editor: LexicalEditor }) {
         </>
       )}
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("bold")} className={btnClass(state.isBold)} aria-label="Bold">
-            <Bold className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Bold <kbd className="ml-1.5 opacity-60">⌘B</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("italic")} className={btnClass(state.isItalic)} aria-label="Italic">
-            <Italic className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Italic <kbd className="ml-1.5 opacity-60">⌘I</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("underline")} className={btnClass(state.isUnderline)} aria-label="Underline">
-            <Underline className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Underline <kbd className="ml-1.5 opacity-60">⌘U</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("strikethrough")} className={btnClass(state.isStrikethrough)} aria-label="Strikethrough">
-            <Strikethrough className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Strikethrough <kbd className="ml-1.5 opacity-60">⌘⇧S</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("code")} className={btnClass(state.isCode)} aria-label="Inline code">
-            <Code className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Inline code <kbd className="ml-1.5 opacity-60">⌘E</kbd></TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" onClick={() => handleFormat("highlight")} className={btnClass(state.isHighlight)} aria-label="Highlight">
-            <Highlighter className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Highlight <kbd className="ml-1.5 opacity-60">⌘⇧H</kbd></TooltipContent>
-      </Tooltip>
+      {FORMAT_BUTTONS.map(({ format, icon, label, shortcut }) => (
+        <FormatButton
+          key={format}
+          format={format}
+          icon={icon}
+          label={label}
+          shortcut={shortcut}
+          active={state[FORMAT_STATE_KEY[format]]}
+          onFormat={handleFormat}
+        />
+      ))}
 
       <div className="mx-1 h-6 w-px bg-border" />
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" onClick={handleLink} className={btnClass(state.isLink)} aria-label="Link">
+          <button type="button" onClick={handleLink} className={cn(
+            "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+            state.isLink
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted text-foreground"
+          )} aria-label="Link">
             <Link className="h-4 w-4" />
           </button>
         </TooltipTrigger>
