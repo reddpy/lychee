@@ -81,6 +81,17 @@ describe('Settings Repo', () => {
     );
   });
 
+  it('stores structured UI metadata as a JSON setting', () => {
+    const value = JSON.stringify({ version: 1, open: false, width: 336 });
+    setSetting('ui.sidebar.layout', value);
+
+    expect(JSON.parse(getSetting('ui.sidebar.layout')!)).toEqual({
+      version: 1,
+      open: false,
+      width: 336,
+    });
+  });
+
   // ────────────────────────────────────────────────────────
   // getAllSettings
   // ────────────────────────────────────────────────────────
