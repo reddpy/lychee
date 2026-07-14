@@ -191,8 +191,16 @@ function buildAppMenu(): Menu {
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
+        {
+          label: 'Undo',
+          accelerator: 'CmdOrCtrl+Z',
+          click: (_item, win) => sendMenuEvent(win, 'menu:undo'),
+        },
+        {
+          label: 'Redo',
+          accelerator: 'Shift+CmdOrCtrl+Z',
+          click: (_item, win) => sendMenuEvent(win, 'menu:redo'),
+        },
         { type: 'separator' },
         { role: 'cut' },
         { role: 'copy' },

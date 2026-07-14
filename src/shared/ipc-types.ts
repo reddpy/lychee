@@ -175,8 +175,9 @@ export type IpcContract = {
 
 // Actions the hamburger menu (Win/Linux) dispatches to main — covers View
 // (reload / zoom / devtools / fullscreen), Window (minimize / close), and
-// File > Quit. Edit roles are intentionally omitted; native accelerators and
-// the in-editor context menu handle them, matching Chrome/VS Code.
+// File > Quit. Edit undo/redo are routed to Lexical so they remain correct
+// when Escape has blurred the editor; the in-editor context menu handles the
+// remaining native edit actions.
 export type WindowAction =
   | 'minimize'
   | 'close'
@@ -203,6 +204,8 @@ export type IpcEvents = {
   'menu:open-settings': void;
   'menu:close-tab': void;
   'menu:reopen-closed-tab': void;
+  'menu:undo': void;
+  'menu:redo': void;
   'update:status': UpdateStatus;
 };
 
