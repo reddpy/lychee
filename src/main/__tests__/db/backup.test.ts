@@ -377,6 +377,38 @@ describe('Database backup before migrations', () => {
     errorSpy.mockRestore();
     vi.doUnmock('../../schema');
   });
+
+  it('creates an openable user-requested snapshot with current data', async () => {
+    const backupPath = path.join(tmpDir, 'manual-backup.sqlite3');
+    const { initDatabase, getDb, createDatabaseBackup, closeDatabase } =
+      await import('../../db');
+    initDatabase();
+    getDb().exec(`
+      CREATE TABLE backup_marker (value TEXT NOT NULL);
+      INSERT INTO backup_marker (value) VALUES ('current-data');
+    `);
+
+    createDatabaseBackup(backupPath);
+    closeDatabase();
+
+    const backup = new Database(backupPath, { readonly: true });
+    const row = backup
+      .prepare(`SELECT value FROM backup_marker`)
+      .get() as { value: string };
+    backup.close();
+    expect(row.value).toBe('current-data');
+  });
+
+  it('refuses to replace the active database with a backup', async () => {
+    const { initDatabase, createDatabaseBackup, closeDatabase } =
+      await import('../../db');
+    const { dbPath } = initDatabase();
+    expect(() => createDatabaseBackup(dbPath)).toThrow(
+      /cannot replace Lychee's active database/,
+    );
+    closeDatabase();
+    expect(fs.existsSync(dbPath)).toBe(true);
+  });
 });
 
 describe('backupErrorCode', () => {
