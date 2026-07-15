@@ -50,6 +50,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useKeybindingsStore } from "@/renderer/keybindings-store";
+import { displayKeybinding, type ShortcutId } from "@/shared/keybindings";
 import {
   Tooltip,
   TooltipContent,
@@ -65,25 +67,18 @@ interface FormatButtonDefinition {
   format: TextFormatType;
   icon: LucideIcon;
   label: string;
-  shortcutKey: string;
-  shift?: boolean;
+  shortcutId: ShortcutId;
 }
 
 /** The single source of truth for text formats exposed by the toolbar. */
 const FORMAT_BUTTONS = [
-  { format: "bold", icon: Bold, label: "Bold", shortcutKey: "B", shift: false },
-  { format: "italic", icon: Italic, label: "Italic", shortcutKey: "I", shift: false },
-  { format: "underline", icon: Underline, label: "Underline", shortcutKey: "U", shift: false },
-  { format: "strikethrough", icon: Strikethrough, label: "Strikethrough", shortcutKey: "S", shift: true },
-  { format: "code", icon: Code, label: "Inline code", shortcutKey: "E", shift: false },
-  { format: "highlight", icon: Highlighter, label: "Highlight", shortcutKey: "H", shift: true },
+  { format: "bold", icon: Bold, label: "Bold", shortcutId: "format.bold" },
+  { format: "italic", icon: Italic, label: "Italic", shortcutId: "format.italic" },
+  { format: "underline", icon: Underline, label: "Underline", shortcutId: "format.underline" },
+  { format: "strikethrough", icon: Strikethrough, label: "Strikethrough", shortcutId: "format.strikethrough" },
+  { format: "code", icon: Code, label: "Inline code", shortcutId: "format.inlineCode" },
+  { format: "highlight", icon: Highlighter, label: "Highlight", shortcutId: "format.highlight" },
 ] as const satisfies readonly FormatButtonDefinition[];
-
-function shortcutLabel(key: string, shift = false): string {
-  const isMac = window.lychee.platform === "darwin";
-  if (isMac) return `⌘${shift ? "⇧" : ""}${key}`;
-  return `Ctrl+${shift ? "Shift+" : ""}${key}`;
-}
 
 /** A project-defined subset of Lexical's TextFormatType. */
 type ToolbarFormat = (typeof FORMAT_BUTTONS)[number]["format"];
@@ -259,6 +254,7 @@ function FloatingToolbar({
   editor: LexicalEditor;
   activeTabId: string | null;
 }) {
+  const bindings = useKeybindingsStore((state) => state.bindings);
   const [state, setState] = useState<ToolbarState>(HIDDEN_STATE);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const scrollHiddenRef = useRef(false);
@@ -516,13 +512,13 @@ function FloatingToolbar({
         </>
       )}
 
-      {FORMAT_BUTTONS.map(({ format, icon, label, shortcutKey, shift }) => (
+      {FORMAT_BUTTONS.map(({ format, icon, label, shortcutId }) => (
         <FormatButton
           key={format}
           format={format}
           icon={icon}
           label={label}
-          shortcut={shortcutLabel(shortcutKey, shift)}
+          shortcut={displayKeybinding(bindings[shortcutId], window.lychee.platform)}
           active={state.activeFormats.has(format)}
           onFormat={handleFormat}
         />
@@ -552,7 +548,7 @@ function FloatingToolbar({
             <Link className="h-4 w-4" />
           </button>
         </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Link <kbd className="ml-1.5 opacity-60">{shortcutLabel("K")}</kbd></TooltipContent>
+        <TooltipContent sideOffset={8}>Link <kbd className="ml-1.5 opacity-60">{displayKeybinding(bindings['format.link'], window.lychee.platform)}</kbd></TooltipContent>
       </Tooltip>
     </div>,
     document.body

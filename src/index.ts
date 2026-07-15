@@ -25,6 +25,8 @@ import {
   resolveTheme,
   TITLEBAR_OVERLAY_HEIGHT,
 } from './main/window-chrome';
+import { getKeybindings } from './main/repos/keybindings';
+import { toElectronAccelerator } from './shared/keybindings';
 
 // CSP applies to packaged builds. Dev runs through webpack-dev-server which sets
 // its own (looser) CSP via WebpackPlugin.devContentSecurityPolicy — HMR needs
@@ -132,28 +134,29 @@ if (interceptSquirrelShortcutEvents()) {
 // (Cmd+W/M/R/Opt+I/Q/Z/C/V/X/A) keep working.
 function buildAppMenu(): Menu {
   const isMac = process.platform === 'darwin';
+  const keybindings = getKeybindings();
 
   const newNoteItem: MenuItemConstructorOptions = {
     label: 'New Note',
-    accelerator: 'CmdOrCtrl+N',
+    accelerator: toElectronAccelerator(keybindings['app.newNote']),
     click: (_item, win) => sendMenuEvent(win, 'menu:new-note'),
   };
 
   const settingsItem: MenuItemConstructorOptions = {
     label: 'Settings…',
-    accelerator: 'CmdOrCtrl+,',
+    accelerator: toElectronAccelerator(keybindings['app.openSettings']),
     click: (_item, win) => sendMenuEvent(win, 'menu:open-settings'),
   };
 
   const closeTabItem: MenuItemConstructorOptions = {
     label: 'Close Tab',
-    accelerator: 'CmdOrCtrl+W',
+    accelerator: toElectronAccelerator(keybindings['tabs.close']),
     click: (_item, win) => sendMenuEvent(win, 'menu:close-tab'),
   };
 
   const reopenClosedTabItem: MenuItemConstructorOptions = {
     label: 'Reopen Closed Tab',
-    accelerator: 'Shift+CmdOrCtrl+T',
+    accelerator: toElectronAccelerator(keybindings['tabs.reopenClosed']),
     click: (_item, win) => sendMenuEvent(win, 'menu:reopen-closed-tab'),
   };
 
@@ -195,12 +198,12 @@ function buildAppMenu(): Menu {
       submenu: [
         {
           label: 'Undo',
-          accelerator: 'CmdOrCtrl+Z',
+          accelerator: toElectronAccelerator(keybindings['editor.undo']),
           click: (_item, win) => sendMenuEvent(win, 'menu:undo'),
         },
         {
           label: 'Redo',
-          accelerator: 'Shift+CmdOrCtrl+Z',
+          accelerator: toElectronAccelerator(keybindings['editor.redo']),
           click: (_item, win) => sendMenuEvent(win, 'menu:redo'),
         },
         { type: 'separator' },
@@ -379,7 +382,9 @@ app.whenReady().then(() => {
   // Must register IPC handlers before createWindow loads the renderer URL —
   // the renderer can fire IPC during early hydration (e.g. theme/settings)
   // and would otherwise hit "No handler registered" if the window is created first.
-  registerIpcHandlers();
+  registerIpcHandlers({
+    onKeybindingsChanged: () => Menu.setApplicationMenu(buildAppMenu()),
+  });
   registerClipboardIpcHandler();
   createWindow();
 

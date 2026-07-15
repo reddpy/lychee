@@ -22,10 +22,6 @@ vi.mock('electron', () => ({
       name === 'documents' ? '/test/Documents' : '/test/Lychee',
     ),
   },
-  BrowserWindow: {
-    getFocusedWindow: vi.fn().mockReturnValue(null),
-    getAllWindows: vi.fn().mockReturnValue([]),
-  },
   dialog: {
     showSaveDialog: vi.fn().mockResolvedValue({ canceled: true }),
   },
@@ -38,6 +34,10 @@ vi.mock('electron', () => ({
     openExternal: vi.fn().mockResolvedValue(undefined),
     openPath: vi.fn().mockResolvedValue(''),
     showItemInFolder: vi.fn(),
+  },
+  BrowserWindow: {
+    getFocusedWindow: vi.fn().mockReturnValue(null),
+    getAllWindows: vi.fn().mockReturnValue([{ webContents: { send: vi.fn() } }]),
   },
 }));
 
@@ -74,6 +74,15 @@ vi.mock('../../repos/url-metadata', () => ({
   fetchUrlMetadata: vi.fn().mockResolvedValue({ title: 'Test', description: '', imageUrl: '', faviconUrl: '', url: 'x' }),
 }));
 
+vi.mock('../../repos/keybindings', () => ({
+  getKeybindings: vi.fn().mockReturnValue({ 'format.bold': 'Mod+Y' }),
+  setKeybinding: vi.fn().mockReturnValue({ 'format.bold': 'Mod+Y' }),
+  resetKeybinding: vi.fn().mockReturnValue({ 'format.bold': 'Mod+Y' }),
+  resetAllKeybindings: vi.fn().mockReturnValue({ 'format.bold': 'Mod+Y' }),
+}));
+
+import * as keybindings from '../../repos/keybindings';
+
 import {
   shell,
   registerIpcHandlers,
@@ -93,8 +102,8 @@ describe('IPC Handler Wiring', () => {
 
   // If a channel is missing, the renderer's invoke() call would hang forever
   // with no response. This is the most basic check.
-  it('registers exactly 33 channels', () => {
-    expect(handlers.size).toBe(33);
+  it('registers exactly 37 channels', () => {
+    expect(handlers.size).toBe(37);
   });
 
   // Verify every expected channel name exists. A typo in a channel name
@@ -125,6 +134,10 @@ describe('IPC Handler Wiring', () => {
       'settings.get',
       'settings.set',
       'settings.getAll',
+      'keybindings.getAll',
+      'keybindings.set',
+      'keybindings.reset',
+      'keybindings.resetAll',
       'spellcheck.getState',
       'spellcheck.setEnabled',
       'spellcheck.setLanguages',
@@ -339,6 +352,24 @@ describe('IPC Handler Wiring', () => {
     const handler = handlers.get('url.fetchMetadata')!;
     await handler(null, { url: 'https://example.com' });
     expect(urlMetadata.fetchUrlMetadata).toHaveBeenCalledWith('https://example.com');
+  });
+
+  it('keybinding handlers return saved state and call the validated repo', async () => {
+    const keybindingResult = { 'format.bold': 'Mod+Y' };
+    expect(await handlers.get('keybindings.getAll')!(null, {})).toEqual({ bindings: keybindingResult });
+    expect(await handlers.get('keybindings.set')!(null, { id: 'format.bold', binding: 'Mod+Y' })).toEqual({ bindings: keybindingResult });
+    expect(keybindings.setKeybinding).toHaveBeenCalledWith('format.bold', 'Mod+Y');
+    expect(await handlers.get('keybindings.reset')!(null, { id: 'format.bold' })).toEqual({ bindings: keybindingResult });
+    expect(keybindings.resetKeybinding).toHaveBeenCalledWith('format.bold');
+    expect(await handlers.get('keybindings.resetAll')!(null, {})).toEqual({ bindings: keybindingResult });
+    expect(keybindings.resetAllKeybindings).toHaveBeenCalledOnce();
+  });
+
+  it('keybinding mutations rebuild the native menu through the callback', async () => {
+    const onKeybindingsChanged = vi.fn();
+    registerIpcHandlers({ onKeybindingsChanged });
+    await handlers.get('keybindings.set')!(null, { id: 'format.bold', binding: 'Mod+Y' });
+    expect(onKeybindingsChanged).toHaveBeenCalledOnce();
   });
 
   // ────────────────────────────────────────────────────────

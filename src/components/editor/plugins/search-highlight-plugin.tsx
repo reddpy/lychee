@@ -2,6 +2,8 @@ import * as React from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 
 import { useSearchHighlightStore } from "@/renderer/search-highlight-store";
+import { useKeybindingsStore } from "@/renderer/keybindings-store";
+import { matchesKeybinding } from "@/shared/keybindings";
 
 type TextRange = {
   range: Range;
@@ -31,17 +33,6 @@ function supportsCustomHighlightApi() {
 
 function normalizeSearchTerm(value: string) {
   return value.normalize("NFC").toLowerCase();
-}
-
-function isFindShortcut(event: {
-  key: string;
-  metaKey: boolean;
-  ctrlKey: boolean;
-  shiftKey: boolean;
-  altKey: boolean;
-}) {
-  const isModifier = event.metaKey || event.ctrlKey;
-  return isModifier && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "f";
 }
 
 function getCachedNormalizedText(
@@ -163,6 +154,7 @@ export function SearchHighlightPlugin({
   isActive: boolean;
 }): null {
   const [editor] = useLexicalComposerContext();
+  const findBinding = useKeybindingsStore((s) => s.bindings['navigation.findInNote']);
   const query = useSearchHighlightStore(
     (s) => s.states[tabId]?.query ?? "",
   );
@@ -541,7 +533,7 @@ export function SearchHighlightPlugin({
   React.useEffect(() => {
     if (!isActive) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!isFindShortcut(event)) return;
+      if (!matchesKeybinding(event, findBinding, window.lychee.platform)) return;
       event.preventDefault();
       toggleFind();
     };
@@ -552,6 +544,7 @@ export function SearchHighlightPlugin({
     });
   }, [
     editor,
+    findBinding,
     isActive,
     toggleFind,
   ]);
@@ -561,7 +554,7 @@ export function SearchHighlightPlugin({
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if (document.body.dataset.lycheeCommandPaletteOpen === "true") return;
-      if (!isFindShortcut(event)) return;
+      if (!matchesKeybinding(event, findBinding, window.lychee.platform)) return;
       event.preventDefault();
       toggleFind();
     };
@@ -569,6 +562,7 @@ export function SearchHighlightPlugin({
     return () => window.removeEventListener("keydown", onWindowKeyDown);
   }, [
     isActive,
+    findBinding,
     toggleFind,
   ]);
 
