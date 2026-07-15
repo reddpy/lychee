@@ -53,6 +53,12 @@ export type SpellCheckState = {
   availableLanguages: string[];
 };
 
+export type DataLocations = {
+  userDataPath: string;
+  databasePath: string;
+  imagesPath: string;
+};
+
 // ── IPC contract ─────────────────────────────────────────────────────
 
 export type IpcContract = {
@@ -111,6 +117,24 @@ export type IpcContract = {
   'shell.openExternal': {
     req: { url: string };
     res: { ok: true };
+  };
+  'data.getLocations': {
+    req: Record<string, never>;
+    res: DataLocations;
+  };
+  'data.openFolder': {
+    req: Record<string, never>;
+    res: { ok: true };
+  };
+  'data.revealDatabase': {
+    req: Record<string, never>;
+    res: { ok: true };
+  };
+  'data.createBackup': {
+    req: Record<string, never>;
+    res:
+      | { canceled: true }
+      | { canceled: false; filePath: string };
   };
   'images.save': {
     req: { data: string; mimeType: string };

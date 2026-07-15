@@ -17,6 +17,18 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const handlers = new Map<string, (event: unknown, payload: unknown) => unknown>();
 
 vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn((name: string) =>
+      name === 'documents' ? '/test/Documents' : '/test/Lychee',
+    ),
+  },
+  BrowserWindow: {
+    getFocusedWindow: vi.fn().mockReturnValue(null),
+    getAllWindows: vi.fn().mockReturnValue([]),
+  },
+  dialog: {
+    showSaveDialog: vi.fn().mockResolvedValue({ canceled: true }),
+  },
   ipcMain: {
     handle: vi.fn((channel: string, handler: (event: unknown, payload: unknown) => unknown) => {
       handlers.set(channel, handler);
@@ -24,7 +36,13 @@ vi.mock('electron', () => ({
   },
   shell: {
     openExternal: vi.fn().mockResolvedValue(undefined),
+    openPath: vi.fn().mockResolvedValue(''),
+    showItemInFolder: vi.fn(),
   },
+}));
+
+vi.mock('../../db', () => ({
+  createDatabaseBackup: vi.fn(),
 }));
 
 // Mock all repo modules
@@ -63,6 +81,7 @@ import {
   images,
   urlResolver,
   urlMetadata,
+  database,
 } from './setup';
 
 describe('IPC Handler Wiring', () => {
@@ -74,8 +93,8 @@ describe('IPC Handler Wiring', () => {
 
   // If a channel is missing, the renderer's invoke() call would hang forever
   // with no response. This is the most basic check.
-  it('registers exactly 29 channels', () => {
-    expect(handlers.size).toBe(29);
+  it('registers exactly 33 channels', () => {
+    expect(handlers.size).toBe(33);
   });
 
   // Verify every expected channel name exists. A typo in a channel name
@@ -93,6 +112,10 @@ describe('IPC Handler Wiring', () => {
       'documents.permanentDelete',
       'documents.move',
       'shell.openExternal',
+      'data.getLocations',
+      'data.openFolder',
+      'data.revealDatabase',
+      'data.createBackup',
       'images.save',
       'images.getPath',
       'images.download',
@@ -210,6 +233,64 @@ describe('IPC Handler Wiring', () => {
     const result = await handler(null, { url: 'https://example.com' });
     expect(result).toEqual({ ok: true });
     expect(shell.openExternal).toHaveBeenCalledWith('https://example.com');
+  });
+
+  it('data.getLocations returns the userData storage layout', async () => {
+    const handler = handlers.get('data.getLocations')!;
+    const result = await handler(null, {});
+    expect(result).toEqual({
+      userDataPath: '/test/Lychee',
+      databasePath: '/test/Lychee/lychee.sqlite3',
+      imagesPath: '/test/Lychee/images',
+    });
+  });
+
+  it('data.openFolder opens userData and returns { ok: true }', async () => {
+    const handler = handlers.get('data.openFolder')!;
+    const result = await handler(null, {});
+    expect(result).toEqual({ ok: true });
+    expect(shell.openPath).toHaveBeenCalledWith('/test/Lychee');
+  });
+
+  it('data.openFolder propagates the OS error message', async () => {
+    (shell.openPath as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      'Permission denied',
+    );
+    const handler = handlers.get('data.openFolder')!;
+    await expect(handler(null, {})).rejects.toThrow('Permission denied');
+  });
+
+  it('data.revealDatabase reveals the exact SQLite file', async () => {
+    const handler = handlers.get('data.revealDatabase')!;
+    const result = await handler(null, {});
+    expect(result).toEqual({ ok: true });
+    expect(shell.showItemInFolder).toHaveBeenCalledWith(
+      '/test/Lychee/lychee.sqlite3',
+    );
+  });
+
+  it('data.createBackup snapshots the database to the selected path', async () => {
+    const { dialog } = await import('electron');
+    (dialog.showSaveDialog as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      canceled: false,
+      filePath: '/test/Documents/lychee-backup.sqlite3',
+    });
+    const handler = handlers.get('data.createBackup')!;
+    const result = await handler(null, {});
+    expect(result).toEqual({
+      canceled: false,
+      filePath: '/test/Documents/lychee-backup.sqlite3',
+    });
+    expect(database.createDatabaseBackup).toHaveBeenCalledWith(
+      '/test/Documents/lychee-backup.sqlite3',
+    );
+  });
+
+  it('data.createBackup does nothing when the save dialog is canceled', async () => {
+    const handler = handlers.get('data.createBackup')!;
+    const result = await handler(null, {});
+    expect(result).toEqual({ canceled: true });
+    expect(database.createDatabaseBackup).not.toHaveBeenCalled();
   });
 
   // ────────────────────────────────────────────────────────

@@ -171,6 +171,32 @@ export function getDb(): BetterSqlite3Database {
   return db;
 }
 
+export function createDatabaseBackup(destination: string): void {
+  const database = getDb();
+  const source = path.resolve(database.name);
+  const resolvedDestination = path.resolve(destination);
+  // Windows paths are case-insensitive, so differently-cased spellings of the
+  // live DB must still be treated as the same file.
+  const comparisonSource = process.platform === "win32" ? source.toLowerCase() : source;
+  const comparisonDestination =
+    process.platform === "win32" ? resolvedDestination.toLowerCase() : resolvedDestination;
+  if (comparisonDestination === comparisonSource) {
+    throw new Error("A backup cannot replace Lychee's active database");
+  }
+  try {
+    vacuumIntoFile(database, resolvedDestination);
+  } catch (err) {
+    // A failed VACUUM INTO can leave a partial file. Never let that artifact
+    // look like a usable backup in the location the user selected.
+    try {
+      if (fs.existsSync(resolvedDestination)) fs.unlinkSync(resolvedDestination);
+    } catch {
+      // Preserve the original SQLite/filesystem error.
+    }
+    throw err;
+  }
+}
+
 export function closeDatabase() {
   if (!db) return;
   db.close();

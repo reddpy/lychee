@@ -15,7 +15,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { clearIpcMocks, mockIpcReject } from './ipc-mock';
+import { clearIpcMocks, mockIpcReject, mockIpcResolve } from './ipc-mock';
 
 /** Click outside the dialog to dismiss it via the Radix overlay. */
 async function clickOutsideDialog(window: import('@playwright/test').Page) {
@@ -131,6 +131,71 @@ test.describe('Settings Modal', () => {
     await expect(dialog).toBeVisible();
 
     await expect(dialog.getByText('App-wide preferences and startup options.')).toBeVisible();
+  });
+
+  test('General data controls expose the storage layout and file actions', async ({ window }) => {
+    await mockIpcResolve(window, 'data.getLocations', {
+      userDataPath: '/Users/test/Library/Application Support/Lychee',
+      databasePath: '/Users/test/Library/Application Support/Lychee/lychee.sqlite3',
+      imagesPath: '/Users/test/Library/Application Support/Lychee/images',
+    });
+    await mockIpcResolve(window, 'data.openFolder', { ok: true }, 100);
+    await mockIpcResolve(window, 'data.revealDatabase', { ok: true }, 100);
+    await window.locator('aside[data-state="expanded"]').getByText('Settings').click();
+
+    const dialog = window.locator('[data-slot="dialog-content"]');
+    await expect(dialog.getByText('/Users/test/Library/Application Support/Lychee')).toBeVisible();
+    await expect(dialog.getByText('lychee.sqlite3')).toBeVisible();
+    await expect(dialog.getByText('images/')).toBeVisible();
+
+    const openButton = dialog.getByRole('button', { name: 'Open Data Folder' });
+    await openButton.click();
+    await expect(openButton).toBeDisabled();
+    await expect(openButton).toBeEnabled();
+
+    const revealButton = dialog.getByRole('button', {
+      name:
+        process.platform === 'darwin'
+          ? 'Reveal in Finder'
+          : process.platform === 'win32'
+            ? 'Show in Explorer'
+            : 'Show in Folder',
+    });
+    await revealButton.click();
+    await expect(revealButton).toBeDisabled();
+    await expect(revealButton).toBeEnabled();
+  });
+
+  test('General data control reports an open-folder failure', async ({ window }) => {
+    await mockIpcResolve(window, 'data.getLocations', {
+      userDataPath: '/Users/test/Library/Application Support/Lychee',
+      databasePath: '/Users/test/Library/Application Support/Lychee/lychee.sqlite3',
+      imagesPath: '/Users/test/Library/Application Support/Lychee/images',
+    });
+    await mockIpcReject(window, 'data.openFolder', 'injected open failure');
+    await window.locator('aside[data-state="expanded"]').getByText('Settings').click();
+
+    const dialog = window.locator('[data-slot="dialog-content"]');
+    await dialog.getByRole('button', { name: 'Open Data Folder' }).click();
+    await expect(dialog.getByRole('alert')).toContainText(
+      'Lychee couldn’t open the data folder',
+    );
+  });
+
+  test('General data control creates a consistent backup', async ({ window }) => {
+    await mockIpcResolve(window, 'data.createBackup', {
+      canceled: false,
+      filePath: '/Users/test/Documents/lychee-backup.sqlite3',
+    }, 100);
+    await window.locator('aside[data-state="expanded"]').getByText('Settings').click();
+
+    const dialog = window.locator('[data-slot="dialog-content"]');
+    const backupButton = dialog.getByRole('button', { name: 'Create Backup…' });
+    await backupButton.click();
+    await expect(backupButton).toBeDisabled();
+    await expect(dialog.getByRole('status')).toContainText(
+      '/Users/test/Documents/lychee-backup.sqlite3',
+    );
   });
 
   test('left nav switches between sections', async ({ window }) => {
