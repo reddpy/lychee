@@ -334,6 +334,7 @@ export function SearchNotesButton() {
     if (lastSelectionScopeRef.current === nextScope) return;
     lastSelectionScopeRef.current = nextScope;
     setSelectedCommandValue(firstId);
+    setPreviewDocId(firstId || null);
   }, [
     open,
     deferredQuery,
@@ -894,7 +895,10 @@ export function SearchNotesButton() {
                     </TooltipPrimitive.Root>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="line-clamp-2 flex-1 text-sm font-semibold">
+                    <div
+                      data-testid="search-preview-title"
+                      className="line-clamp-2 flex-1 text-sm font-semibold"
+                    >
                       {previewTitle}
                     </div>
                     {query.trim() ? (
