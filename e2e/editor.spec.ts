@@ -902,7 +902,7 @@ test.describe('Editor — Edge Cases', () => {
     await window.keyboard.press(`${mod}+k`);
     await window.waitForTimeout(300);
 
-    await window.getByPlaceholder('Enter URL...').fill('https://example.com');
+    await window.getByPlaceholder('Search notes or enter URL...').fill('https://example.com');
     await window.getByRole('button', { name: 'Apply' }).click();
     await window.waitForTimeout(300);
 
@@ -920,6 +920,111 @@ test.describe('Editor — Edge Cases', () => {
     expect(contentStr).toContain('link');
   });
 
+  test('Cmd+K searches note titles, inserts a stable page link, and opens it inside Lychee', async ({ window }) => {
+    const visibleTitle = window.locator('main:visible h1.editor-title');
+    await visibleTitle.click();
+    await window.keyboard.type('Target Note');
+    await window.waitForTimeout(800);
+
+    const target = (await listDocumentsFromDb(window)).find((doc) => doc.title === 'Target Note');
+    expect(target).toBeTruthy();
+
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle.click();
+    await window.keyboard.type('Source Note');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('Related: ');
+    await window.keyboard.press(`${mod}+k`);
+
+    const linkInput = window.getByPlaceholder('Search notes or enter URL...');
+    const linkPopover = window.locator('[data-slot="popover-content"]').filter({ has: linkInput });
+    await expect(linkPopover.locator('input')).toHaveCount(1);
+    await linkInput.fill('Target');
+    const targetResult = window.locator(`[data-note-link-id="${target!.id}"]`);
+    await expect(targetResult).toContainText('Target Note');
+    await targetResult.click();
+
+    const internalUrl = `https://note.lychee.invalid/${target!.id}`;
+    const internalLink = window.locator(`main:visible .ContentEditable__root a[href="${internalUrl}"]`);
+    await expect(internalLink).toHaveText('Target Note');
+    await expect(window.locator('main:visible .ContentEditable__root')).toContainText('Related: Target Note');
+
+    await window.waitForTimeout(1000);
+    const source = (await listDocumentsFromDb(window)).find((doc) => doc.title === 'Source Note');
+    expect(source).toBeTruthy();
+    expect(source!.content).toContain(internalUrl);
+
+    await internalLink.hover();
+    const hoverPopover = window.locator('[data-slot="popover-content"]').filter({
+      has: window.getByRole('button', { name: 'Open in new tab' }),
+    });
+    await expect(hoverPopover.getByText('Target Note', { exact: true })).toBeVisible();
+    await expect(hoverPopover.getByRole('button', { name: 'Preview' })).toBeVisible();
+    await expect(hoverPopover.getByRole('button', { name: 'Open', exact: true })).toBeVisible();
+    await expect(hoverPopover.getByRole('button', { name: 'Open in new tab' })).toBeVisible();
+    await expect(hoverPopover.getByRole('button', { name: 'Bookmark' })).toHaveCount(0);
+    await expect(hoverPopover.getByRole('button', { name: 'Embed' })).toHaveCount(0);
+
+    await hoverPopover.getByRole('button', { name: 'Preview' }).click();
+    await expect(hoverPopover.locator('[data-note-link-preview]')).toBeVisible();
+    await expect(hoverPopover.getByRole('button', { name: 'Hide' })).toBeVisible();
+    await expect(hoverPopover.getByRole('button', { name: 'Close note card' })).toBeVisible();
+    await hoverPopover.getByRole('button', { name: 'Hide' }).click();
+    await expect(hoverPopover.locator('[data-note-link-preview]')).toHaveCount(0);
+    await expect(hoverPopover.getByText('Target Note', { exact: true })).toBeVisible();
+
+    const targetTabsBefore = await window.evaluate((targetId) =>
+      (window as any).__documentStore.getState().openTabs
+        .filter((tab: any) => tab.docId === targetId).length,
+    target!.id);
+    await hoverPopover.getByRole('button', { name: 'Open in new tab' }).click();
+    await expect(visibleTitle).toHaveText('Source Note');
+    const targetTabsAfter = await window.evaluate((targetId) =>
+      (window as any).__documentStore.getState().openTabs
+        .filter((tab: any) => tab.docId === targetId).length,
+    target!.id);
+    expect(targetTabsAfter).toBe(targetTabsBefore + 1);
+
+    await internalLink.hover();
+    const reopenedHoverPopover = window.locator('[data-slot="popover-content"]').filter({
+      has: window.getByRole('button', { name: 'Open in new tab' }),
+    });
+    await reopenedHoverPopover.getByRole('button', { name: 'Open', exact: true }).click();
+    await expect(visibleTitle).toHaveText('Target Note');
+  });
+
+  test('internal page linking preserves selected custom text', async ({ window }) => {
+    const visibleTitle = window.locator('main:visible h1.editor-title');
+    await visibleTitle.click();
+    await window.keyboard.type('Reference Target');
+    await window.waitForTimeout(800);
+    const target = (await listDocumentsFromDb(window)).find((doc) => doc.title === 'Reference Target');
+    expect(target).toBeTruthy();
+
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+    await visibleTitle.click();
+    await window.keyboard.type('Reference Source');
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('custom label');
+    await window.keyboard.press('Shift+Home');
+    await window.keyboard.press(`${mod}+k`);
+    const linkInput = window.getByPlaceholder('Search notes or enter URL...');
+    await expect(linkInput).toBeFocused();
+    await expect.poll(() => window.evaluate(() =>
+      Boolean((CSS as any).highlights?.has('lychee-link-selection')) ||
+      Boolean(document.querySelector('[data-link-selection-overlay]')),
+    )).toBe(true);
+    await linkInput.fill('Reference Target');
+    await window.locator(`[data-note-link-id="${target!.id}"]`).click();
+
+    const link = window.locator(
+      `main:visible .ContentEditable__root a[href="https://note.lychee.invalid/${target!.id}"]`,
+    );
+    await expect(link).toHaveText('custom label');
+  });
+
   test('Cmd+K on an empty line inserts the entered URL as linked text', async ({ window }) => {
     const title = window.locator('h1.editor-title');
     await title.click();
@@ -928,7 +1033,7 @@ test.describe('Editor — Edge Cases', () => {
     const editorRoot = window.locator('.ContentEditable__root');
     await window.keyboard.press(`${mod}+k`);
 
-    const urlInput = window.getByPlaceholder('Enter URL...');
+    const urlInput = window.getByPlaceholder('Search notes or enter URL...');
     await expect(urlInput).toBeVisible();
 
     // A collapsed native range must anchor the dialog in the editor rather
@@ -967,7 +1072,7 @@ test.describe('Editor — Edge Cases', () => {
     await window.keyboard.press('Enter');
     await window.keyboard.press(`${mod}+k`);
 
-    const urlInput = window.getByPlaceholder('Enter URL...');
+    const urlInput = window.getByPlaceholder('Search notes or enter URL...');
     await urlInput.fill('https://stale.example');
     await window.keyboard.press('Escape');
     await expect(urlInput).not.toBeVisible();
@@ -985,7 +1090,7 @@ test.describe('Editor — Edge Cases', () => {
     await window.keyboard.type('existing line');
 
     await window.keyboard.press(`${mod}+k`);
-    await window.getByPlaceholder('Enter URL...').fill('https://example.com');
+    await window.getByPlaceholder('Search notes or enter URL...').fill('https://example.com');
     await window.getByRole('button', { name: 'Apply' }).click();
 
     const editorRoot = window.locator('.ContentEditable__root');
@@ -1003,7 +1108,7 @@ test.describe('Editor — Edge Cases', () => {
     await window.keyboard.insertText(longParagraph);
     await window.keyboard.press('Enter');
     await window.keyboard.press(`${mod}+k`);
-    const urlInput = window.getByPlaceholder('Enter URL...');
+    const urlInput = window.getByPlaceholder('Search notes or enter URL...');
     await expect(urlInput).toBeVisible();
     const [editorBox, inputBox] = await Promise.all([
       window.locator('.ContentEditable__root').boundingBox(),
@@ -1035,7 +1140,7 @@ test.describe('Editor — Edge Cases', () => {
     await window.keyboard.press('Enter');
     await window.keyboard.type('- ');
     await window.keyboard.press(`${mod}+k`);
-    await window.getByPlaceholder('Enter URL...').fill('list.example');
+    await window.getByPlaceholder('Search notes or enter URL...').fill('list.example');
     await window.getByRole('button', { name: 'Apply' }).click();
 
     const editorRoot = window.locator('.ContentEditable__root');
@@ -1049,7 +1154,7 @@ test.describe('Editor — Edge Cases', () => {
     await window.keyboard.press('Enter');
     await window.keyboard.type('- list item with existing text');
     await window.keyboard.press(`${mod}+k`);
-    await window.getByPlaceholder('Enter URL...').fill('https://list-item.example');
+    await window.getByPlaceholder('Search notes or enter URL...').fill('https://list-item.example');
     await window.getByRole('button', { name: 'Apply' }).click();
 
     const editorRoot = window.locator('.ContentEditable__root');

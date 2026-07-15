@@ -977,7 +977,7 @@ test.describe('Text formats — Interactions with other features', () => {
     await selectInParagraph(window, -1, fullText.length - 'linked'.length, fullText.length);
     await window.keyboard.press(`${mod}+k`);
     await window.waitForTimeout(300);
-    await window.getByPlaceholder('Enter URL...').fill('https://example.com');
+    await window.getByPlaceholder('Search notes or enter URL...').fill('https://example.com');
     await window.getByRole('button', { name: 'Apply' }).click();
     await window.waitForTimeout(500);
 
