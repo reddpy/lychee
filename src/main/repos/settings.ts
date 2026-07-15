@@ -4,6 +4,7 @@ import { getDb } from '../db';
 const SETTING_DEFAULTS: Record<string, string> = {
   theme: 'light',
   searchPalettePreviewOpen: 'true',
+  spellCheckEnabled: 'true',
 };
 
 export function getSetting(key: string): string | null {

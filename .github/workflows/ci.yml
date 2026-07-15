@@ -120,6 +120,9 @@ jobs:
           - name: text-formats
             specs: e2e/text-formats.spec.ts
             workers: 1
+          - name: editor-context-menu
+            specs: e2e/editor-context-menu.spec.ts
+            workers: 1
           - name: menu-shortcuts
             specs: e2e/menu-shortcuts.spec.ts
           - name: misc
@@ -189,6 +192,59 @@ jobs:
           name: blob-report-${{ matrix.name }}
           path: blob-report/
           retention-days: 1
+
+  e2e-spellcheck-platform:
+    name: E2E Spellcheck (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          # Keep platform smoke builds on the same known-good Node release as
+          # the primary Linux package and E2E jobs.
+          node-version: 24.15.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Package Electron app for spellcheck E2E
+        run: pnpm run package
+        env:
+          E2E: '1'
+
+      - name: Run spellcheck E2E smoke tests
+        run: >-
+          pnpm exec playwright test
+          e2e/settings.spec.ts
+          e2e/editor-context-menu.spec.ts
+          --workers=1
+          --reporter=list
+          --grep "spelling|suggestions"
+        env:
+          E2E: '1'
+
+      - name: Upload spellcheck failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spellcheck-e2e-${{ matrix.name }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   e2e-report:
     name: E2E Report

@@ -15,6 +15,8 @@ import {
 import { closeDatabase, initDatabase } from './main/db';
 import { resolveImagePath } from './main/image-protocol';
 import { registerClipboardIpcHandler, registerIpcHandlers } from './main/ipc';
+import { installEditorContextMenu } from './main/editor-context-menu';
+import { applySpellCheckPreferences } from './main/spellcheck';
 import { initUpdater } from './main/updater';
 import { isAllowedExternal } from './main/url-policy';
 import {
@@ -294,6 +296,8 @@ const createWindow = (): BrowserWindow => {
     },
   });
 
+  installEditorContextMenu(mainWindow);
+
   if (!isMac) {
     // Keep Menu.setApplicationMenu registered so accelerators (Ctrl+N etc.) still
     // fire; just hide the menu strip — hamburger replaces it. Alt-toggle is left
@@ -346,8 +350,6 @@ app.whenReady().then(() => {
     iconPath: windowIconPath,
   });
 
-  Menu.setApplicationMenu(buildAppMenu());
-
   // Repaint title bar overlay (Win/Linux) when OS theme flips while mode='system'.
   nativeTheme.on('updated', () => {
     applyChromeToAllWindows();
@@ -370,6 +372,9 @@ app.whenReady().then(() => {
 
   const { dbPath } = initDatabase();
   console.log(`[db] sqlite: ${dbPath}`);
+
+  applySpellCheckPreferences();
+  Menu.setApplicationMenu(buildAppMenu());
 
   // Must register IPC handlers before createWindow loads the renderer URL —
   // the renderer can fire IPC during early hydration (e.g. theme/settings)

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Check,
+  ChevronDown,
   Download,
   Info,
   Loader2,
+  Languages,
   Monitor,
   Moon,
   PenLine,
@@ -17,6 +19,9 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
 import { LycheeLogo } from '@/components/sidebar/lychee-logo';
 import { UpdateDot } from '@/components/update-dot';
 import { cn } from '@/lib/utils';
@@ -24,6 +29,7 @@ import { useSettingsStore } from '@/renderer/settings-store';
 import { useThemeStore } from '@/renderer/theme-store';
 import { useUpdateStore } from '@/renderer/update-store';
 import { type UpdateAction, describeUpdate } from '@/renderer/update-status-view';
+import type { SpellCheckState } from '@/shared/ipc-types';
 
 type SectionKey = 'general' | 'appearance' | 'editor' | 'about';
 
@@ -195,6 +201,170 @@ function AboutSettings() {
   );
 }
 
+function languageName(language: string): string {
+  try {
+    const displayNames = new Intl.DisplayNames([navigator.language], { type: 'language' });
+    return displayNames.of(language) ?? language;
+  } catch {
+    return language;
+  }
+}
+
+function EditorSettings() {
+  const [spellCheck, setSpellCheck] = useState<SpellCheckState | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void window.lychee.invoke('spellcheck.getState', {}).then((state) => {
+      if (!alive) return;
+      setSpellCheck(state);
+    });
+
+    const offState = window.lychee.on('spellcheck:state', (state) => {
+      if (alive) setSpellCheck(state);
+    });
+    return () => {
+      alive = false;
+      offState();
+    };
+  }, []);
+
+  const setSpellCheckEnabled = (enabled: boolean): void => {
+    const previous = spellCheck;
+    if (!previous) return;
+    setSpellCheck({ ...previous, enabled });
+    void window.lychee
+      .invoke('spellcheck.setEnabled', { enabled })
+      .then(setSpellCheck)
+      .catch(() => setSpellCheck(previous));
+  };
+
+  const toggleLanguage = (language: string): void => {
+    if (!spellCheck?.canChooseLanguages) return;
+    const selected = spellCheck.languages.includes(language);
+    if (selected && spellCheck.languages.length === 1) return;
+
+    const languages = selected
+      ? spellCheck.languages.filter((item) => item !== language)
+      : [...spellCheck.languages, language];
+    const previous = spellCheck;
+    setSpellCheck({ ...spellCheck, languages });
+    void window.lychee
+      .invoke('spellcheck.setLanguages', { languages })
+      .then(setSpellCheck)
+      .catch(() => setSpellCheck(previous));
+  };
+
+  const selectedLanguageLabel = spellCheck?.languages.length
+    ? spellCheck.languages.map(languageName).join(', ')
+    : 'System language';
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="Editor"
+        description="Tune writing behavior, shortcuts, and editor defaults."
+      />
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Spelling</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Control how Lychee checks your writing.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+          <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+            <div className="grid min-w-0 flex-1 gap-1.5">
+              <Label htmlFor="spellcheck-enabled">Check spelling while typing</Label>
+              <p
+                id="spellcheck-enabled-description"
+                className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]"
+              >
+                Underline misspelled words and offer corrections on right-click.
+              </p>
+            </div>
+            <Switch
+              id="spellcheck-enabled"
+              aria-label="Check spelling while typing"
+              aria-describedby="spellcheck-enabled-description"
+              checked={spellCheck?.enabled ?? false}
+              disabled={!spellCheck}
+              onCheckedChange={setSpellCheckEnabled}
+            />
+          </div>
+
+          {spellCheck?.canChooseLanguages && (
+            <div className="border-t border-[hsl(var(--border))] px-3.5 py-3">
+              <div className="flex min-h-10 items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Spelling languages</p>
+                  <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+                    Select every language you write in.
+                  </p>
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!spellCheck}
+                      className="max-w-56"
+                    >
+                      <Languages className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{selectedLanguageLabel}</span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-72 p-1">
+                    <div className="max-h-64 overflow-y-auto">
+                      {spellCheck.availableLanguages.map((language) => {
+                        const selected = spellCheck.languages.includes(language);
+                        const lastSelected = selected && spellCheck.languages.length === 1;
+                        return (
+                          <button
+                            key={language}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={selected}
+                            disabled={lastSelected}
+                            onClick={() => toggleLanguage(language)}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-[hsl(var(--accent))] focus-visible:bg-[hsl(var(--accent))] disabled:opacity-60"
+                          >
+                            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                              {selected && <Check className="h-3.5 w-3.5" />}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate">
+                              {languageName(language)}
+                            </span>
+                            <span className="text-xs text-[hsl(var(--muted-foreground))]">
+                              {language}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {spellCheck && !spellCheck.canChooseLanguages && (
+          <p className="flex items-center gap-1.5 px-1 text-xs text-[hsl(var(--muted-foreground))]">
+            <Languages className="h-3.5 w-3.5 shrink-0" />
+            {window.lychee.platform === 'darwin'
+              ? 'Spelling languages are managed by macOS.'
+              : 'No configurable spelling languages are available on this system.'}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PlaceholderSettings({
   title,
   description,
@@ -215,13 +385,7 @@ function PlaceholderSettings({
 function SectionContent({ section }: { section: SectionKey }) {
   if (section === 'appearance') return <AppearanceSettings />;
   if (section === 'about') return <AboutSettings />;
-  if (section === 'editor')
-    return (
-      <PlaceholderSettings
-        title="Editor"
-        description="Tune writing behavior, shortcuts, and editor defaults."
-      />
-    );
+  if (section === 'editor') return <EditorSettings />;
   return (
     <PlaceholderSettings
       title="General"

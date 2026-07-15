@@ -1603,7 +1603,6 @@ test.describe('Duplicate Tabs — Floating Toolbar Plugin', () => {
     await window.waitForTimeout(200);
     const text = activeMain(window).getByText('selectable text here for toolbar test');
     await text.click({ clickCount: 3 });
-    await text.click({ button: 'right' });
 
     const toolbar = window.getByRole('toolbar', { name: 'Text formatting' });
     await expect(toolbar).toBeVisible();
