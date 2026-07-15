@@ -563,6 +563,7 @@ function KeyboardSettings() {
                         type="button"
                         aria-label={`Change shortcut for ${shortcut.label}`}
                         aria-pressed={isRecording}
+                        data-shortcut-recording={isRecording ? 'true' : undefined}
                         onClick={() => { setRecording(shortcut.id); setError(null); }}
                         onBlur={() => setRecording((current) => current === shortcut.id ? null : current)}
                         onKeyDown={(event) => { if (isRecording) void saveCaptured(shortcut.id, event); }}
@@ -643,7 +644,7 @@ export function SettingsDialog() {
           firstNavRef.current?.focus();
         }}
         onEscapeKeyDown={(event) => {
-          if (document.activeElement?.getAttribute('aria-pressed') === 'true') {
+          if (document.activeElement?.getAttribute('data-shortcut-recording') === 'true') {
             event.preventDefault();
           }
         }}

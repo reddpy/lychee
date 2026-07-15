@@ -18,17 +18,19 @@ async function seedTheme(window: Page, mode: 'light' | 'dark' | 'system') {
 
 /** Navigate to Settings > Appearance and click a theme button. */
 async function setThemeViaUI(window: Page, label: 'Light' | 'Dark' | 'System') {
-  const settingsBtn = window.locator('aside[data-state="expanded"]').getByText('Settings');
+  const settingsBtn = window
+    .locator('aside[data-state="expanded"]')
+    .getByRole('button', { name: 'Settings' });
   await settingsBtn.click();
 
   const dialog = window.locator('[data-slot="dialog-content"]');
   await expect(dialog).toBeVisible();
 
-  await dialog.getByText('Appearance', { exact: true }).click();
-  await dialog.getByText(label, { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Appearance' }).click();
+  await dialog.getByRole('button', { name: label }).click();
 
   await window.keyboard.press('Escape');
-  await window.waitForTimeout(350);
+  await expect(dialog).not.toBeVisible();
 }
 
 /** Check whether <html> has the .dark class. */

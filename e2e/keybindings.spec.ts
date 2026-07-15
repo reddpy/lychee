@@ -98,13 +98,14 @@ test.describe('Keyboard shortcut settings — validation and persistence', () =>
   });
 
   test('bare keys are rejected and Escape cancels recording without saving', async ({ window }) => {
-    await openKeyboardSettings(window);
+    const dialog = await openKeyboardSettings(window);
     const bold = window.getByRole('button', { name: 'Change shortcut for Bold' });
     await bold.click();
     await bold.press('Y');
     await expect(window.getByRole('alert')).toContainText('Press a shortcut with');
     await bold.press('Escape');
     await expect(bold).toHaveAttribute('aria-pressed', 'false');
+    await expect(dialog).toBeVisible();
     expect((await storedBindings(window))['format.bold']).toBe('Mod+B');
   });
 
