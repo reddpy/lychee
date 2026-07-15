@@ -532,12 +532,23 @@ function FloatingToolbar({
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" onClick={handleLink} className={cn(
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              // Keep the selected editor range intact until the link editor
+              // captures it. A toolbar button otherwise takes native focus on
+              // mousedown before its click handler dispatches the command.
+              event.preventDefault();
+            }}
+            onClick={handleLink}
+            className={cn(
             "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
             state.isLink
               ? "bg-primary text-primary-foreground"
               : "hover:bg-muted text-foreground"
-          )} aria-label="Link">
+          )}
+            aria-label="Link"
+          >
             <Link className="h-4 w-4" />
           </button>
         </TooltipTrigger>

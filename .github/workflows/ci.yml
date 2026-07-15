@@ -122,6 +122,8 @@ jobs:
             workers: 1
           - name: editor-context-menu
             specs: e2e/editor-context-menu.spec.ts
+          - name: internal-note-links
+            specs: e2e/internal-note-links.spec.ts
             workers: 1
           - name: menu-shortcuts
             specs: e2e/menu-shortcuts.spec.ts
