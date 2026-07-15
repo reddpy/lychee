@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainEvent } from 'electron';
+import path from 'path';
 import type { IpcContract, IpcChannel } from '../shared/ipc-types';
 import { applyChromeToAllWindows, setChromeColors, setOverlayDimmed } from './window-chrome';
 import {
@@ -24,6 +25,7 @@ import {
   setSpellCheckEnabled,
   setSpellCheckLanguages,
 } from './spellcheck';
+import { createDatabaseBackup } from './db';
 
 type Handler<C extends IpcChannel> = (
   payload: IpcContract[C]['req'],
@@ -103,6 +105,45 @@ export function registerIpcHandlers() {
     }
     await shell.openExternal(payload.url);
     return { ok: true };
+  });
+
+  handle('data.getLocations', () => {
+    const userDataPath = app.getPath('userData');
+    return {
+      userDataPath,
+      databasePath: path.join(userDataPath, 'lychee.sqlite3'),
+      imagesPath: path.join(userDataPath, 'images'),
+    };
+  });
+
+  handle('data.openFolder', async () => {
+    const error = await shell.openPath(app.getPath('userData'));
+    if (error) throw new Error(error);
+    return { ok: true };
+  });
+
+  handle('data.revealDatabase', () => {
+    shell.showItemInFolder(path.join(app.getPath('userData'), 'lychee.sqlite3'));
+    return { ok: true };
+  });
+
+  handle('data.createBackup', async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const options = {
+      title: 'Create Lychee Backup',
+      defaultPath: path.join(
+        app.getPath('documents'),
+        `lychee-backup-${new Date().toISOString().slice(0, 10)}.sqlite3`,
+      ),
+      filters: [{ name: 'SQLite database', extensions: ['sqlite3'] }],
+    };
+    const result = win
+      ? await dialog.showSaveDialog(win, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { canceled: true };
+
+    createDatabaseBackup(result.filePath);
+    return { canceled: false, filePath: result.filePath };
   });
 
   handle('images.save', (payload) => {

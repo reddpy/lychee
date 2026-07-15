@@ -23,6 +23,7 @@ import * as docs from '../../repos/documents';
 import * as images from '../../repos/images';
 import * as urlResolver from '../../repos/url-resolver';
 import * as urlMetadata from '../../repos/url-metadata';
+import * as database from '../../db';
 
 export {
   ipcMain,
@@ -32,4 +33,5 @@ export {
   images,
   urlResolver,
   urlMetadata,
+  database,
 };

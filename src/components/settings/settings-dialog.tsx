@@ -3,6 +3,8 @@ import {
   Check,
   ChevronDown,
   Download,
+  Database,
+  FolderOpen,
   Info,
   Loader2,
   Languages,
@@ -29,7 +31,7 @@ import { useSettingsStore } from '@/renderer/settings-store';
 import { useThemeStore } from '@/renderer/theme-store';
 import { useUpdateStore } from '@/renderer/update-store';
 import { type UpdateAction, describeUpdate } from '@/renderer/update-status-view';
-import type { SpellCheckState } from '@/shared/ipc-types';
+import type { DataLocations, SpellCheckState } from '@/shared/ipc-types';
 
 type SectionKey = 'general' | 'appearance' | 'editor' | 'about';
 
@@ -137,6 +139,195 @@ function AppearanceSettings() {
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GeneralSettings() {
+  const revealFileLabel =
+    window.lychee.platform === 'darwin'
+      ? 'Reveal in Finder'
+      : window.lychee.platform === 'win32'
+        ? 'Show in Explorer'
+        : 'Show in Folder';
+  const [locations, setLocations] = useState<DataLocations | null>(null);
+  const [activeAction, setActiveAction] = useState<
+    'open-folder' | 'reveal-database' | 'backup' | null
+  >(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [backupPath, setBackupPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void window.lychee
+      .invoke('data.getLocations', {})
+      .then((value) => {
+        if (alive) setLocations(value);
+      })
+      .catch(() => {
+        if (alive) setActionError('Lychee couldn’t read the data location.');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const openDataFolder = async (): Promise<void> => {
+    setActiveAction('open-folder');
+    setActionError(null);
+    try {
+      await window.lychee.invoke('data.openFolder', {});
+    } catch {
+      setActionError('Lychee couldn’t open the data folder. Try again or restart the app.');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const revealDatabase = async (): Promise<void> => {
+    setActiveAction('reveal-database');
+    setActionError(null);
+    try {
+      await window.lychee.invoke('data.revealDatabase', {});
+    } catch {
+      setActionError('Lychee couldn’t reveal the database file.');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const createBackup = async (): Promise<void> => {
+    setActiveAction('backup');
+    setActionError(null);
+    setBackupPath(null);
+    try {
+      const result = await window.lychee.invoke('data.createBackup', {});
+      if ('filePath' in result) setBackupPath(result.filePath);
+    } catch {
+      setActionError('Lychee couldn’t create the backup. Choose another location and try again.');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="General"
+        description="App-wide preferences and startup options."
+      />
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Data</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Find and manage Lychee's local files.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+          <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Storage location</p>
+              <p
+                title={locations?.userDataPath}
+                className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
+              >
+                {locations?.userDataPath ?? 'Loading…'}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={!locations || activeAction !== null}
+              onClick={() => void openDataFolder()}
+            >
+              {activeAction === 'open-folder' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FolderOpen className="h-3.5 w-3.5" />
+              )}
+              Open Data Folder
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <Database className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+                <p className="text-sm font-medium">Notes database</p>
+              </div>
+              <p
+                title={locations?.databasePath}
+                className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
+              >
+                lychee.sqlite3
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              disabled={!locations || activeAction !== null}
+              onClick={() => void revealDatabase()}
+            >
+              {activeAction === 'reveal-database' && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              )}
+              {revealFileLabel}
+            </Button>
+          </div>
+
+          <div className="border-t border-[hsl(var(--border))] px-4 py-3.5">
+            <p className="text-sm font-medium">Images</p>
+            <p
+              title={locations?.imagesPath}
+              className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
+            >
+              images/
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Database backup</p>
+              <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                Save a consistent snapshot of your notes and settings. Images are not included.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={activeAction !== null}
+              onClick={() => void createBackup()}
+            >
+              {activeAction === 'backup' && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              )}
+              Create Backup…
+            </Button>
+          </div>
+
+          {(actionError || backupPath) && (
+            <div className="border-t border-[hsl(var(--border))] px-4 py-3">
+              {actionError ? (
+                <p role="alert" className="text-xs text-[hsl(var(--destructive))]">
+                  {actionError}
+                </p>
+              ) : (
+                <p role="status" className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                  Backup saved to <span className="font-mono">{backupPath}</span>
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -365,33 +556,12 @@ function EditorSettings() {
   );
 }
 
-function PlaceholderSettings({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="space-y-6">
-      <SectionHeader title={title} description={description} />
-      <div className="rounded-lg border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-4 py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
-        Nothing here yet — coming soon.
-      </div>
-    </div>
-  );
-}
-
 function SectionContent({ section }: { section: SectionKey }) {
+  if (section === 'general') return <GeneralSettings />;
   if (section === 'appearance') return <AppearanceSettings />;
   if (section === 'about') return <AboutSettings />;
   if (section === 'editor') return <EditorSettings />;
-  return (
-    <PlaceholderSettings
-      title="General"
-      description="App-wide preferences and startup options."
-    />
-  );
+  return null;
 }
 
 export function SettingsDialog() {
