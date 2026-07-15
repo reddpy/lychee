@@ -21,6 +21,8 @@ import {
 } from "./list-backspace"
 import { $insertMatchingChecklistItemBefore } from "./list-enter"
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin"
+import { defaultKeybindings, matchesKeybinding } from "@/shared/keybindings"
+import { useKeybindingsStore } from "@/renderer/keybindings-store"
 
 /**
  * After a block is replaced by another, nudge the scroll position so the new
@@ -96,6 +98,8 @@ function exitListItemToParagraph(
 
 export function KeyboardShortcutsPlugin(): null {
   const [editor] = useLexicalComposerContext()
+  const bindings = useKeybindingsStore((state) => state.bindings)
+  const defaults = defaultKeybindings()
 
   useEffect(() => {
     return editor.registerCommand(
@@ -176,51 +180,77 @@ export function KeyboardShortcutsPlugin(): null {
         if (!isModifier) return false
 
         // Cmd/Ctrl + B = Bold
-        if (key === "b" && !shiftKey) {
+        if (matchesKeybinding(event, bindings['format.bold'], window.lychee.platform)) {
           event.preventDefault()
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")
           return true
         }
 
         // Cmd/Ctrl + I = Italic
-        if (key === "i" && !shiftKey) {
+        if (matchesKeybinding(event, bindings['format.italic'], window.lychee.platform)) {
           event.preventDefault()
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")
           return true
         }
 
         // Cmd/Ctrl + U = Underline
-        if (key === "u" && !shiftKey) {
+        if (matchesKeybinding(event, bindings['format.underline'], window.lychee.platform)) {
           event.preventDefault()
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline")
           return true
         }
 
         // Cmd/Ctrl + Shift + S = Strikethrough
-        if (key === "s" && shiftKey) {
+        if (matchesKeybinding(event, bindings['format.strikethrough'], window.lychee.platform)) {
           event.preventDefault()
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")
           return true
         }
 
         // Cmd/Ctrl + Shift + H = Highlight
-        if (key === "h" && shiftKey) {
+        if (matchesKeybinding(event, bindings['format.highlight'], window.lychee.platform)) {
           event.preventDefault()
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "highlight")
           return true
         }
 
         // Cmd/Ctrl + E = Inline Code
-        if (key === "e" && !shiftKey) {
+        if (matchesKeybinding(event, bindings['format.inlineCode'], window.lychee.platform)) {
           event.preventDefault()
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code")
           return true
         }
 
         // Cmd/Ctrl + K = Insert/Edit Link
-        if (key === "k" && !shiftKey) {
+        if (matchesKeybinding(event, bindings['format.link'], window.lychee.platform)) {
           event.preventDefault()
           editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined)
+          return true
+        }
+
+        // Lexical also ships handlers for several conventional formatting
+        // shortcuts. Once a user remaps one, consume its old default here so
+        // the customization replaces the binding instead of adding a second.
+        const formattingIds = [
+          'format.bold',
+          'format.italic',
+          'format.underline',
+          'format.strikethrough',
+          'format.highlight',
+          'format.inlineCode',
+          'format.link',
+        ] as const
+        if (formattingIds.some((id) => bindings[id] !== defaults[id] && matchesKeybinding(event, defaults[id], window.lychee.platform))) {
+          event.preventDefault()
+          return true
+        }
+
+        // HistoryPlugin owns conventional undo/redo keys inside Lexical. The
+        // replacement accelerator is routed through the app menu, but its old
+        // editor-side default must also be consumed after a remap.
+        const historyIds = ['editor.undo', 'editor.redo'] as const
+        if (historyIds.some((id) => bindings[id] !== defaults[id] && matchesKeybinding(event, defaults[id], window.lychee.platform))) {
+          event.preventDefault()
           return true
         }
 
@@ -228,7 +258,7 @@ export function KeyboardShortcutsPlugin(): null {
       },
       COMMAND_PRIORITY_NORMAL
     )
-  }, [editor])
+  }, [bindings, editor])
 
   return null
 }

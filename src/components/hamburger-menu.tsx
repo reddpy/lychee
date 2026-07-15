@@ -4,6 +4,8 @@ import { Menu as MenuIcon } from 'lucide-react';
 import type { WindowAction } from '../shared/ipc-types';
 import { useDocumentStore } from '../renderer/document-store';
 import { useSettingsStore } from '../renderer/settings-store';
+import { useKeybindingsStore } from '../renderer/keybindings-store';
+import { displayKeybinding, type ShortcutId } from '../shared/keybindings';
 import { UpdateDot } from './update-dot';
 import {
   DropdownMenu,
@@ -31,6 +33,11 @@ function openExternal(url: string): void {
 
 export function HamburgerMenu() {
   const openSettings = useSettingsStore((s) => s.openSettings);
+  const bindings = useKeybindingsStore((s) => s.bindings);
+  const shortcut = React.useCallback(
+    (id: ShortcutId) => displayKeybinding(bindings[id], window.lychee.platform),
+    [bindings],
+  );
 
   const handleNewNote = React.useCallback(() => {
     void useDocumentStore.getState().createDocument(null);
@@ -63,21 +70,21 @@ export function HamburgerMenu() {
           <DropdownMenuSubContent>
             <DropdownMenuItem onSelect={handleNewNote}>
               New Note
-              <DropdownMenuShortcut>Ctrl+N</DropdownMenuShortcut>
+              <DropdownMenuShortcut>{shortcut('app.newNote')}</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={handleCloseTab}>
               Close Tab
-              <DropdownMenuShortcut>Ctrl+W</DropdownMenuShortcut>
+              <DropdownMenuShortcut>{shortcut('tabs.close')}</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={handleReopen}>
               Reopen Closed Tab
-              <DropdownMenuShortcut>Ctrl+Shift+T</DropdownMenuShortcut>
+              <DropdownMenuShortcut>{shortcut('tabs.reopenClosed')}</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={openSettings}>
               Settings…
-              <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
+              <DropdownMenuShortcut>{shortcut('app.openSettings')}</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => dispatchWindowAction('quit')}>

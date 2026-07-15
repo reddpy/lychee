@@ -14,6 +14,8 @@ import {
 
 import { useDocumentStore } from "../../renderer/document-store";
 import { useSearchHighlightStore } from "../../renderer/search-highlight-store";
+import { useKeybindingsStore } from "../../renderer/keybindings-store";
+import { displayKeybinding, matchesKeybinding } from "../../shared/keybindings";
 import {
   buildHighlightedSnippet,
   countOccurrences,
@@ -60,6 +62,7 @@ export function SearchNotesButton() {
   const openTab = useDocumentStore((s) => s.openTab);
   const openOrCreateTab = useDocumentStore((s) => s.openOrCreateTab);
   const setTransientJump = useSearchHighlightStore((s) => s.setTransientJump);
+  const searchBinding = useKeybindingsStore((s) => s.bindings['navigation.searchNotes']);
   const openTabSet = React.useMemo(() => new Set(openTabs.map((t) => t.docId)), [openTabs]);
 
   const [open, setOpen] = React.useState(false);
@@ -169,9 +172,7 @@ export function SearchNotesButton() {
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const isModifier = event.metaKey || event.ctrlKey;
-      if (!isModifier || event.shiftKey) return;
-      if (event.key.toLowerCase() !== "p") return;
+      if (!matchesKeybinding(event, searchBinding, window.lychee.platform)) return;
       event.preventDefault();
       if (open) {
         closeRequestedByShortcutRef.current = true;
@@ -185,7 +186,7 @@ export function SearchNotesButton() {
 
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [open, query]);
+  }, [open, query, searchBinding]);
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;
@@ -539,7 +540,7 @@ export function SearchNotesButton() {
   const isMac =
     typeof navigator !== "undefined" &&
     /mac/i.test(navigator.userAgent);
-  const shortcutLabel = isMac ? "⌘P" : "Ctrl+P";
+  const shortcutLabel = displayKeybinding(searchBinding, isMac ? 'darwin' : 'win32');
   const openInNewTabShortcutLabel = isMac ? "⌘↵" : "Ctrl↵";
   const hasQuery = query.trim().length > 0;
 

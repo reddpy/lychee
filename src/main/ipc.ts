@@ -17,6 +17,12 @@ import { saveImage, getImagePath, getImageDataUrl, deleteImage, downloadImage } 
 import { resolveUrl } from './repos/url-resolver';
 import { fetchUrlMetadata } from './repos/url-metadata';
 import { getSetting, setSetting, getAllSettings } from './repos/settings';
+import {
+  getKeybindings,
+  resetAllKeybindings,
+  resetKeybinding,
+  setKeybinding,
+} from './repos/keybindings';
 import { checkForUpdates, getUpdateStatus, installUpdate } from './updater';
 import { isAllowedExternal } from './url-policy';
 import {
@@ -49,7 +55,7 @@ function validateContentJson(content: string): void {
   }
 }
 
-export function registerIpcHandlers() {
+export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void } = {}) {
   handle('documents.list', (payload) => ({
     documents: listDocuments(payload),
   }));
@@ -144,6 +150,25 @@ export function registerIpcHandlers() {
   handle('settings.getAll', () => ({
     settings: getAllSettings(),
   }));
+
+  const publishKeybindings = (bindings: ReturnType<typeof getKeybindings>) => {
+    options.onKeybindingsChanged?.();
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('keybindings:changed', bindings);
+    }
+    return { bindings };
+  };
+
+  handle('keybindings.getAll', () => ({ bindings: getKeybindings() }));
+  handle('keybindings.set', (payload) =>
+    publishKeybindings(setKeybinding(payload.id, payload.binding)),
+  );
+  handle('keybindings.reset', (payload) =>
+    publishKeybindings(resetKeybinding(payload.id)),
+  );
+  handle('keybindings.resetAll', () =>
+    publishKeybindings(resetAllKeybindings()),
+  );
 
   handle('spellcheck.getState', () => getSpellCheckState());
 

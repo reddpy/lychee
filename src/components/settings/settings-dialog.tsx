@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   Check,
   ChevronDown,
@@ -6,11 +6,14 @@ import {
   Info,
   Loader2,
   Languages,
+  Keyboard,
   Monitor,
   Moon,
   PenLine,
   Palette,
   RotateCw,
+  RotateCcw,
+  Search,
   Settings,
   SlidersHorizontal,
   Sun,
@@ -18,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -30,13 +34,24 @@ import { useThemeStore } from '@/renderer/theme-store';
 import { useUpdateStore } from '@/renderer/update-store';
 import { type UpdateAction, describeUpdate } from '@/renderer/update-status-view';
 import type { SpellCheckState } from '@/shared/ipc-types';
+import {
+  displayKeybinding,
+  keybindingFromEvent,
+  keybindingsConflict,
+  normalizeKeybinding,
+  shortcutRegistry,
+  type ShortcutCategory,
+  type ShortcutId,
+} from '@/shared/keybindings';
+import { useKeybindingsStore } from '@/renderer/keybindings-store';
 
-type SectionKey = 'general' | 'appearance' | 'editor' | 'about';
+type SectionKey = 'general' | 'appearance' | 'editor' | 'keyboard' | 'about';
 
 const sections: { key: SectionKey; label: string; icon: typeof Settings }[] = [
   { key: 'general', label: 'General', icon: SlidersHorizontal },
   { key: 'appearance', label: 'Appearance', icon: Palette },
   { key: 'editor', label: 'Editor', icon: PenLine },
+  { key: 'keyboard', label: 'Shortcuts', icon: Keyboard },
   { key: 'about', label: 'About', icon: Info },
 ];
 
@@ -382,10 +397,208 @@ function PlaceholderSettings({
   );
 }
 
+const shortcutCategories: ShortcutCategory[] = ['Editor', 'Navigation', 'Tabs', 'Formatting'];
+
+function ShortcutKeycaps({ binding }: { binding: string }) {
+  const isMac = window.lychee.platform === 'darwin';
+  const parts = (normalizeKeybinding(binding) ?? binding).split('+');
+  const labels: Record<string, string> = isMac
+    ? {
+        Mod: '⌘',
+        Ctrl: '⌃',
+        Meta: '⌘',
+        Alt: '⌥',
+        Shift: '⇧',
+        Enter: '↩',
+        Backspace: '⌫',
+        Delete: '⌦',
+        ArrowUp: '↑',
+        ArrowDown: '↓',
+        ArrowLeft: '←',
+        ArrowRight: '→',
+      }
+    : {
+        Mod: 'Ctrl',
+        Meta: window.lychee.platform === 'win32' ? 'Win' : 'Super',
+        ArrowUp: '↑',
+        ArrowDown: '↓',
+        ArrowLeft: '←',
+        ArrowRight: '→',
+      };
+
+  return (
+    <span className="flex items-center justify-center gap-1" aria-hidden="true">
+      {parts.map((part, index) => (
+        <span key={`${part}-${index}`} className="contents">
+          {index > 0 && !isMac && (
+            <span className="text-[10px] font-medium text-[hsl(var(--muted-foreground))]/55">+</span>
+          )}
+          <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-[5px] border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-1.5 font-sans text-[11px] font-semibold leading-none text-[hsl(var(--foreground))] shadow-[0_1px_0_hsl(var(--border)),inset_0_1px_0_hsl(var(--background))]">
+            {labels[part] ?? part}
+          </kbd>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function KeyboardSettings() {
+  const bindings = useKeybindingsStore((state) => state.bindings);
+  const loaded = useKeybindingsStore((state) => state.loaded);
+  const setBinding = useKeybindingsStore((state) => state.setBinding);
+  const resetBinding = useKeybindingsStore((state) => state.resetBinding);
+  const resetAll = useKeybindingsStore((state) => state.resetAll);
+  const [query, setQuery] = useState('');
+  const [recording, setRecording] = useState<ShortcutId | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const visible = shortcutRegistry.filter((shortcut) =>
+    !normalizedQuery || `${shortcut.label} ${shortcut.description} ${shortcut.category}`.toLowerCase().includes(normalizedQuery),
+  );
+
+  const saveCaptured = async (id: ShortcutId, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      setRecording(null);
+      setError(null);
+      return;
+    }
+    const binding = keybindingFromEvent(event.nativeEvent, window.lychee.platform);
+    if (!binding) {
+      setError('Press a shortcut with Command/Ctrl, Alt, or Shift and another key.');
+      return;
+    }
+    const conflict = shortcutRegistry.find(
+      (item) =>
+        item.id !== id &&
+        keybindingsConflict(bindings[item.id], binding, window.lychee.platform),
+    );
+    if (conflict) {
+      setError(`${displayKeybinding(binding, window.lychee.platform)} is already assigned to ${conflict.label}.`);
+      return;
+    }
+    try {
+      await setBinding(id, binding);
+      setRecording(null);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to save shortcut.');
+    }
+  };
+
+  return (
+    <div className="space-y-5" data-testid="keyboard-settings">
+      <div className="flex items-start justify-between gap-4">
+        <SectionHeader
+          title="Keyboard Shortcuts"
+          description="Search Lychee actions, then click a shortcut to record a new binding."
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!loaded}
+          onClick={() => void resetAll().then(() => setError(null)).catch(() => setError('Unable to reset shortcuts.'))}
+        >
+          <RotateCcw className="h-3.5 w-3.5" /> Reset all
+        </Button>
+      </div>
+
+      <div className="group relative rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 shadow-sm transition-[border-color,box-shadow,background-color] focus-within:border-brand/55 focus-within:bg-[hsl(var(--background))] focus-within:ring-3 focus-within:ring-brand/10">
+        <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))] transition-colors group-focus-within:text-brand" />
+        <Input
+          type="search"
+          aria-label="Search keyboard shortcuts"
+          placeholder="Search shortcuts"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="h-10 rounded-lg border-0 bg-transparent pl-9 pr-10 shadow-none ring-0 [appearance:textfield] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+        />
+        {query && (
+          <button
+            type="button"
+            aria-label="Clear shortcut search"
+            onClick={() => setQuery('')}
+            className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      {error && <p role="alert" className="text-xs text-[hsl(var(--destructive))]">{error}</p>}
+
+      <div className="space-y-5">
+        {shortcutCategories.map((category) => {
+          const shortcuts = visible.filter((shortcut) => shortcut.category === category);
+          if (shortcuts.length === 0) return null;
+          return (
+            <section key={category} aria-labelledby={`shortcut-category-${category}`}>
+              <h4 id={`shortcut-category-${category}`} className="mb-2 text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                {category}
+              </h4>
+              <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))]">
+                {shortcuts.map((shortcut, index) => {
+                  const customized = bindings[shortcut.id] !== shortcut.defaultBinding;
+                  const isRecording = recording === shortcut.id;
+                  return (
+                    <div key={shortcut.id} className={cn('flex items-center gap-3 px-3 py-2.5', index > 0 && 'border-t border-[hsl(var(--border))]')}>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{shortcut.label}</p>
+                        <p className="truncate text-xs text-[hsl(var(--muted-foreground))]">{shortcut.description}</p>
+                      </div>
+                      {customized && (
+                        <button
+                          type="button"
+                          aria-label={`Reset ${shortcut.label} shortcut`}
+                          title="Reset to default"
+                          onClick={() => void resetBinding(shortcut.id).then(() => setError(null)).catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to reset shortcut.'))}
+                          className="rounded p-1 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))]"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        aria-label={`Change shortcut for ${shortcut.label}`}
+                        aria-pressed={isRecording}
+                        onClick={() => { setRecording(shortcut.id); setError(null); }}
+                        onBlur={() => setRecording((current) => current === shortcut.id ? null : current)}
+                        onKeyDown={(event) => { if (isRecording) void saveCaptured(shortcut.id, event); }}
+                        className={cn(
+                          'flex min-h-9 min-w-[7.5rem] items-center justify-center rounded-lg border px-2 text-center outline-none transition-[border-color,background-color,box-shadow,transform] focus-visible:ring-3 focus-visible:ring-brand/15 active:scale-[0.98]',
+                          isRecording
+                            ? 'border-brand/55 bg-brand/10 text-brand shadow-[inset_0_0_0_1px_hsl(var(--brand)/0.08)]'
+                            : 'border-transparent bg-[hsl(var(--muted))]/35 hover:border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/55',
+                        )}
+                      >
+                        {isRecording ? (
+                          <span className="text-xs font-medium">Press shortcut…</span>
+                        ) : (
+                          <ShortcutKeycaps binding={bindings[shortcut.id]} />
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+        {visible.length === 0 && (
+          <p className="py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">No shortcuts match “{query}”.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SectionContent({ section }: { section: SectionKey }) {
   if (section === 'appearance') return <AppearanceSettings />;
   if (section === 'about') return <AboutSettings />;
   if (section === 'editor') return <EditorSettings />;
+  if (section === 'keyboard') return <KeyboardSettings />;
   return (
     <PlaceholderSettings
       title="General"
@@ -428,6 +641,11 @@ export function SettingsDialog() {
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           firstNavRef.current?.focus();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (document.activeElement?.getAttribute('aria-pressed') === 'true') {
+            event.preventDefault();
+          }
         }}
       >
         {/* Header */}
