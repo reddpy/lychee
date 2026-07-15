@@ -1,20 +1,48 @@
-import { test, expect } from './electron-app';
+import {
+  test,
+  expect,
+  findPackagedBinary,
+  hasDevBuild,
+  PROJECT_ROOT,
+} from './electron-app';
+import {
+  test as base,
+  _electron,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+import { clearIpcMocks, mockIpcReject } from './ipc-mock';
 
 /** Click outside the dialog to dismiss it via the Radix overlay. */
 async function clickOutsideDialog(window: import('@playwright/test').Page) {
-  const dialog = window.locator('[data-slot="dialog-content"]');
-  const box = await dialog.boundingBox();
-  if (!box) throw new Error('Dialog not visible — cannot compute outside click target');
-
-  // Click below the dialog, horizontally centered. The overlay covers the
-  // full viewport behind the dialog, so any point outside the content works.
-  const x = box.x + box.width / 2;
-  const y = box.y + box.height + 40;
-  await window.mouse.click(x, y);
+  // Target the actual Radix dismiss layer. Coordinate math against the dialog
+  // can land on window chrome or another fixed surface as viewport insets vary.
+  await window
+    .locator('[data-slot="dialog-overlay"]')
+    .click({ position: { x: 1, y: 1 } });
   await window.waitForTimeout(300);
 }
 
+async function openEditorSettings(window: import('@playwright/test').Page) {
+  await window
+    .locator('aside[data-state="expanded"]')
+    .getByText('Settings')
+    .click();
+  const dialog = window.locator('[data-slot="dialog-content"]');
+  await expect(dialog).toBeVisible();
+  await dialog.getByText('Editor', { exact: true }).click();
+  return dialog;
+}
+
 test.describe('Settings Modal', () => {
+  test.afterEach(async ({ window }) => {
+    await clearIpcMocks(window);
+  });
+
   test('opens from expanded sidebar Settings button', async ({ window }) => {
     const settingsBtn = window.locator('aside[data-state="expanded"]').getByText('Settings');
     await settingsBtn.click();
@@ -125,6 +153,240 @@ test.describe('Settings Modal', () => {
     await expect(dialog.getByText('App-wide preferences and startup options.')).toBeVisible();
   });
 
+  test('Editor spelling preference is persistent and platform-aware', async ({ window }) => {
+    await window.evaluate(() =>
+      window.lychee.invoke('spellcheck.setEnabled', { enabled: true }),
+    );
+
+    const settingsBtn = window.locator('aside[data-state="expanded"]').getByText('Settings');
+    await settingsBtn.click();
+    const dialog = window.locator('[data-slot="dialog-content"]');
+    await expect(dialog).toBeVisible();
+    await dialog.getByText('Editor', { exact: true }).click();
+
+    const spellingSwitch = dialog.getByRole('switch', {
+      name: 'Check spelling while typing',
+    });
+    await expect(spellingSwitch).toHaveAttribute('aria-checked', 'true');
+    await spellingSwitch.click();
+    await expect(spellingSwitch).toHaveAttribute('aria-checked', 'false');
+
+    const stored = await window.evaluate(() =>
+      window.lychee.invoke('settings.get', { key: 'spellCheckEnabled' }),
+    );
+    expect(stored.value).toBe('false');
+
+    const platform = await window.evaluate(() => window.lychee.platform);
+    if (platform === 'darwin') {
+      await expect(
+        dialog.getByText('Spelling languages are managed by macOS.'),
+      ).toBeVisible();
+    } else {
+      await expect(dialog.getByText('Spelling languages')).toBeVisible();
+    }
+
+    // Restore the default so later tests and local E2E runs remain isolated.
+    await spellingSwitch.click();
+    await expect(spellingSwitch).toHaveAttribute('aria-checked', 'true');
+  });
+
+  test('spelling preference survives a renderer reload and remains applied to Chromium', async ({
+    electronApp,
+    window,
+  }) => {
+    await window.evaluate(() =>
+      window.lychee.invoke('spellcheck.setEnabled', { enabled: false }),
+    );
+    expect(
+      await electronApp.evaluate(({ session }) =>
+        session.defaultSession.isSpellCheckerEnabled(),
+      ),
+    ).toBe(false);
+
+    await window.reload();
+    await window.waitForSelector('aside[data-state]', { timeout: 15_000 });
+    const dialog = await openEditorSettings(window);
+    const spellingSwitch = dialog.getByRole('switch', {
+      name: 'Check spelling while typing',
+    });
+    await expect(spellingSwitch).toHaveAttribute('aria-checked', 'false');
+
+    await spellingSwitch.click();
+    await expect(spellingSwitch).toHaveAttribute('aria-checked', 'true');
+    expect(
+      await electronApp.evaluate(({ session }) =>
+        session.defaultSession.isSpellCheckerEnabled(),
+      ),
+    ).toBe(true);
+    expect(
+      await window.evaluate(() =>
+        window.lychee.invoke('settings.get', { key: 'spellCheckEnabled' }),
+      ),
+    ).toEqual({ value: 'true' });
+  });
+
+  test('open Editor Settings tracks external spelling state broadcasts live', async ({
+    electronApp,
+    window,
+  }) => {
+    await window.evaluate(() =>
+      window.lychee.invoke('spellcheck.setEnabled', { enabled: true }),
+    );
+    const dialog = await openEditorSettings(window);
+    const spellingSwitch = dialog.getByRole('switch', {
+      name: 'Check spelling while typing',
+    });
+    await expect(spellingSwitch).toBeChecked();
+
+    await window.evaluate(() =>
+      window.lychee.invoke('spellcheck.setEnabled', { enabled: false }),
+    );
+    await expect(spellingSwitch).not.toBeChecked();
+    expect(
+      await electronApp.evaluate(({ session }) =>
+        session.defaultSession.isSpellCheckerEnabled(),
+      ),
+    ).toBe(false);
+
+    await window.evaluate(() =>
+      window.lychee.invoke('spellcheck.setEnabled', { enabled: true }),
+    );
+    await expect(spellingSwitch).toBeChecked();
+    expect(
+      await electronApp.evaluate(({ session }) =>
+        session.defaultSession.isSpellCheckerEnabled(),
+      ),
+    ).toBe(true);
+  });
+
+  test('failed spelling toggle rolls the optimistic Settings state back', async ({
+    electronApp,
+    window,
+  }) => {
+    await window.evaluate(() =>
+      window.lychee.invoke('spellcheck.setEnabled', { enabled: true }),
+    );
+    const dialog = await openEditorSettings(window);
+    const spellingSwitch = dialog.getByRole('switch', {
+      name: 'Check spelling while typing',
+    });
+    await expect(spellingSwitch).toBeChecked();
+
+    await mockIpcReject(
+      window,
+      'spellcheck.setEnabled',
+      'injected spellcheck failure',
+      250,
+    );
+    await spellingSwitch.click();
+    await expect(spellingSwitch).not.toBeChecked();
+    await expect(spellingSwitch).toBeChecked();
+
+    expect(
+      await window.evaluate(() =>
+        window.lychee.invoke('settings.get', { key: 'spellCheckEnabled' }),
+      ),
+    ).toEqual({ value: 'true' });
+    expect(
+      await electronApp.evaluate(({ session }) =>
+        session.defaultSession.isSpellCheckerEnabled(),
+      ),
+    ).toBe(true);
+  });
+
+  test('spelling language controls follow platform capability and preserve a valid selection', async ({
+    electronApp,
+    window,
+  }) => {
+    const initial = await window.evaluate(() =>
+      window.lychee.invoke('spellcheck.getState', {}),
+    );
+    const platform = await window.evaluate(() => window.lychee.platform);
+    const dialog = await openEditorSettings(window);
+
+    if (platform === 'darwin') {
+      expect(initial).toMatchObject({
+        canChooseLanguages: false,
+        languages: [],
+        availableLanguages: [],
+      });
+      await expect(
+        dialog.getByText('Spelling languages are managed by macOS.'),
+      ).toBeVisible();
+      await expect(
+        dialog.getByText('Spelling languages', { exact: true }),
+      ).toHaveCount(0);
+
+      const unchanged = await window.evaluate(() =>
+        window.lychee.invoke('spellcheck.setLanguages', {
+          languages: ['unsupported-test-language'],
+        }),
+      );
+      expect(unchanged).toEqual(initial);
+      return;
+    }
+
+    if (!initial.canChooseLanguages) {
+      await expect(
+        dialog.getByText('No configurable spelling languages are available on this system.'),
+      ).toBeVisible();
+      await expect(dialog.locator('[data-slot="popover-trigger"]')).toHaveCount(0);
+      return;
+    }
+
+    await expect(dialog.getByText('Spelling languages', { exact: true })).toBeVisible();
+    await dialog.locator('[data-slot="popover-trigger"]').click();
+    const popover = window.locator('[data-slot="popover-content"]');
+    await expect(popover).toBeVisible();
+    const languageOptions = popover.getByRole('checkbox');
+    await expect(languageOptions).toHaveCount(initial.availableLanguages.length);
+    const selectedOptions = popover.locator(
+      '[role="checkbox"][aria-checked="true"]',
+    );
+    await expect(selectedOptions).toHaveCount(initial.languages.length);
+
+    if (initial.languages.length === 1) {
+      await expect(selectedOptions).toBeDisabled();
+    }
+
+    const unselected = popover
+      .locator('[role="checkbox"][aria-checked="false"]')
+      .first();
+    if (await unselected.count()) {
+      const addedLanguage = await unselected
+        .locator('span')
+        .last()
+        .textContent();
+      await unselected.click();
+      const updated = await window.evaluate(() =>
+        window.lychee.invoke('spellcheck.getState', {}),
+      );
+      expect(updated.languages).toContain(addedLanguage?.trim());
+      const applied = await electronApp.evaluate(({ session }) =>
+        session.defaultSession.getSpellCheckerLanguages(),
+      );
+      expect(applied).toEqual(expect.arrayContaining(updated.languages));
+    }
+
+    const beforeInvalid = await window.evaluate(() =>
+      window.lychee.invoke('spellcheck.getState', {}),
+    );
+    const error = await window.evaluate(async () => {
+      try {
+        await window.lychee.invoke('spellcheck.setLanguages', {
+          languages: ['unsupported-test-language'],
+        });
+        return null;
+      } catch (cause) {
+        return cause instanceof Error ? cause.message : String(cause);
+      }
+    });
+    expect(error).toContain('Select at least one supported spelling language');
+    expect(
+      await window.evaluate(() => window.lychee.invoke('spellcheck.getState', {})),
+    ).toEqual(beforeInvalid);
+  });
+
   test('resets to General section on reopen', async ({ window }) => {
     const settingsBtn = window.locator('aside[data-state="expanded"]').getByText('Settings');
     await settingsBtn.click();
@@ -178,6 +440,92 @@ test.describe('Settings Modal', () => {
     await expect(
       dialog.getByText('Updates are delivered automatically in installed builds.'),
     ).toBeVisible();
+  });
+});
+
+function buildRestartLaunchOptions(
+  tmpDir: string,
+): Parameters<typeof _electron.launch>[0] {
+  const packagedBinary = findPackagedBinary();
+  const options: Parameters<typeof _electron.launch>[0] = {
+    env: { ...process.env, NODE_ENV: 'test', E2E: '1' },
+    timeout: process.env.CI ? 60_000 : 30_000,
+  };
+  const extraArgs =
+    process.env.CI && process.platform === 'linux' ? ['--no-sandbox'] : [];
+
+  if (packagedBinary) {
+    options.executablePath = packagedBinary;
+    options.args = [`--user-data-dir=${tmpDir}`, ...extraArgs];
+  } else if (hasDevBuild()) {
+    options.args = [PROJECT_ROOT, `--user-data-dir=${tmpDir}`, ...extraArgs];
+  } else {
+    throw new Error('No Electron build found.');
+  }
+  return options;
+}
+
+async function launchRestartSession(
+  tmpDir: string,
+): Promise<{ app: ElectronApplication; window: Page }> {
+  const app = await _electron.launch(buildRestartLaunchOptions(tmpDir));
+  const window = await app.firstWindow();
+  await window.waitForLoadState('domcontentloaded');
+  await window.waitForSelector('aside[data-state]', { timeout: 15_000 });
+  return { app, window };
+}
+
+base.describe('Settings spelling — full app restart persistence', () => {
+  let tmpDir: string;
+
+  base.beforeAll(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-spelling-persist-'));
+  });
+
+  base.afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  base('disabled spelling survives a complete Electron process restart', async () => {
+    let session = await launchRestartSession(tmpDir);
+    try {
+      await session.window.evaluate(() =>
+        window.lychee.invoke('spellcheck.setEnabled', { enabled: false }),
+      );
+      expect(
+        await session.app.evaluate(({ session: electronSession }) =>
+          electronSession.defaultSession.isSpellCheckerEnabled(),
+        ),
+      ).toBe(false);
+      expect(
+        await session.window.evaluate(() =>
+          window.lychee.invoke('settings.get', { key: 'spellCheckEnabled' }),
+        ),
+      ).toEqual({ value: 'false' });
+    } finally {
+      await session.app.close();
+    }
+
+    session = await launchRestartSession(tmpDir);
+    try {
+      expect(
+        await session.window.evaluate(() =>
+          window.lychee.invoke('spellcheck.getState', {}),
+        ),
+      ).toMatchObject({ enabled: false });
+      expect(
+        await session.app.evaluate(({ session: electronSession }) =>
+          electronSession.defaultSession.isSpellCheckerEnabled(),
+        ),
+      ).toBe(false);
+
+      const dialog = await openEditorSettings(session.window);
+      await expect(
+        dialog.getByRole('switch', { name: 'Check spelling while typing' }),
+      ).not.toBeChecked();
+    } finally {
+      await session.app.close();
+    }
   });
 });
 

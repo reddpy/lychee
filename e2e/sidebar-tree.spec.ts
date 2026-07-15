@@ -129,8 +129,14 @@ async function dragNote(
     await window.mouse.up();
   };
 
-  if (slow) {
-    // Slow-motion drag so you can visually see the drop indicators.
+  const isCollapsedSidebarDrag = await source.evaluate((element) =>
+    element.closest('aside[data-state="collapsed"]') !== null,
+  );
+
+  if (slow || isCollapsedSidebarDrag) {
+    // Playwright's dragTo() scrolls locators into view before pressing. That
+    // actionability step can dismiss a floating sidebar and leave <html>
+    // intercepting the pointer, so drive overlay drags with real mouse events.
     await dragWithMouse();
   } else {
     // Fast drag: use source position to ensure dragTo starts from the right spot.

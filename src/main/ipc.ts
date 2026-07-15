@@ -19,6 +19,11 @@ import { fetchUrlMetadata } from './repos/url-metadata';
 import { getSetting, setSetting, getAllSettings } from './repos/settings';
 import { checkForUpdates, getUpdateStatus, installUpdate } from './updater';
 import { isAllowedExternal } from './url-policy';
+import {
+  getSpellCheckState,
+  setSpellCheckEnabled,
+  setSpellCheckLanguages,
+} from './spellcheck';
 
 type Handler<C extends IpcChannel> = (
   payload: IpcContract[C]['req'],
@@ -139,6 +144,16 @@ export function registerIpcHandlers() {
   handle('settings.getAll', () => ({
     settings: getAllSettings(),
   }));
+
+  handle('spellcheck.getState', () => getSpellCheckState());
+
+  handle('spellcheck.setEnabled', (payload) =>
+    setSpellCheckEnabled(payload.enabled),
+  );
+
+  handle('spellcheck.setLanguages', (payload) =>
+    setSpellCheckLanguages(payload.languages),
+  );
 
   handle('window.action', (payload) => {
     const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];

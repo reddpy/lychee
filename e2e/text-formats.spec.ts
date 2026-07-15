@@ -6,6 +6,11 @@ import {
   hasDevBuild,
   PROJECT_ROOT,
 } from './electron-app';
+import {
+  capturedNativeMenus,
+  closeCapturedNativeMenu,
+  installNativeMenuCapture,
+} from './native-menu-helpers';
 import { test as base, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import path from 'path';
 import os from 'os';
@@ -275,6 +280,10 @@ async function selectInParagraph(
       if (sel) {
         sel.removeAllRanges();
         sel.addRange(range);
+        // Programmatic Range changes do not consistently enqueue a native
+        // selectionchange in Electron. Lexical listens for this event to copy
+        // the DOM range into its internal selection before format commands.
+        document.dispatchEvent(new Event('selectionchange'));
       }
     },
     { pIdx: paragraphIndex, s: start, e: end },
@@ -297,10 +306,12 @@ async function selectInParagraph(
     null,
     { timeout: 3000 },
   );
-  // Lexical's internal selection state syncs via an editor.update queued from
-  // the selectionchange listener — give that update cycle a tick to flush
-  // before the next command reads it.
-  await window.waitForTimeout(150);
+  // The floating toolbar is driven by Lexical's internal selection, making it
+  // a stronger readiness signal than the DOM Range alone. Waiting for it keeps
+  // the next shortcut from racing the selectionchange/editor.update cycle.
+  await expect(
+    window.getByRole('toolbar', { name: 'Text formatting' }),
+  ).toBeVisible();
 }
 
 /**
@@ -374,6 +385,7 @@ async function selectAcrossParagraphs(
       if (sel) {
         sel.removeAllRanges();
         sel.addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
       }
     },
     { sP: startPIdx, sO: startOffset, eP: endPIdx, eO: endOffset },
@@ -756,7 +768,6 @@ test.describe('Text formats — Stress and recovery', () => {
     await window.keyboard.type('text to format');
 
     await selectInParagraph(window, -1, 0, 'text to format'.length);
-    await window.locator('.ContentEditable__root p').filter({ hasText: 'text to format' }).click({ button: 'right' });
 
     const toolbar = window.getByRole('toolbar', { name: 'Text formatting' });
     await expect(toolbar).toBeVisible();
@@ -803,11 +814,6 @@ test.describe('Text formats — Stress and recovery', () => {
     // Select something so the toolbar can show
     await selectInParagraph(window, -1, 0, 'text to format'.length);
 
-    // Right-click on the text itself — right-clicking the editor padding clears
-    // the programmatic selection before contextmenu fires.
-    await window.locator('.ContentEditable__root p').filter({ hasText: 'text to format' }).click({ button: 'right' });
-    await window.waitForTimeout(300);
-
     const toolbar = window.locator('.floating-toolbar');
     await expect(toolbar).toBeVisible();
 
@@ -842,8 +848,8 @@ test.describe('Text formats — Stress and recovery', () => {
     const tailStart = longLine.length - 'edge'.length;
     await selectInParagraph(window, -1, tailStart, longLine.length);
 
-    // Right-click at the center of the selection rect — keeps the selection
-    // intact (clicking inside a selection preserves it across browsers).
+    // Read the selection center to prove this scenario really exercises the
+    // toolbar's right-edge clamp.
     const clickPos = await window.evaluate(() => {
       const sel = getSelection();
       if (!sel || sel.rangeCount === 0) return null;
@@ -854,8 +860,6 @@ test.describe('Text formats — Stress and recovery', () => {
       };
     });
     expect(clickPos, 'expected to read selection rect').toBeTruthy();
-    await window.mouse.click(clickPos!.x, clickPos!.y, { button: 'right' });
-    await window.waitForTimeout(300);
 
     const toolbar = window.locator('.floating-toolbar');
     await expect(toolbar).toBeVisible();
@@ -879,6 +883,68 @@ test.describe('Text formats — Stress and recovery', () => {
       clickPos!.x,
       `selection center (x=${clickPos!.x}) should be in the right half of the viewport (>${viewportWidth / 2}) to actually stress the right clamp`,
     ).toBeGreaterThan(viewportWidth / 2);
+  });
+
+  test('right-click yields to the native menu, then restores formatting after it closes', async ({
+    electronApp,
+    window,
+  }) => {
+    await installNativeMenuCapture(electronApp);
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('selected for native menu');
+    await selectInParagraph(window, -1, 0, 'selected for native menu'.length);
+
+    const toolbar = window.getByRole('toolbar', { name: 'Text formatting' });
+    await expect(toolbar).toBeVisible();
+    const selectedText = await window.evaluate(() => getSelection()?.toString());
+
+    await window
+      .locator('main:visible .ContentEditable__root p')
+      .filter({ hasText: 'selected for native menu' })
+      .click({ button: 'right' });
+    await expect
+      .poll(async () => (await capturedNativeMenus(electronApp)).length)
+      .toBe(1);
+    await expect(toolbar).not.toBeVisible();
+
+    await closeCapturedNativeMenu(electronApp);
+    await expect(toolbar).toBeVisible();
+    expect(await window.evaluate(() => getSelection()?.toString())).toBe(selectedText);
+  });
+
+  test('Escape dismisses the floating toolbar immediately', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('selection survives escape');
+    await selectInParagraph(window, -1, 0, 'selection survives escape'.length);
+
+    const toolbar = window.getByRole('toolbar', { name: 'Text formatting' });
+    await expect(toolbar).toBeVisible();
+
+    await window.keyboard.press('Escape');
+    await expect(toolbar).not.toBeVisible();
+    await window.waitForTimeout(150);
+    await expect(toolbar).not.toBeVisible();
+  });
+
+  test('formatting toolbar stays hidden during a pointer selection gesture', async ({ window }) => {
+    const title = window.locator('h1.editor-title');
+    await title.click();
+    await window.keyboard.press('Enter');
+    await window.keyboard.type('pointer selection settles');
+    await selectInParagraph(window, -1, 0, 'pointer selection settles'.length);
+
+    const toolbar = window.getByRole('toolbar', { name: 'Text formatting' });
+    await expect(toolbar).toBeVisible();
+    const editor = window.locator('main:visible .ContentEditable__root');
+
+    await editor.dispatchEvent('pointerdown', { button: 0, bubbles: true });
+    await expect(toolbar).not.toBeVisible();
+    await editor.dispatchEvent('pointerup', { button: 0, bubbles: true });
+    await expect(toolbar).toBeVisible();
   });
 });
 

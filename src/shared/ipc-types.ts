@@ -46,6 +46,13 @@ export type UpdateStatus = {
   releaseUrl: string;
 };
 
+export type SpellCheckState = {
+  enabled: boolean;
+  canChooseLanguages: boolean;
+  languages: string[];
+  availableLanguages: string[];
+};
+
 // ── IPC contract ─────────────────────────────────────────────────────
 
 export type IpcContract = {
@@ -141,6 +148,18 @@ export type IpcContract = {
     req: Record<string, never>;
     res: { settings: Record<string, string> };
   };
+  'spellcheck.getState': {
+    req: Record<string, never>;
+    res: SpellCheckState;
+  };
+  'spellcheck.setEnabled': {
+    req: { enabled: boolean };
+    res: SpellCheckState;
+  };
+  'spellcheck.setLanguages': {
+    req: { languages: string[] };
+    res: SpellCheckState;
+  };
   'window.action': {
     req: { action: WindowAction };
     res: { ok: true };
@@ -205,6 +224,8 @@ export type IpcEvents = {
   'menu:reopen-closed-tab': void;
   'menu:undo': void;
   'menu:redo': void;
+  'context-menu:closed': void;
+  'spellcheck:state': SpellCheckState;
   'update:status': UpdateStatus;
 };
 

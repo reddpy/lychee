@@ -65,18 +65,25 @@ interface FormatButtonDefinition {
   format: TextFormatType;
   icon: LucideIcon;
   label: string;
-  shortcut: string;
+  shortcutKey: string;
+  shift?: boolean;
 }
 
 /** The single source of truth for text formats exposed by the toolbar. */
 const FORMAT_BUTTONS = [
-  { format: "bold", icon: Bold, label: "Bold", shortcut: "⌘B" },
-  { format: "italic", icon: Italic, label: "Italic", shortcut: "⌘I" },
-  { format: "underline", icon: Underline, label: "Underline", shortcut: "⌘U" },
-  { format: "strikethrough", icon: Strikethrough, label: "Strikethrough", shortcut: "⌘⇧S" },
-  { format: "code", icon: Code, label: "Inline code", shortcut: "⌘E" },
-  { format: "highlight", icon: Highlighter, label: "Highlight", shortcut: "⌘⇧H" },
+  { format: "bold", icon: Bold, label: "Bold", shortcutKey: "B", shift: false },
+  { format: "italic", icon: Italic, label: "Italic", shortcutKey: "I", shift: false },
+  { format: "underline", icon: Underline, label: "Underline", shortcutKey: "U", shift: false },
+  { format: "strikethrough", icon: Strikethrough, label: "Strikethrough", shortcutKey: "S", shift: true },
+  { format: "code", icon: Code, label: "Inline code", shortcutKey: "E", shift: false },
+  { format: "highlight", icon: Highlighter, label: "Highlight", shortcutKey: "H", shift: true },
 ] as const satisfies readonly FormatButtonDefinition[];
+
+function shortcutLabel(key: string, shift = false): string {
+  const isMac = window.lychee.platform === "darwin";
+  if (isMac) return `⌘${shift ? "⇧" : ""}${key}`;
+  return `Ctrl+${shift ? "Shift+" : ""}${key}`;
+}
 
 /** A project-defined subset of Lexical's TextFormatType. */
 type ToolbarFormat = (typeof FORMAT_BUTTONS)[number]["format"];
@@ -256,7 +263,10 @@ function FloatingToolbar({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const scrollHiddenRef = useRef(false);
   const visibleRef = useRef(false);
-  const pendingContextMenuRef = useRef(false);
+  const pointerSelectingRef = useRef(false);
+  const contextMenuOpenRef = useRef(false);
+  const restoreAfterContextMenuRef = useRef(false);
+  const selectionTimerRef = useRef<number | null>(null);
 
   // Keep ref in sync so scroll handler has current value without re-subscribing
   visibleRef.current = state.isVisible;
@@ -265,8 +275,14 @@ function FloatingToolbar({
   // toolbar state whenever the active tab changes so a portal from the outgoing
   // tab cannot remain visible over the incoming tab.
   useEffect(() => {
-    pendingContextMenuRef.current = false;
+    contextMenuOpenRef.current = false;
+    restoreAfterContextMenuRef.current = false;
+    pointerSelectingRef.current = false;
     scrollHiddenRef.current = false;
+    if (selectionTimerRef.current !== null) {
+      window.clearTimeout(selectionTimerRef.current);
+      selectionTimerRef.current = null;
+    }
     setState(HIDDEN_STATE);
   }, [activeTabId]);
 
@@ -341,70 +357,100 @@ function FloatingToolbar({
     }
   }, []);
 
-  // Right-click shows toolbar; mousedown hides it; editor updates refresh format state
+  const syncToolbarToSelection = useCallback(() => {
+    if (!activeTabId || contextMenuOpenRef.current || pointerSelectingRef.current) return;
+
+    const selState = readSelectionState();
+    if (!selState) {
+      scrollHiddenRef.current = false;
+      setState(HIDDEN_STATE);
+      return;
+    }
+
+    setState({ ...selState, isVisible: true });
+    requestAnimationFrame(() => positionToolbar(TAB_BAR_HEIGHT));
+  }, [activeTabId, readSelectionState, positionToolbar]);
+
+  const scheduleSelectionSync = useCallback((delay = 40) => {
+    if (selectionTimerRef.current !== null) {
+      window.clearTimeout(selectionTimerRef.current);
+    }
+    selectionTimerRef.current = window.setTimeout(() => {
+      selectionTimerRef.current = null;
+      syncToolbarToSelection();
+    }, delay);
+  }, [syncToolbarToSelection]);
+
+  // Selection is a formatting gesture. While the pointer is still dragging we
+  // keep the UI quiet, then reveal the toolbar once the selection has settled.
+  // A context menu is a separate, native editing surface and always wins.
   useEffect(() => {
     const rootElement = editor.getRootElement();
     if (!rootElement) return;
 
-    const handleContextMenu = (e: MouseEvent) => {
-      const selState = readSelectionState();
-      if (selState) {
-        // Selection already exists — show toolbar immediately
-        e.preventDefault();
-        setState({ ...selState, isVisible: true });
-        requestAnimationFrame(() => positionToolbar());
-      } else {
-        // No Lexical selection yet — the browser will word-select on right-click,
-        // but Lexical hasn't synced it. Set a flag so the update listener picks it up.
-        pendingContextMenuRef.current = true;
-      }
-    };
-
-    const handleMouseDown = () => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      pointerSelectingRef.current = true;
       scrollHiddenRef.current = false;
       setState(HIDDEN_STATE);
     };
 
+    const handlePointerUp = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      pointerSelectingRef.current = false;
+      scheduleSelectionSync(60);
+    };
+
+    const handleContextMenu = () => {
+      restoreAfterContextMenuRef.current = readSelectionState() !== null;
+      contextMenuOpenRef.current = true;
+      pointerSelectingRef.current = false;
+      setState(HIDDEN_STATE);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        restoreAfterContextMenuRef.current = false;
+        setState(HIDDEN_STATE);
+      }
+    };
+
     rootElement.addEventListener("contextmenu", handleContextMenu);
-    rootElement.addEventListener("mousedown", handleMouseDown);
+    rootElement.addEventListener("pointerdown", handlePointerDown);
+    rootElement.addEventListener("pointerup", handlePointerUp);
+    rootElement.addEventListener("keydown", handleKeyDown);
     return () => {
       rootElement.removeEventListener("contextmenu", handleContextMenu);
-      rootElement.removeEventListener("mousedown", handleMouseDown);
+      rootElement.removeEventListener("pointerdown", handlePointerDown);
+      rootElement.removeEventListener("pointerup", handlePointerUp);
+      rootElement.removeEventListener("keydown", handleKeyDown);
     };
-  }, [editor, readSelectionState, positionToolbar]);
+  }, [editor, readSelectionState, scheduleSelectionSync]);
 
-  // Update format states when editor changes (only while toolbar is visible)
-  // Also handles deferred context menu: when right-click fires before Lexical
-  // syncs the browser's word-selection, pendingContextMenuRef is set and we
-  // show the toolbar on the next update cycle once Lexical has the selection.
+  // Lexical updates cover keyboard and programmatic selections as well as format
+  // changes made from the toolbar. Debouncing prevents jitter while a selection
+  // changes rapidly (for example, Shift+Arrow held down).
   useEffect(() => {
     return editor.registerUpdateListener(() => {
-      const pending = pendingContextMenuRef.current;
-      if (!visibleRef.current && !scrollHiddenRef.current && !pending) return;
-
-      const selState = readSelectionState();
-      if (!selState) {
-        if (!pending) {
-          scrollHiddenRef.current = false;
-          setState(HIDDEN_STATE);
-        }
-        return;
-      }
-
-      if (pending) {
-        pendingContextMenuRef.current = false;
-        setState({ ...selState, isVisible: true });
-        requestAnimationFrame(() => positionToolbar());
-        return;
-      }
-
-      setState((prev) => {
-        if (!prev.isVisible) return prev;
-        return { ...selState, isVisible: true };
-      });
-      positionToolbar();
+      if (contextMenuOpenRef.current || pointerSelectingRef.current) return;
+      scheduleSelectionSync();
     });
-  }, [editor, readSelectionState, positionToolbar]);
+  }, [editor, scheduleSelectionSync]);
+
+  useEffect(() => {
+    return window.lychee.on("context-menu:closed", () => {
+      const shouldRestore = restoreAfterContextMenuRef.current;
+      contextMenuOpenRef.current = false;
+      restoreAfterContextMenuRef.current = false;
+      if (shouldRestore) scheduleSelectionSync(60);
+    });
+  }, [scheduleSelectionSync]);
+
+  useEffect(() => () => {
+    if (selectionTimerRef.current !== null) {
+      window.clearTimeout(selectionTimerRef.current);
+    }
+  }, []);
 
   // Scroll: hide when selection leaves viewport, re-show when it returns
   useEffect(() => {
@@ -470,13 +516,13 @@ function FloatingToolbar({
         </>
       )}
 
-      {FORMAT_BUTTONS.map(({ format, icon, label, shortcut }) => (
+      {FORMAT_BUTTONS.map(({ format, icon, label, shortcutKey, shift }) => (
         <FormatButton
           key={format}
           format={format}
           icon={icon}
           label={label}
-          shortcut={shortcut}
+          shortcut={shortcutLabel(shortcutKey, shift)}
           active={state.activeFormats.has(format)}
           onFormat={handleFormat}
         />
@@ -506,7 +552,7 @@ function FloatingToolbar({
             <Link className="h-4 w-4" />
           </button>
         </TooltipTrigger>
-        <TooltipContent sideOffset={8}>Link <kbd className="ml-1.5 opacity-60">⌘K</kbd></TooltipContent>
+        <TooltipContent sideOffset={8}>Link <kbd className="ml-1.5 opacity-60">{shortcutLabel("K")}</kbd></TooltipContent>
       </Tooltip>
     </div>,
     document.body
