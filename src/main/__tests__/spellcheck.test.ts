@@ -85,12 +85,15 @@ describe('cross-platform spellcheck preferences', () => {
     expect(getSpellCheckState().languages).toEqual(['es-ES', 'en-US']);
   });
 
-  it('applies enabled state and languages to the Chromium session', () => {
+  it('applies languages before the explicit enabled state', () => {
     mocks.settings.set('spellCheckEnabled', 'false');
     mocks.settings.set('spellCheckLanguages', JSON.stringify(['en-US', 'es-ES']));
     applySpellCheckPreferences();
     expect(mocks.setEnabled).toHaveBeenCalledWith(false);
     expect(mocks.setLanguages).toHaveBeenCalledWith(['en-US', 'es-ES']);
+    expect(mocks.setLanguages.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.setEnabled.mock.invocationCallOrder[0],
+    );
   });
 
   it('persists changes and broadcasts one shared state to every window', () => {

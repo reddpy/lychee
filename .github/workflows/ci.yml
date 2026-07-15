@@ -122,6 +122,7 @@ jobs:
             workers: 1
           - name: editor-context-menu
             specs: e2e/editor-context-menu.spec.ts
+            workers: 1
           - name: internal-note-links
             specs: e2e/internal-note-links.spec.ts
             workers: 1
@@ -229,6 +230,7 @@ jobs:
           E2E: '1'
 
       - name: Run spellcheck E2E smoke tests
+        shell: bash
         run: >-
           pnpm exec playwright test
           e2e/settings.spec.ts

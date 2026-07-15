@@ -73,10 +73,12 @@ function broadcastSpellCheckState(state: SpellCheckState): void {
 
 export function applySpellCheckPreferences(): SpellCheckState {
   const state = getSpellCheckState();
-  session.defaultSession.setSpellCheckerEnabled(state.enabled);
   if (state.canChooseLanguages && state.languages.length > 0) {
     session.defaultSession.setSpellCheckerLanguages(state.languages);
   }
+  // Electron enables spellcheck as a side effect of setting a non-empty
+  // language list, so apply the explicit user preference last.
+  session.defaultSession.setSpellCheckerEnabled(state.enabled);
   return state;
 }
 
