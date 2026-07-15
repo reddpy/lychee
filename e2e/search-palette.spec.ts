@@ -234,6 +234,23 @@ async function selectedItem(window: Page): Promise<Locator> {
   return selected;
 }
 
+function previewTitle(window: Page) {
+  return palette(window).getByTestId("search-preview-title");
+}
+
+async function expectSelectedAndPreviewTitle(window: Page, title: string) {
+  await expect
+    .poll(async () => {
+      const selected = palette(window)
+        .locator('[cmdk-item][data-selected="true"]')
+        .first();
+      if ((await selected.count()) === 0) return null;
+      return (await selected.innerText()).split("\n")[0]?.trim();
+    })
+    .toBe(title);
+  await expect(previewTitle(window)).toHaveText(title);
+}
+
 async function openFindUi(window: Page) {
   await window.keyboard.press(`${mod}+f`);
   if ((await findInput(window).count()) === 0 && (await findTrigger(window).count()) > 0) {
@@ -426,6 +443,99 @@ test.describe("Search palette e2e", () => {
     await palette(window).getByRole("button", { name: "Open note" }).click();
     await expect(palette(window)).toHaveCount(0);
     await expect(activeEditorTitle(window)).toContainText("Race preview beta final");
+  });
+
+  test("query reorder resets preview when the previous result remains in the list", async ({
+    window,
+  }) => {
+    await seedNotesInDb(window, ["Stripe", "Stripe recent reference"]);
+
+    await openPalette(window);
+    await waitForResultRows(window, 2);
+    await expectSelectedAndPreviewTitle(window, "Stripe recent reference");
+
+    await paletteInput(window).fill("stripe");
+    await waitForResultRows(window, 2);
+    await expectSelectedAndPreviewTitle(window, "Stripe");
+
+    await palette(window).getByRole("button", { name: "Open note" }).click();
+    await expect(palette(window)).toHaveCount(0);
+    await expect(activeEditorTitle(window)).toHaveText("Stripe");
+  });
+
+  test("successive score-based reorders keep selection and preview synchronized", async ({
+    window,
+  }) => {
+    await seedNotesInDb(window, [
+      "Stripe",
+      "Stripe payments",
+      "Stripe payments archive",
+    ]);
+
+    await openPalette(window);
+    await waitForResultRows(window, 3);
+    await expectSelectedAndPreviewTitle(window, "Stripe payments archive");
+
+    await paletteInput(window).fill("stripe payments");
+    await waitForResultRows(window, 2);
+    await expectSelectedAndPreviewTitle(window, "Stripe payments");
+
+    await paletteInput(window).fill("stripe");
+    await waitForResultRows(window, 3);
+    await expectSelectedAndPreviewTitle(window, "Stripe");
+
+    await palette(window).getByRole("button", { name: "Open note" }).click();
+    await expect(palette(window)).toHaveCount(0);
+    await expect(activeEditorTitle(window)).toHaveText("Stripe");
+  });
+
+  test("clearing a query restores both selection and preview to recency order", async ({
+    window,
+  }) => {
+    await seedNotesInDb(window, ["Stripe", "Stripe recent reference"]);
+
+    await openPalette(window);
+    await waitForResultRows(window, 2);
+    await expectSelectedAndPreviewTitle(window, "Stripe recent reference");
+
+    await paletteInput(window).fill("stripe");
+    await expectSelectedAndPreviewTitle(window, "Stripe");
+
+    await paletteInput(window).fill("");
+    await waitForResultRows(window, 2);
+    await expectSelectedAndPreviewTitle(window, "Stripe recent reference");
+
+    await palette(window).getByRole("button", { name: "Open note" }).click();
+    await expect(palette(window)).toHaveCount(0);
+    await expect(activeEditorTitle(window)).toHaveText("Stripe recent reference");
+  });
+
+  test("rapid reorder churn settles selection, preview, and open action on the final result", async ({
+    window,
+  }) => {
+    await seedNotesInDb(window, [
+      "Stripe",
+      "Stripe payments",
+      "Stripe payments archive",
+    ]);
+
+    await openPalette(window);
+    await waitForResultRows(window, 3);
+    await expectSelectedAndPreviewTitle(window, "Stripe payments archive");
+
+    for (const query of [
+      "stripe payments",
+      "stripe",
+      "stripe payments",
+      "stripe",
+    ]) {
+      await paletteInput(window).fill(query);
+    }
+
+    await expectSelectedAndPreviewTitle(window, "Stripe");
+    await palette(window).getByRole("button", { name: "Open note" }).click();
+    await expect(palette(window)).toHaveCount(0);
+    await expect(activeEditorTitle(window)).toHaveText("Stripe");
   });
 
   test("cache pressure: over-300 unique queries still resolves correct result after churn", async ({
