@@ -1,4 +1,5 @@
 import type { DocumentRow, NoteMetadata } from './documents';
+import type { KeybindingMap, ShortcutId } from './keybindings';
 
 // ── URL resolution types ─────────────────────────────────────────────
 
@@ -172,6 +173,22 @@ export type IpcContract = {
     req: Record<string, never>;
     res: { settings: Record<string, string> };
   };
+  'keybindings.getAll': {
+    req: Record<string, never>;
+    res: { bindings: KeybindingMap };
+  };
+  'keybindings.set': {
+    req: { id: ShortcutId; binding: string };
+    res: { bindings: KeybindingMap };
+  };
+  'keybindings.reset': {
+    req: { id: ShortcutId };
+    res: { bindings: KeybindingMap };
+  };
+  'keybindings.resetAll': {
+    req: Record<string, never>;
+    res: { bindings: KeybindingMap };
+  };
   'spellcheck.getState': {
     req: Record<string, never>;
     res: SpellCheckState;
@@ -251,6 +268,7 @@ export type IpcEvents = {
   'context-menu:closed': void;
   'spellcheck:state': SpellCheckState;
   'update:status': UpdateStatus;
+  'keybindings:changed': KeybindingMap;
 };
 
 export type IpcEventChannel = keyof IpcEvents;

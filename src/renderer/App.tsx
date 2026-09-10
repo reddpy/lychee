@@ -18,6 +18,7 @@ import {
 import { useDocumentStore } from "../renderer/document-store";
 import { useSettingsStore } from "../renderer/settings-store";
 import type { SidebarPreferences } from "../renderer/sidebar-preferences";
+import { useKeybindingsStore } from "../renderer/keybindings-store";
 
 // Pulls inset-centered content left by half the sidebar width to land at the
 // viewport center, clamped so the ~320px horizontal logo never crosses the
@@ -299,6 +300,12 @@ export function App({
   initialSidebarPreferences?: SidebarPreferences;
 }) {
   useMenuEventSubscriptions();
+  React.useEffect(() => {
+    void useKeybindingsStore.getState().initialize();
+    return window.lychee.on('keybindings:changed', (bindings) => {
+      useKeybindingsStore.getState().applyBindings(bindings);
+    });
+  }, []);
   // Reset the editor boundary when the active tab changes, so a crash isolated
   // to one document recovers as soon as the user navigates away from it,
   // instead of staying stuck on the fallback until a full reload.

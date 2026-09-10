@@ -129,7 +129,7 @@ jobs:
           - name: menu-shortcuts
             specs: e2e/menu-shortcuts.spec.ts
           - name: misc
-            specs: e2e/settings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts e2e/content-security-policy.spec.ts e2e/error-boundary.spec.ts
+            specs: e2e/settings.spec.ts e2e/keybindings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts e2e/content-security-policy.spec.ts e2e/error-boundary.spec.ts
             workers: 1
           - name: sidebar-sections
             specs: e2e/sidebar-context-menu.spec.ts e2e/sidebar-section-reorder.spec.ts e2e/section-indicator.spec.ts
