@@ -12,6 +12,7 @@ import {
   serializeSidebarPreferences,
 } from '../../renderer/sidebar-preferences';
 import { Button } from './button';
+import { onPreferencesReset } from '../../renderer/preferences-reset-event';
 
 type SidebarContextValue = {
   state: 'expanded' | 'collapsed';
@@ -94,6 +95,16 @@ export function SidebarProvider({
   React.useEffect(() => {
     openRef.current = open;
   }, [open]);
+
+  // A full preferences reset restores the ship-default layout without a remount.
+  React.useEffect(() => {
+    return onPreferencesReset(() => {
+      openRef.current = true;
+      widthRef.current = DEFAULT_SIDEBAR_WIDTH;
+      setOpenInternal(true);
+      setWidthInternal(DEFAULT_SIDEBAR_WIDTH);
+    });
+  }, []);
 
   const [hoverIntent, setHoverIntent] = React.useState(false);
   const hoverIntentRef = React.useRef(false);

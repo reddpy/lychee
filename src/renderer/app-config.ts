@@ -10,10 +10,25 @@ import {
   parseStoredAppearance,
   serializeAppearance,
 } from './appearance-preferences';
+import {
+  GENERAL_PREFERENCES_SETTING_KEY,
+  type GeneralPreferences,
+  parseStoredGeneralPreferences,
+  serializeGeneralPreferences,
+} from '@/shared/general-preferences';
+import {
+  WORKSPACE_SESSION_SETTING_KEY,
+  DEFAULT_WORKSPACE_SESSION,
+  parseStoredWorkspaceSession,
+  serializeWorkspaceSession,
+  type WorkspaceSession,
+} from './workspace-session';
 
 export type AppConfig = {
   sidebar: SidebarPreferences;
   appearance: AppearancePreferences;
+  general: GeneralPreferences;
+  session: WorkspaceSession;
 };
 
 /**
@@ -59,11 +74,37 @@ export async function loadAppConfig(): Promise<AppConfig> {
         });
     }
 
-    return { sidebar, appearance };
+    const rawGeneral = settings[GENERAL_PREFERENCES_SETTING_KEY] ?? null;
+    const general = parseStoredGeneralPreferences(
+      typeof rawGeneral === 'string' ? rawGeneral : null,
+    );
+    const normalizedGeneral = serializeGeneralPreferences(general);
+
+    // Only rewrite when a stored value was present but malformed; a missing key
+    // is already represented by the defaults.
+    if (typeof rawGeneral === 'string' && rawGeneral !== normalizedGeneral) {
+      await window.lychee
+        .invoke('settings.set', {
+          key: GENERAL_PREFERENCES_SETTING_KEY,
+          value: normalizedGeneral,
+        })
+        .catch(() => {
+          // A failed repair should not prevent the app from opening safely.
+        });
+    }
+
+    const rawSession = settings[WORKSPACE_SESSION_SETTING_KEY] ?? null;
+    const session = parseStoredWorkspaceSession(
+      typeof rawSession === 'string' ? rawSession : null,
+    );
+
+    return { sidebar, appearance, general, session };
   } catch {
     return {
       sidebar: parseStoredSidebarPreferences(null),
       appearance: parseStoredAppearance(null),
+      general: parseStoredGeneralPreferences(null),
+      session: DEFAULT_WORKSPACE_SESSION,
     };
   }
 }

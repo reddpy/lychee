@@ -26,6 +26,11 @@ import {
   TITLEBAR_OVERLAY_HEIGHT,
 } from './main/window-chrome';
 import { getKeybindings } from './main/repos/keybindings';
+import {
+  applyGeneralPreferencesOnStartup,
+  shouldHideWindowOnClose,
+} from './main/preferences';
+import { getInitialWindowGeometry, trackWindowBounds } from './main/window-state';
 import { toElectronAccelerator } from './shared/keybindings';
 
 // CSP applies to packaged builds. Dev runs through webpack-dev-server which sets
@@ -271,14 +276,22 @@ function buildAppMenu(): Menu {
   return Menu.buildFromTemplate(template);
 }
 
+// Set when a real quit is underway (Cmd+Q, menu Quit, tray Quit) so the
+// close-to-tray handler lets the window actually close.
+let isQuitting = false;
+
 const createWindow = (): BrowserWindow => {
   const isMac = process.platform === 'darwin';
   const theme = resolveTheme();
   const chrome = bootstrapChromeFor(theme);
+  const geometry = getInitialWindowGeometry();
 
   const mainWindow = new BrowserWindow({
-    height: 600,
-    width: 800,
+    height: geometry.height,
+    width: geometry.width,
+    ...(geometry.x !== undefined && geometry.y !== undefined
+      ? { x: geometry.x, y: geometry.y }
+      : {}),
     minHeight: 480,
     minWidth: 680,
     icon: windowIconPath,
@@ -299,6 +312,9 @@ const createWindow = (): BrowserWindow => {
     },
   });
 
+  trackWindowBounds(mainWindow);
+  if (geometry.maximized) mainWindow.maximize();
+
   installEditorContextMenu(mainWindow);
 
   if (!isMac) {
@@ -312,6 +328,16 @@ const createWindow = (): BrowserWindow => {
   // Show window once the renderer has painted — prevents white flash
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+  });
+
+  // "Show in menu bar / system tray": closing the window parks it in the tray
+  // instead of quitting. A real quit (Cmd+Q, tray Quit, menu Quit) sets the
+  // quitting flag so this doesn't block shutdown.
+  mainWindow.on('close', (event) => {
+    if (!isQuitting && shouldHideWindowOnClose()) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
   });
 
   // and load the index.html of the app.
@@ -377,6 +403,7 @@ app.whenReady().then(() => {
   console.log(`[db] sqlite: ${dbPath}`);
 
   applySpellCheckPreferences();
+  applyGeneralPreferencesOnStartup();
   Menu.setApplicationMenu(buildAppMenu());
 
   // Must register IPC handlers before createWindow loads the renderer URL —
@@ -411,6 +438,12 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
+});
+
+// Close the DB only after all windows are gone: the main window persists its
+// geometry on 'close', which needs a live database connection.
+app.on('will-quit', () => {
   closeDatabase();
 });
 

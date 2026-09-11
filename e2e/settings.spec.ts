@@ -38,6 +38,17 @@ async function openEditorSettings(window: import('@playwright/test').Page) {
   return dialog;
 }
 
+async function openGeneralSettings(window: import('@playwright/test').Page) {
+  await window
+    .locator('aside[data-state="expanded"]')
+    .getByText('Settings')
+    .click();
+  const dialog = window.locator('[data-slot="dialog-content"]');
+  await expect(dialog).toBeVisible();
+  await dialog.locator('nav').getByText('General', { exact: true }).click();
+  return dialog;
+}
+
 test.describe('Settings Modal', () => {
   test.afterEach(async ({ window }) => {
     await clearIpcMocks(window);
@@ -133,7 +144,7 @@ test.describe('Settings Modal', () => {
     await expect(dialog.getByText('App-wide preferences and startup options.')).toBeVisible();
   });
 
-  test('General data controls expose the storage layout and file actions', async ({ window }) => {
+  test('Data section exposes the storage layout and file actions', async ({ window }) => {
     await mockIpcResolve(window, 'data.getLocations', {
       userDataPath: '/Users/test/Library/Application Support/Lychee',
       databasePath: '/Users/test/Library/Application Support/Lychee/lychee.sqlite3',
@@ -144,6 +155,7 @@ test.describe('Settings Modal', () => {
     await window.locator('aside[data-state="expanded"]').getByText('Settings').click();
 
     const dialog = window.locator('[data-slot="dialog-content"]');
+    await dialog.locator('nav').getByText('Data', { exact: true }).click();
     await expect(dialog.getByText('/Users/test/Library/Application Support/Lychee')).toBeVisible();
     await expect(dialog.getByText('lychee.sqlite3')).toBeVisible();
     await expect(dialog.getByText('images/')).toBeVisible();
@@ -166,7 +178,7 @@ test.describe('Settings Modal', () => {
     await expect(revealButton).toBeEnabled();
   });
 
-  test('General data control reports an open-folder failure', async ({ window }) => {
+  test('Data section reports an open-folder failure', async ({ window }) => {
     await mockIpcResolve(window, 'data.getLocations', {
       userDataPath: '/Users/test/Library/Application Support/Lychee',
       databasePath: '/Users/test/Library/Application Support/Lychee/lychee.sqlite3',
@@ -176,13 +188,14 @@ test.describe('Settings Modal', () => {
     await window.locator('aside[data-state="expanded"]').getByText('Settings').click();
 
     const dialog = window.locator('[data-slot="dialog-content"]');
+    await dialog.locator('nav').getByText('Data', { exact: true }).click();
     await dialog.getByRole('button', { name: 'Open Data Folder' }).click();
     await expect(dialog.getByRole('alert')).toContainText(
       'Lychee couldn’t open the data folder',
     );
   });
 
-  test('General data control creates a consistent backup', async ({ window }) => {
+  test('Data section creates a consistent backup', async ({ window }) => {
     await mockIpcResolve(window, 'data.createBackup', {
       canceled: false,
       filePath: '/Users/test/Documents/lychee-backup.sqlite3',
@@ -190,6 +203,7 @@ test.describe('Settings Modal', () => {
     await window.locator('aside[data-state="expanded"]').getByText('Settings').click();
 
     const dialog = window.locator('[data-slot="dialog-content"]');
+    await dialog.locator('nav').getByText('Data', { exact: true }).click();
     const backupButton = dialog.getByRole('button', { name: 'Create Backup…' });
     await backupButton.click();
     await expect(backupButton).toBeDisabled();
@@ -486,6 +500,7 @@ test.describe('Settings Modal', () => {
     await expect(nav.getByText('General', { exact: true })).toBeVisible();
     await expect(nav.getByText('Appearance', { exact: true })).toBeVisible();
     await expect(nav.getByText('Editor', { exact: true })).toBeVisible();
+    await expect(nav.getByText('Data', { exact: true })).toBeVisible();
     await expect(nav.getByText('About', { exact: true })).toBeVisible();
   });
 
@@ -505,6 +520,219 @@ test.describe('Settings Modal', () => {
     await expect(
       dialog.getByText('Updates are delivered automatically in installed builds.'),
     ).toBeVisible();
+  });
+});
+
+test.describe('Settings Modal — General preferences', () => {
+  test.afterEach(async ({ window }) => {
+    await clearIpcMocks(window);
+  });
+
+  test('launch-at-login toggle persists to the settings store', async ({ window }) => {
+    const dialog = await openGeneralSettings(window);
+    const launchSwitch = dialog.getByTestId('launch-at-login');
+
+    await expect(launchSwitch).toHaveAttribute('aria-checked', 'false');
+    await launchSwitch.click();
+    await expect(launchSwitch).toHaveAttribute('aria-checked', 'true');
+
+    expect(
+      await window.evaluate(() => window.lychee.invoke('preferences.getGeneral', {})),
+    ).toMatchObject({ launchAtLogin: true });
+
+    // Restore the default so the shared profile stays isolated for later tests.
+    await launchSwitch.click();
+    await expect(launchSwitch).toHaveAttribute('aria-checked', 'false');
+  });
+
+  test('system tray toggle reflects the persisted preference', async ({ window }) => {
+    const dialog = await openGeneralSettings(window);
+    const traySwitch = dialog.getByTestId('show-in-tray');
+
+    await expect(traySwitch).toHaveAttribute('aria-checked', 'false');
+    await traySwitch.click();
+    await expect(traySwitch).toHaveAttribute('aria-checked', 'true');
+
+    expect(
+      await window.evaluate(() => window.lychee.invoke('preferences.getGeneral', {})),
+    ).toMatchObject({ showInTray: true });
+
+    await traySwitch.click();
+    await expect(traySwitch).toHaveAttribute('aria-checked', 'false');
+  });
+
+  test('restore-last-session toggle reflects the persisted preference', async ({
+    window,
+  }) => {
+    const dialog = await openGeneralSettings(window);
+    const restoreSwitch = dialog.getByTestId('restore-last-session');
+
+    await expect(restoreSwitch).toHaveAttribute('aria-checked', 'true');
+    await restoreSwitch.click();
+    await expect(restoreSwitch).toHaveAttribute('aria-checked', 'false');
+
+    expect(
+      await window.evaluate(() => window.lychee.invoke('preferences.getGeneral', {})),
+    ).toMatchObject({ restoreLastSession: false });
+
+    await restoreSwitch.click();
+    await expect(restoreSwitch).toHaveAttribute('aria-checked', 'true');
+  });
+
+  test('preferences pushed from main update the open General pane', async ({ window }) => {
+    const dialog = await openGeneralSettings(window);
+    const traySwitch = dialog.getByTestId('show-in-tray');
+    await expect(traySwitch).toHaveAttribute('aria-checked', 'false');
+
+    // Bypass the store and go straight through IPC: the main-process
+    // `preferences:changed` broadcast must keep the pane in sync.
+    await window.evaluate(() =>
+      window.lychee.invoke('preferences.setGeneral', { showInTray: true }),
+    );
+    await expect(traySwitch).toHaveAttribute('aria-checked', 'true');
+
+    await window.evaluate(() =>
+      window.lychee.invoke('preferences.setGeneral', { showInTray: false }),
+    );
+    await expect(traySwitch).toHaveAttribute('aria-checked', 'false');
+  });
+
+  test('launch-at-login registers with the OS (platform smoke)', async ({
+    electronApp,
+    window,
+  }) => {
+    test.skip(
+      process.platform === 'linux' ||
+        process.env.LYCHEE_E2E_OS_INTEGRATION !== '1',
+      'requires a real OS and LYCHEE_E2E_OS_INTEGRATION=1',
+    );
+
+    const dialog = await openGeneralSettings(window);
+    const launchSwitch = dialog.getByTestId('launch-at-login');
+    await expect(launchSwitch).toHaveAttribute('aria-checked', 'false');
+
+    await launchSwitch.click();
+    await expect(launchSwitch).toHaveAttribute('aria-checked', 'true');
+    await expect
+      .poll(() =>
+        electronApp.evaluate(({ app }) => app.getLoginItemSettings().openAtLogin),
+      )
+      .toBe(true);
+
+    // Leave the runner's login items untouched.
+    await launchSwitch.click();
+    await expect
+      .poll(() =>
+        electronApp.evaluate(({ app }) => app.getLoginItemSettings().openAtLogin),
+      )
+      .toBe(false);
+  });
+
+  test('reset all settings restores preferences and theme', async ({ window }) => {
+    await window.evaluate(() =>
+      window.lychee.invoke('preferences.setGeneral', {
+        launchAtLogin: true,
+        showInTray: true,
+      }),
+    );
+    await window.evaluate(() =>
+      window.lychee.invoke('settings.set', { key: 'theme', value: 'dark' }),
+    );
+
+    const dialog = await openGeneralSettings(window);
+    await expect(dialog.getByTestId('launch-at-login')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    await dialog.getByTestId('reset-settings').click();
+    await dialog.getByTestId('reset-settings-confirm').click();
+    await expect(dialog.getByTestId('reset-settings')).toBeVisible();
+
+    expect(
+      await window.evaluate(() => window.lychee.invoke('preferences.getGeneral', {})),
+    ).toEqual({ launchAtLogin: false, showInTray: false, restoreLastSession: true });
+    await expect
+      .poll(() =>
+        window.evaluate(() =>
+          window.lychee.invoke('settings.get', { key: 'theme' }),
+        ),
+      )
+      .toEqual({ value: 'light' });
+    await expect(dialog.getByTestId('launch-at-login')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+  });
+
+  test('reset all settings restores appearance, layout, and shortcuts', async ({
+    window,
+  }) => {
+    const defaultBindings = await window.evaluate(() =>
+      window.lychee.invoke('keybindings.getAll', {}),
+    );
+    await window.evaluate(() =>
+      window.lychee.invoke('keybindings.set', {
+        id: 'app.newNote',
+        binding: 'Mod+Alt+N',
+      }),
+    );
+    await window.evaluate(() =>
+      window.lychee.invoke('settings.set', { key: 'theme', value: 'dark' }),
+    );
+
+    // Collapse the sidebar so layout reset can be observed.
+    await window.locator('[aria-label="Toggle sidebar"]').click();
+    await window.waitForTimeout(400);
+    await expect(window.locator('aside[data-state="collapsed"]')).toBeVisible();
+
+    // Open settings from the collapsed widget.
+    await window.locator('button[aria-label="Settings"]').click();
+    const dialog = window.locator('[data-slot="dialog-content"]');
+    await expect(dialog).toBeVisible();
+
+    // Pick a non-default accent.
+    await dialog.locator('nav').getByText('Appearance', { exact: true }).click();
+    await dialog
+      .locator('[data-testid="accent-preset"][data-accent="#e11d48"]')
+      .click();
+    await expect
+      .poll(() =>
+        window.evaluate(
+          () => document.documentElement.style.getPropertyValue('--brand'),
+        ),
+      )
+      .not.toBe('');
+
+    await dialog.locator('nav').getByText('General', { exact: true }).click();
+    await dialog.getByTestId('reset-settings').click();
+    await dialog.getByTestId('reset-settings-confirm').click();
+    await expect(dialog.getByTestId('reset-settings')).toBeVisible();
+
+    // Appearance override cleared.
+    await expect
+      .poll(() =>
+        window.evaluate(
+          () => document.documentElement.style.getPropertyValue('--brand'),
+        ),
+      )
+      .toBe('');
+    // Sidebar re-expanded.
+    await expect(window.locator('aside[data-state="expanded"]')).toHaveCount(1);
+    // Shortcuts restored to defaults.
+    await expect
+      .poll(() =>
+        window.evaluate(() => window.lychee.invoke('keybindings.getAll', {})),
+      )
+      .toEqual(defaultBindings);
+    // Theme restored.
+    await expect
+      .poll(() =>
+        window.evaluate(() =>
+          document.documentElement.classList.contains('dark'),
+        ),
+      )
+      .toBe(false);
   });
 });
 
@@ -588,6 +816,166 @@ base.describe('Settings spelling — full app restart persistence', () => {
       await expect(
         dialog.getByRole('switch', { name: 'Check spelling while typing' }),
       ).not.toBeChecked();
+    } finally {
+      await session.app.close();
+    }
+  });
+
+  base('general preferences survive a complete Electron process restart', async () => {
+    let session = await launchRestartSession(tmpDir);
+    try {
+      await session.window.evaluate(() =>
+        window.lychee.invoke('preferences.setGeneral', { launchAtLogin: true }),
+      );
+      expect(
+        await session.window.evaluate(() =>
+          window.lychee.invoke('preferences.getGeneral', {}),
+        ),
+      ).toMatchObject({ launchAtLogin: true });
+    } finally {
+      await session.app.close();
+    }
+
+    session = await launchRestartSession(tmpDir);
+    try {
+      expect(
+        await session.window.evaluate(() =>
+          window.lychee.invoke('preferences.getGeneral', {}),
+        ),
+      ).toMatchObject({ launchAtLogin: true });
+
+      const dialog = await openGeneralSettings(session.window);
+      await expect(dialog.getByTestId('launch-at-login')).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    } finally {
+      await session.app.close();
+    }
+  });
+});
+
+base.describe('App — workspace and window persistence', () => {
+  let tmpDir: string;
+
+  base.beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-workspace-persist-'));
+  });
+
+  base.afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  base('restores open tabs and window size after a restart', async () => {
+    let session = await launchRestartSession(tmpDir);
+    try {
+      await session.window.evaluate(() =>
+        (window as any).__documentStore.getState().createDocument(null),
+      );
+      await session.window.waitForFunction(
+        () => (window as any).__documentStore.getState().openTabs.length > 0,
+      );
+
+      await session.app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.setSize(1024, 720);
+      });
+      // Let the debounced session + window-bounds writers flush before quitting.
+      await session.window.waitForTimeout(700);
+    } finally {
+      await session.app.close();
+    }
+
+    session = await launchRestartSession(tmpDir);
+    try {
+      await session.window.waitForFunction(
+        () => (window as any).__documentStore.getState().openTabs.length > 0,
+        undefined,
+        { timeout: 10_000 },
+      );
+
+      const size = await session.app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.getSize(),
+      );
+      expect(size?.[0]).toBeGreaterThanOrEqual(1000);
+    } finally {
+      await session.app.close();
+    }
+  });
+
+  base('does not restore tabs when restore-last-session is disabled', async () => {
+    let session = await launchRestartSession(tmpDir);
+    try {
+      await session.window.evaluate(() =>
+        window.lychee.invoke('preferences.setGeneral', { restoreLastSession: false }),
+      );
+      await session.window.evaluate(() =>
+        (window as any).__documentStore.getState().createDocument(null),
+      );
+      await session.window.waitForFunction(
+        () => (window as any).__documentStore.getState().openTabs.length > 0,
+      );
+      await session.window.waitForTimeout(700);
+    } finally {
+      await session.app.close();
+    }
+
+    session = await launchRestartSession(tmpDir);
+    try {
+      // Give restore a chance to (incorrectly) run before asserting.
+      await session.window.waitForTimeout(800);
+      const openTabs = await session.window.evaluate(
+        () => (window as any).__documentStore.getState().openTabs.length,
+      );
+      expect(openTabs).toBe(0);
+    } finally {
+      await session.app.close();
+    }
+  });
+
+  base('drops tabs whose note was trashed before the restart', async () => {
+    let session = await launchRestartSession(tmpDir);
+    let keepId = '';
+    try {
+      const ids = await session.window.evaluate(async () => {
+        const lychee = (window as any).lychee;
+        const keep = await lychee.invoke('documents.create', {
+          parentId: null,
+          title: 'Keep me',
+        });
+        const drop = await lychee.invoke('documents.create', {
+          parentId: null,
+          title: 'Trash me',
+        });
+        await lychee.invoke('documents.trash', { id: drop.document.id });
+        // Point the persisted session at both docs; only the live one should
+        // come back after restart.
+        await lychee.invoke('settings.set', {
+          key: 'workspace.session',
+          value: JSON.stringify({
+            version: 1,
+            tabs: [drop.document.id, keep.document.id],
+            selectedIndex: 0,
+          }),
+        });
+        return { keep: keep.document.id, drop: drop.document.id };
+      });
+      keepId = ids.keep;
+      await session.window.waitForTimeout(700);
+    } finally {
+      await session.app.close();
+    }
+
+    session = await launchRestartSession(tmpDir);
+    try {
+      await session.window.waitForFunction(
+        () => (window as any).__documentStore.getState().openTabs.length > 0,
+        undefined,
+        { timeout: 10_000 },
+      );
+      const openTabs = await session.window.evaluate(() =>
+        (window as any).__documentStore.getState().openTabs.map((tab: { docId: string }) => tab.docId),
+      );
+      expect(openTabs).toEqual([keepId]);
     } finally {
       await session.app.close();
     }

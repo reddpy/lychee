@@ -250,6 +250,21 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # Real launch-at-login registration can only be verified on macOS/Windows
+      # (Linux uses a .desktop file, covered by unit tests). LYCHEE_E2E_OS_INTEGRATION
+      # opts this one test past the E2E OS-write gate; the test cleans up after itself.
+      - name: Run launch-at-login OS smoke test
+        shell: bash
+        run: >-
+          pnpm exec playwright test
+          e2e/settings.spec.ts
+          --workers=1
+          --reporter=list
+          --grep "registers with the OS"
+        env:
+          E2E: '1'
+          LYCHEE_E2E_OS_INTEGRATION: '1'
+
   e2e-report:
     name: E2E Report
     if: always()

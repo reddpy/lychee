@@ -1,4 +1,5 @@
 import type { DocumentRow, NoteMetadata } from './documents';
+import type { GeneralPreferences } from './general-preferences';
 import type { KeybindingMap, ShortcutId } from './keybindings';
 
 // ── URL resolution types ─────────────────────────────────────────────
@@ -173,6 +174,18 @@ export type IpcContract = {
     req: Record<string, never>;
     res: { settings: Record<string, string> };
   };
+  'preferences.getGeneral': {
+    req: Record<string, never>;
+    res: GeneralPreferences;
+  };
+  'preferences.setGeneral': {
+    req: Partial<GeneralPreferences>;
+    res: GeneralPreferences;
+  };
+  'preferences.resetAll': {
+    req: Record<string, never>;
+    res: { ok: true };
+  };
   'keybindings.getAll': {
     req: Record<string, never>;
     res: { bindings: KeybindingMap };
@@ -269,6 +282,7 @@ export type IpcEvents = {
   'spellcheck:state': SpellCheckState;
   'update:status': UpdateStatus;
   'keybindings:changed': KeybindingMap;
+  'preferences:changed': GeneralPreferences;
 };
 
 export type IpcEventChannel = keyof IpcEvents;
