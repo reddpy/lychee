@@ -122,6 +122,22 @@ export class BookmarkNode extends DecoratorNode<ReactElement | null> {
     return true
   }
 
+  getUrl(): string {
+    return this.__url
+  }
+
+  getTitle(): string {
+    return this.__title
+  }
+
+  getDescription(): string {
+    return this.__description
+  }
+
+  getFaviconUrl(): string {
+    return this.__faviconUrl
+  }
+
   setTitle(title: string): void {
     const writable = this.getWritable()
     writable.__title = title
