@@ -15,8 +15,7 @@
 import { describe, it, expect, vi } from "vitest";
 import * as Y from "yjs";
 
-vi.mock("@/components/editor/nodes/bookmark-component", () => ({ BookmarkComponent: (): null => null }));
-vi.mock("@/components/editor/nodes/image-component", () => ({ ImageComponent: (): null => null }));
+vi.mock("@/components/editor/nodes/reference-component", () => ({ ReferenceComponent: (): null => null }));
 
 import { createBinding, syncLexicalUpdateToYjs, syncYjsChangesToLexical, type Binding } from "@lexical/yjs";
 import { createHeadlessEditor } from "@lexical/headless";
@@ -31,12 +30,11 @@ import { LinkNode, AutoLinkNode } from "@lexical/link";
 import { TableNode, TableRowNode, TableCellNode, $createTableNode, $createTableRowNode, $createTableCellNode } from "@lexical/table";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { TitleNode, $createTitleNode } from "@/components/editor/nodes/title-node";
-import { ImageNode } from "@/components/editor/nodes/image-node";
-import { BookmarkNode, $createBookmarkNode, $isBookmarkNode } from "@/components/editor/nodes/bookmark-node";
+import { ReferenceNode, $createReferenceNode, $isReferenceNode } from "@/components/editor/nodes/reference-node";
 
 const ALL_NODES: Array<Klass<LexicalNode>> = [
   TitleNode, HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode,
-  LinkNode, AutoLinkNode, TableNode, TableRowNode, TableCellNode, HorizontalRuleNode, ImageNode, BookmarkNode,
+  LinkNode, AutoLinkNode, TableNode, TableRowNode, TableCellNode, HorizontalRuleNode, ReferenceNode,
 ];
 
 function fakeProvider(): any {
@@ -93,7 +91,7 @@ function seedDoc(b: Bound) {
     const t = $createTitleNode(); t.append($createTextNode("Doc"));
     const p1 = $createParagraphNode(); p1.append($createTextNode("alpha"));
     const p2 = $createParagraphNode(); p2.append($createTextNode("bravo"));
-    const bm = $createBookmarkNode({ url: "https://e.com" });
+    const bm = $createReferenceNode({ url: "https://e.com" });
     r.append(t, p1, p2, bm);
   });
 }
@@ -137,8 +135,8 @@ describe("consistency: randomized multi-peer fuzz", () => {
               const p = pick(para); const tn = p?.getFirstChild() as TextNode | undefined;
               if (tn) tn.toggleFormat("bold");
             } else if (op === 6) { // edit bookmark field
-              const bm = root.getChildren().find((n) => $isBookmarkNode(n));
-              if (bm && $isBookmarkNode(bm)) bm.setTitle("t" + peer.id + "-" + round);
+              const bm = root.getChildren().find((n) => $isReferenceNode(n));
+              if (bm && $isReferenceNode(bm)) bm.setTitle("t" + peer.id + "-" + round);
             }
           });
         } catch { /* defensive: skip ops that violate a local constraint */ }
@@ -220,12 +218,12 @@ describe("consistency: structural hazards", () => {
     build(base, () => {
       const r = $getRoot(); r.clear();
       const t = $createTitleNode(); t.append($createTextNode("x"));
-      r.append(t, $createBookmarkNode({ url: "https://e.com" }));
+      r.append(t, $createReferenceNode({ url: "https://e.com" }));
     });
     const a = makeBoundEditor(); syncInto(a, base);
     const b = makeBoundEditor(); syncInto(b, base);
-    build(a, () => { $getRoot().getChildren().forEach((n) => { if ($isBookmarkNode(n)) n.setTitle("TITLE-A"); }); });
-    build(b, () => { $getRoot().getChildren().forEach((n) => { if ($isBookmarkNode(n)) n.setDescription("DESC-B"); }); });
+    build(a, () => { $getRoot().getChildren().forEach((n) => { if ($isReferenceNode(n)) n.setTitle("TITLE-A"); }); });
+    build(b, () => { $getRoot().getChildren().forEach((n) => { if ($isReferenceNode(n)) n.setDescription("DESC-B"); }); });
     Y.applyUpdate(a.doc, Y.encodeStateAsUpdate(b.doc));
     Y.applyUpdate(b.doc, Y.encodeStateAsUpdate(a.doc)); flush(a); flush(b);
     assertAllConverged([a, b], "decorator fields");

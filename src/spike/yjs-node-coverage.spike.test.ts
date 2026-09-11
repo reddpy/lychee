@@ -9,11 +9,8 @@
 import { describe, it, expect, vi } from "vitest";
 import * as Y from "yjs";
 
-vi.mock("@/components/editor/nodes/bookmark-component", () => ({
-  BookmarkComponent: (): null => null,
-}));
-vi.mock("@/components/editor/nodes/image-component", () => ({
-  ImageComponent: (): null => null,
+vi.mock("@/components/editor/nodes/reference-component", () => ({
+  ReferenceComponent: (): null => null,
 }));
 
 import { createBinding, syncLexicalUpdateToYjs, syncYjsChangesToLexical, type Binding } from "@lexical/yjs";
@@ -42,8 +39,7 @@ import {
   $createHorizontalRuleNode,
 } from "@lexical/react/LexicalHorizontalRuleNode";
 import { TitleNode, $createTitleNode } from "@/components/editor/nodes/title-node";
-import { ImageNode, $createImageNode } from "@/components/editor/nodes/image-node";
-import { BookmarkNode, $createBookmarkNode } from "@/components/editor/nodes/bookmark-node";
+import { ReferenceNode, $createReferenceNode } from "@/components/editor/nodes/reference-node";
 
 const NODES = [
   TitleNode,
@@ -59,8 +55,7 @@ const NODES = [
   TableRowNode,
   TableCellNode,
   HorizontalRuleNode,
-  ImageNode,
-  BookmarkNode,
+  ReferenceNode,
 ];
 
 function fakeProvider(): any {
@@ -200,10 +195,10 @@ describe("Yjs node-type coverage", () => {
 
       const hr = $createHorizontalRuleNode();
 
-      const image = $createImageNode({ imageId: "img-1", altText: "alt", alignment: "center", width: 100, height: 80 });
+      const image = $createReferenceNode({ displayMode: "image", imageId: "img-1", altText: "alt", alignment: "center", width: 100, height: 80 });
 
-      // bookmark with TRUTHY volatile fields — observe whether they sync
-      const bookmark = $createBookmarkNode({
+      // reference with TRUTHY volatile fields — observe whether they sync
+      const bookmark = $createReferenceNode({
         url: "https://example.com/a",
         title: "T",
         description: "D",
@@ -230,24 +225,24 @@ describe("Yjs node-type coverage", () => {
       if (n.type) types.add(n.type);
       (n.children ?? []).forEach(walk);
     })(jsonOf(b).root);
-    for (const t of ["title","heading","quote","list","listitem","code","code-highlight","link","autolink","table","tablerow","tablecell","horizontalrule","image","bookmark","paragraph","text"]) {
+    for (const t of ["title","heading","quote","list","listitem","code","code-highlight","link","autolink","table","tablerow","tablecell","horizontalrule","reference","paragraph","text"]) {
       expect(types.has(t), `missing type after round-trip: ${t}`).toBe(true);
     }
 
     a.dispose(); b.dispose();
   });
 
-  it("OBSERVATION: bookmark volatile fields (autoResolve/hydrationAttempted) DO sync", () => {
+  it("OBSERVATION: reference volatile fields (autoResolve/hydrationAttempted) DO sync", () => {
     const a = makeBoundEditor("doc1");
     build(a, () => {
       const root = $getRoot(); root.clear();
       const t = $createTitleNode(); t.append($createTextNode("x"));
-      const bm = $createBookmarkNode({ url: "https://e.com", autoResolve: true, hydrationAttempted: true });
+      const bm = $createReferenceNode({ url: "https://e.com", autoResolve: true, hydrationAttempted: true });
       root.append(t, bm);
     });
     const b = makeBoundEditor("doc1");
     syncInto(b, a);
-    const bm = jsonOf(b).root.children.find((c: any) => c.type === "bookmark");
+    const bm = jsonOf(b).root.children.find((c: any) => c.type === "reference");
     // Documents the need for excludedProperties: these per-device fields cross the wire.
     expect(bm.autoResolve).toBe(true);
     expect(bm.hydrationAttempted).toBe(true);

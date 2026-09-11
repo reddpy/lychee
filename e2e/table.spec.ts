@@ -512,7 +512,8 @@ test.describe("Table — image paste and URL transformation", () => {
     await window.waitForTimeout(1000);
     const content = JSON.parse((await getLatestDocumentFromDb(window))!.content);
     const hasImage = (node: any): boolean =>
-      node.type === "image" || (node.children ?? []).some(hasImage);
+      (node.type === "reference" && node.displayMode === "image") ||
+      (node.children ?? []).some(hasImage);
     expect(hasImage(content.root)).toBe(true);
   });
 

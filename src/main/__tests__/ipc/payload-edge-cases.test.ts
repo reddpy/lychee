@@ -22,9 +22,8 @@
  *   - src/renderer/document-store.ts (list, create, trash, restore, permanentDelete, move, listTrashed)
  *   - src/components/lexical-editor.tsx (update content, update title, update emoji)
  *   - src/components/editor/plugins/image-plugin.tsx (save, download — no .catch on save!)
- *   - src/components/editor/nodes/image-component.tsx (getPath — no .catch!)
+ *   - src/components/editor/nodes/reference-component.tsx (getPath, openExternal — no .catch!)
  *   - src/components/editor/plugins/link-click-plugin.tsx (openExternal, url.resolve, url.fetchMetadata)
- *   - src/components/editor/nodes/bookmark-component.tsx (openExternal — no .catch!)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -939,10 +938,10 @@ describe('IPC Payload Edge Cases', () => {
   });
 
   // ────────────────────────────────────────────────────────
-  // images.getPath — from image-component.tsx useEffect
+  // images.getPath — from reference-component.tsx useEffect
   // ────────────────────────────────────────────────────────
 
-  // image-component.tsx line 114: invoke("images.getPath", { id: currentImageId })
+  // reference-component.tsx: invoke("images.getPath", { id: currentImageId })
   // There is NO .catch() on this promise. If it rejects, it's an unhandled rejection.
   // The handler must still pass the id correctly to getImagePath.
 
@@ -994,8 +993,7 @@ describe('IPC Payload Edge Cases', () => {
 
   // Called from:
   //   - link-click-plugin.tsx line 26: invoke("shell.openExternal", { url })  — has .catch()
-  //   - image-component.tsx line 300: invoke("shell.openExternal", { url })   — NO .catch()
-  //   - bookmark-component.tsx line 98: invoke("shell.openExternal", { url }) — NO .catch()
+  //   - reference-component.tsx: invoke("shell.openExternal", { url })   — NO .catch()
 
   it('shell.openExternal extracts url and passes to electron shell', async () => {
     const handler = handlers.get('shell.openExternal')!;

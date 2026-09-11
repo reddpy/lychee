@@ -1123,8 +1123,9 @@ test.describe('Text formats — Interactions with other features', () => {
     const doc = await getLatestDocumentFromDb(window);
     const content = JSON.parse(doc!.content);
     expect(
-      JSON.stringify(content).includes('"type":"image"'),
-      'expected an image node in the saved JSON',
+      JSON.stringify(content).includes('"type":"reference"') &&
+        JSON.stringify(content).includes('"displayMode":"image"'),
+      'expected an image reference node in the saved JSON',
     ).toBe(true);
     const textNodes = findTextNodes(content.root);
     const anyHighlighted = textNodes.find((n) => (n.format & FORMAT_BIT.highlight) !== 0);
@@ -1160,8 +1161,9 @@ test.describe('Text formats — Interactions with other features', () => {
     const doc = await getLatestDocumentFromDb(window);
     const content = JSON.parse(doc!.content);
     expect(
-      JSON.stringify(content).includes('"type":"image"'),
-      'expected the image node to still be in the saved JSON',
+      JSON.stringify(content).includes('"type":"reference"') &&
+        JSON.stringify(content).includes('"displayMode":"image"'),
+      'expected the image reference node to still be in the saved JSON',
     ).toBe(true);
     const caption = findTextNodes(content.root).find((n) => n.text === 'caption');
     expect(caption, '"caption" text node missing in DB JSON').toBeDefined();

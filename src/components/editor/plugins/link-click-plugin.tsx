@@ -19,8 +19,7 @@ import { ExternalLink, Bookmark, Code, Eye, EyeOff, FileText, X } from "lucide-r
 
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { onToolbarExclusive } from "@/components/lexical-editor"
-import { $createImageNode } from "@/components/editor/nodes/image-node"
-import { $createBookmarkNode } from "@/components/editor/nodes/bookmark-node"
+import { $createReferenceNode } from "@/components/editor/nodes/reference-node"
 import { ReadOnlyNotePreview } from "@/components/editor/read-only-note-preview"
 import { isLinkEditorPopoverOpen } from "@/components/editor/plugins/link-editor-plugin"
 import { classifyUrl } from "@/shared/classify-url"
@@ -62,9 +61,9 @@ function createEmbedNode(url: string): LexicalNode {
   const { kind } = classifyUrl(url)
   switch (kind) {
     case "image":
-      return $createImageNode({ sourceUrl: url, loading: true })
+      return $createReferenceNode({ displayMode: "image", url, loading: true })
     case "bookmark":
-      return $createBookmarkNode({ url, autoResolve: true })
+      return $createReferenceNode({ displayMode: "card", url, autoResolve: true })
   }
 }
 
@@ -392,7 +391,7 @@ export function LinkClickPlugin(): JSX.Element | null {
 
     snapshotAndFocusLink(linkNodeKey)
     editor.update(() => {
-      const node = $createBookmarkNode({ url })
+      const node = $createReferenceNode({ displayMode: "card", url })
       replaceLink(linkNodeKey, node)
     }, { tag: HISTORY_PUSH_TAG })
 
