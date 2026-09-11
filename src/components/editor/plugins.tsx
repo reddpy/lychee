@@ -23,6 +23,9 @@ import { FloatingToolbarPlugin } from "@/components/editor/plugins/floating-tool
 import { LinkEditorPlugin } from "@/components/editor/plugins/link-editor-plugin"
 import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
 import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeholder-plugin"
+import { FocusModePlugin } from "@/components/editor/plugins/focus-mode-plugin"
+import { TypewriterPlugin } from "@/components/editor/plugins/typewriter-plugin"
+import { WordCountPlugin } from "@/components/editor/plugins/word-count-plugin"
 import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
 import { SectionRailPlugin } from "@/components/editor/plugins/section-rail-plugin"
@@ -36,6 +39,7 @@ import { SearchHighlightPlugin } from "@/components/editor/plugins/search-highli
 import { TabSelectionPlugin } from "@/components/editor/plugins/tab-selection-plugin"
 import { MenuHistoryPlugin } from "@/components/editor/plugins/menu-history-plugin"
 import { MARKDOWN_TRANSFORMERS } from "@/components/editor/markdown-transformers"
+import { useEditorPreferencesStore } from "@/renderer/editor-preferences-store"
 
 // Use linkifyjs for robust URL/email detection
 const MATCHERS: LinkMatcher[] = [
@@ -71,6 +75,8 @@ export function Plugins({
   onTitleChange,
 }: PluginsProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null)
+  const autolink = useEditorPreferencesStore((s) => s.autolink)
+  const slashMenu = useEditorPreferencesStore((s) => s.slashMenu)
 
   return (
     <div ref={editorContainerRef} className="relative">
@@ -87,6 +93,11 @@ export function Plugins({
       {/* Block placeholders */}
       <BlockPlaceholderPlugin />
 
+      {/* Typography / focus / writing aids (app-wide Editor settings) */}
+      <WordCountPlugin documentId={documentId} />
+      <FocusModePlugin />
+      <TypewriterPlugin />
+
       {/* Core plugins */}
       <HistoryPlugin />
       <MenuHistoryPlugin isActive={isActive} />
@@ -100,14 +111,14 @@ export function Plugins({
       <TableColumnResizerPlugin />
       <MarkdownShortcutPlugin transformers={MARKDOWN_TRANSFORMERS} />
       <LinkPlugin />
-      <AutoLinkPlugin matchers={MATCHERS} />
+      {autolink && <AutoLinkPlugin matchers={MATCHERS} />}
       <LinkClickPlugin />
       <CodeBlockPlugin />
       {/* Keyboard shortcuts */}
       <KeyboardShortcutsPlugin />
 
       {/* Slash command menu */}
-      <SlashCommandPlugin />
+      {slashMenu && <SlashCommandPlugin />}
 
       {/* Floating toolbar on selection */}
       <FloatingToolbarPlugin activeTabId={activeTabId} />

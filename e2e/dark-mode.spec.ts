@@ -27,7 +27,7 @@ async function setThemeViaUI(window: Page, label: 'Light' | 'Dark' | 'System') {
   await expect(dialog).toBeVisible();
 
   await dialog.getByRole('button', { name: 'Appearance' }).click();
-  await dialog.getByRole('button', { name: label }).click();
+  await dialog.getByRole('button', { name: label, exact: true }).click();
 
   await window.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
@@ -92,11 +92,11 @@ test.describe('Dark Mode', () => {
     const dialog = window.locator('[data-slot="dialog-content"]');
     await dialog.getByText('Appearance', { exact: true }).click();
 
-    const darkBtn = dialog.getByRole('button', { name: 'Dark' });
+    const darkBtn = dialog.getByRole('button', { name: 'Dark', exact: true });
     await darkBtn.click();
     await expect(darkBtn).toHaveAttribute('aria-pressed', 'true');
 
-    const lightBtn = dialog.getByRole('button', { name: 'Light' });
+    const lightBtn = dialog.getByRole('button', { name: 'Light', exact: true });
     await expect(lightBtn).toHaveAttribute('aria-pressed', 'false');
   });
 

@@ -1,5 +1,6 @@
 import React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { MotionConfig } from "framer-motion";
 
 import { AppSidebar } from "../components/app-sidebar";
 import { CollapsedSidebarWidget } from "../components/collapsed-sidebar-widget";
@@ -20,6 +21,7 @@ import { useSettingsStore } from "../renderer/settings-store";
 import type { SidebarPreferences } from "../renderer/sidebar-preferences";
 import { useKeybindingsStore } from "../renderer/keybindings-store";
 import { useGeneralPreferencesStore } from "../renderer/general-preferences-store";
+import { useEditorPreferencesStore } from "../renderer/editor-preferences-store";
 import { startWorkspaceSessionPersistence } from "../renderer/workspace-session-runtime";
 
 // Pulls inset-centered content left by half the sidebar width to land at the
@@ -321,28 +323,31 @@ export function App({
   // to one document recovers as soon as the user navigates away from it,
   // instead of staying stuck on the fallback until a full reload.
   const selectedId = useDocumentStore((s) => s.selectedId);
+  const reduceMotion = useEditorPreferencesStore((s) => s.reduceMotion);
   return (
-    <SidebarProvider
-      defaultOpen={initialSidebarPreferences?.open ?? true}
-      defaultWidth={initialSidebarPreferences?.width}
-    >
-      {e2eCrashProbe("app")}
-      <div className="flex h-full w-full flex-col">
-        <TopBar />
-        <div className="relative flex min-h-0 flex-1">
-          <AppSidebar />
-          <SidebarInset>
-            <div className="relative flex min-h-0 flex-1 flex-col">
-              <ErrorBoundary scope="editor" resetKeys={[selectedId]}>
-                {e2eCrashProbe("editor")}
-                <EditorArea />
-              </ErrorBoundary>
-            </div>
-          </SidebarInset>
-          <CollapsedSidebarWidget />
+    <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
+      <SidebarProvider
+        defaultOpen={initialSidebarPreferences?.open ?? true}
+        defaultWidth={initialSidebarPreferences?.width}
+      >
+        {e2eCrashProbe("app")}
+        <div className="flex h-full w-full flex-col">
+          <TopBar />
+          <div className="relative flex min-h-0 flex-1">
+            <AppSidebar />
+            <SidebarInset>
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <ErrorBoundary scope="editor" resetKeys={[selectedId]}>
+                  {e2eCrashProbe("editor")}
+                  <EditorArea />
+                </ErrorBoundary>
+              </div>
+            </SidebarInset>
+            <CollapsedSidebarWidget />
+          </div>
         </div>
-      </div>
-      <SettingsDialog />
-    </SidebarProvider>
+        <SettingsDialog />
+      </SidebarProvider>
+    </MotionConfig>
   );
 }

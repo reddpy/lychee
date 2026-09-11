@@ -1,17 +1,23 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
+  Accessibility,
   AlertTriangle,
+  Baseline,
   Check,
   ChevronDown,
   Download,
   Database,
+  Focus,
   FolderOpen,
+  Gauge,
   Info,
   Loader2,
   Languages,
   Keyboard,
+  Link,
   Monitor,
   Moon,
+  MoveVertical,
   PanelTop,
   PenLine,
   Palette,
@@ -20,10 +26,14 @@ import {
   Power,
   RotateCw,
   RotateCcw,
+  Ruler,
   Search,
   Settings,
+  Slash,
   SlidersHorizontal,
   Sun,
+  TextCursorInput,
+  Type,
   X,
 } from 'lucide-react';
 
@@ -32,6 +42,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ColorPickerPopover } from '@/components/ui/color-picker';
 import { Switch } from '@/components/ui/switch';
 import { LycheeLogo } from '@/components/sidebar/lychee-logo';
@@ -41,6 +52,17 @@ import { useSettingsStore } from '@/renderer/settings-store';
 import { useThemeStore } from '@/renderer/theme-store';
 import { useAppearanceStore } from '@/renderer/appearance-store';
 import { useGeneralPreferencesStore } from '@/renderer/general-preferences-store';
+import { useEditorPreferencesStore } from '@/renderer/editor-preferences-store';
+import {
+  EDITOR_CODE_TAB_SIZES,
+  EDITOR_FONT_FAMILIES,
+  EDITOR_FONT_SIZES,
+  EDITOR_LINE_HEIGHTS,
+  EDITOR_PAGE_WIDTHS,
+  type EditorFontFamily,
+  type EditorLineHeight,
+  type EditorPageWidth,
+} from '@/renderer/editor-preferences';
 import {
   ACCENT_PRESETS,
   DEFAULT_ACCENT_HEX,
@@ -881,8 +903,263 @@ function languageName(language: string): string {
   }
 }
 
+function PreferenceSwitchRow({
+  id,
+  icon: Icon,
+  label,
+  description,
+  checked,
+  onCheckedChange,
+  testId,
+  first,
+}: {
+  id: string;
+  icon?: typeof Type;
+  label: string;
+  description: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  testId?: string;
+  first?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-4 px-4 py-3.5',
+        !first && 'border-t border-[hsl(var(--border))]',
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-2.5">
+        {Icon && (
+          <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+        )}
+        <div className="grid gap-1.5">
+          <Label htmlFor={id}>{label}</Label>
+          <p
+            id={`${id}-description`}
+            className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]"
+          >
+            {description}
+          </p>
+        </div>
+      </div>
+      <Switch
+        id={id}
+        data-testid={testId}
+        aria-label={label}
+        aria-describedby={`${id}-description`}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+      />
+    </div>
+  );
+}
+
+function PreferenceSelectRow({
+  id,
+  icon: Icon,
+  label,
+  description,
+  value,
+  onValueChange,
+  options,
+  testId,
+  first,
+}: {
+  id: string;
+  icon?: typeof Type;
+  label: string;
+  description: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  options: readonly { value: string; label: string }[];
+  testId?: string;
+  first?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-4 px-4 py-3.5',
+        !first && 'border-t border-[hsl(var(--border))]',
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-2.5">
+        {Icon && (
+          <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+        )}
+        <div className="grid gap-1.5">
+          <Label htmlFor={id}>{label}</Label>
+          <p
+            id={`${id}-description`}
+            className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]"
+          >
+            {description}
+          </p>
+        </div>
+      </div>
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger
+          id={id}
+          data-testid={testId}
+          aria-label={label}
+          aria-describedby={`${id}-description`}
+          className="w-40 shrink-0"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function PreferenceTextRow({
+  id,
+  icon: Icon,
+  label,
+  description,
+  value,
+  onValueChange,
+  placeholder,
+  testId,
+  disabled,
+  first,
+}: {
+  id: string;
+  icon?: typeof Type;
+  label: string;
+  description: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder?: string;
+  testId?: string;
+  disabled?: boolean;
+  first?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'px-4 py-3.5',
+        !first && 'border-t border-[hsl(var(--border))]',
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-2.5">
+        {Icon && (
+          <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+        )}
+        <div className="grid gap-1.5">
+          <Label htmlFor={id}>{label}</Label>
+          <p
+            id={`${id}-description`}
+            className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]"
+          >
+            {description}
+          </p>
+        </div>
+      </div>
+      <Input
+        id={id}
+        data-testid={testId}
+        value={value}
+        onChange={(event) => onValueChange(event.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        aria-label={label}
+        aria-describedby={`${id}-description`}
+        className="mt-2.5 w-full"
+      />
+    </div>
+  );
+}
+
+function VisualOptionCard({
+  active,
+  label,
+  onClick,
+  testId,
+  option,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  testId: string;
+  option: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-testid={testId}
+      data-option={option}
+      className={cn(
+        'relative flex flex-col items-center gap-2 rounded-lg border p-2 transition-all duration-150',
+        active
+          ? 'border-[hsl(var(--primary))]/55 bg-[hsl(var(--primary))]/5 shadow-sm'
+          : 'border-[hsl(var(--border))] hover:border-[hsl(var(--muted-foreground))]/40 hover:bg-[hsl(var(--accent))]/50',
+      )}
+    >
+      <div className="flex h-14 w-full items-center justify-center overflow-hidden rounded-md bg-[hsl(var(--background))] ring-1 ring-black/5">
+        {children}
+      </div>
+      <span className="text-xs font-medium">{label}</span>
+      {active && (
+        <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm">
+          <Check className="h-3 w-3" strokeWidth={3} />
+        </span>
+      )}
+    </button>
+  );
+}
+
 function EditorSettings() {
   const [spellCheck, setSpellCheck] = useState<SpellCheckState | null>(null);
+  const [confirmingEditorReset, setConfirmingEditorReset] = useState(false);
+
+  const fontFamily = useEditorPreferencesStore((s) => s.fontFamily);
+  const fontSize = useEditorPreferencesStore((s) => s.fontSize);
+  const pageWidth = useEditorPreferencesStore((s) => s.pageWidth);
+  const lineHeight = useEditorPreferencesStore((s) => s.lineHeight);
+  const showWordCount = useEditorPreferencesStore((s) => s.showWordCount);
+  const focusMode = useEditorPreferencesStore((s) => s.focusMode);
+  const typewriterMode = useEditorPreferencesStore((s) => s.typewriterMode);
+  const reduceMotion = useEditorPreferencesStore((s) => s.reduceMotion);
+  const codeTabSize = useEditorPreferencesStore((s) => s.codeTabSize);
+  const autolink = useEditorPreferencesStore((s) => s.autolink);
+  const slashMenu = useEditorPreferencesStore((s) => s.slashMenu);
+  const showHint = useEditorPreferencesStore((s) => s.showHint);
+  const hintText = useEditorPreferencesStore((s) => s.hintText);
+  const showBlockPlaceholders = useEditorPreferencesStore((s) => s.showBlockPlaceholders);
+  const setFontFamily = useEditorPreferencesStore((s) => s.setFontFamily);
+  const setFontSize = useEditorPreferencesStore((s) => s.setFontSize);
+  const setPageWidth = useEditorPreferencesStore((s) => s.setPageWidth);
+  const setLineHeight = useEditorPreferencesStore((s) => s.setLineHeight);
+  const setShowWordCount = useEditorPreferencesStore((s) => s.setShowWordCount);
+  const setFocusMode = useEditorPreferencesStore((s) => s.setFocusMode);
+  const setTypewriterMode = useEditorPreferencesStore((s) => s.setTypewriterMode);
+  const setReduceMotion = useEditorPreferencesStore((s) => s.setReduceMotion);
+  const setCodeTabSize = useEditorPreferencesStore((s) => s.setCodeTabSize);
+  const setAutolink = useEditorPreferencesStore((s) => s.setAutolink);
+  const setSlashMenu = useEditorPreferencesStore((s) => s.setSlashMenu);
+  const setShowHint = useEditorPreferencesStore((s) => s.setShowHint);
+  const setHintText = useEditorPreferencesStore((s) => s.setHintText);
+  const setShowBlockPlaceholders = useEditorPreferencesStore(
+    (s) => s.setShowBlockPlaceholders,
+  );
+  const resetEditorPreferences = useEditorPreferencesStore((s) => s.reset);
+
+  const confirmEditorReset = (): void => {
+    resetEditorPreferences();
+    setConfirmingEditorReset(false);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -932,10 +1209,348 @@ function EditorSettings() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader
-        title="Editor"
-        description="Tune writing behavior, shortcuts, and editor defaults."
-      />
+      <div className="flex items-start justify-between gap-4">
+        <SectionHeader
+          title="Editor"
+          description="Tune writing behavior, shortcuts, and editor defaults."
+        />
+        <Popover open={confirmingEditorReset} onOpenChange={setConfirmingEditorReset}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="editor-reset"
+              className="shrink-0"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Reset
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            data-testid="editor-reset-popover"
+            className="w-60 p-3"
+          >
+            <p className="text-sm font-medium">Reset editor settings?</p>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              Restores all editor preferences to their defaults. Your notes are not
+              affected.
+            </p>
+            <div className="mt-3 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmingEditorReset(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                data-testid="editor-reset-confirm"
+                onClick={confirmEditorReset}
+              >
+                Reset
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Typography</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Set the reading and writing look of every note.
+          </p>
+        </div>
+
+        <div className="space-y-5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 p-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Type className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+              <p className="text-sm font-medium">Font</p>
+            </div>
+            <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+              Typeface for note text.
+            </p>
+            <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+              {EDITOR_FONT_FAMILIES.map((entry) => (
+                <VisualOptionCard
+                  key={entry.value}
+                  active={fontFamily === entry.value}
+                  label={entry.label}
+                  option={entry.value}
+                  testId="editor-font-family"
+                  onClick={() => setFontFamily(entry.value as EditorFontFamily)}
+                >
+                  <span
+                    className="text-2xl leading-none"
+                    style={{ fontFamily: entry.stack }}
+                  >
+                    Ag
+                  </span>
+                </VisualOptionCard>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <Baseline className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+              <p className="text-sm font-medium">Text size</p>
+            </div>
+            <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+              Base size for note text and headings.
+            </p>
+            <div className="mt-2.5 grid grid-cols-4 gap-2.5">
+              {EDITOR_FONT_SIZES.map((entry) => (
+                <VisualOptionCard
+                  key={entry.value}
+                  active={fontSize === entry.value}
+                  label={entry.label}
+                  option={String(entry.value)}
+                  testId="editor-font-size"
+                  onClick={() => setFontSize(entry.value)}
+                >
+                  <span
+                    className="leading-none"
+                    style={{ fontSize: `${entry.value}px` }}
+                  >
+                    Ag
+                  </span>
+                </VisualOptionCard>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <Ruler className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+              <p className="text-sm font-medium">Page width</p>
+            </div>
+            <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+              How wide the writing column grows.
+            </p>
+            <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+              {EDITOR_PAGE_WIDTHS.map((entry) => (
+                <VisualOptionCard
+                  key={entry.value}
+                  active={pageWidth === entry.value}
+                  label={entry.label}
+                  option={entry.value}
+                  testId="editor-page-width"
+                  onClick={() => setPageWidth(entry.value as EditorPageWidth)}
+                >
+                  <div className="relative h-full w-full bg-[hsl(var(--muted))]/30">
+                    <div
+                      className="absolute inset-y-1.5 left-1/2 -translate-x-1/2 rounded-sm bg-[hsl(var(--background))] shadow-sm ring-1 ring-[hsl(var(--border))]"
+                      style={{
+                        width:
+                          entry.value === 'full'
+                            ? '96%'
+                            : entry.value === 'wide'
+                              ? '74%'
+                              : '52%',
+                      }}
+                    />
+                  </div>
+                </VisualOptionCard>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <MoveVertical className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+              <p className="text-sm font-medium">Line spacing</p>
+            </div>
+            <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+              Vertical rhythm between lines of text.
+            </p>
+            <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+              {EDITOR_LINE_HEIGHTS.map((entry) => (
+                <VisualOptionCard
+                  key={entry.value}
+                  active={lineHeight === entry.value}
+                  label={entry.label}
+                  option={entry.value}
+                  testId="editor-line-height"
+                  onClick={() => setLineHeight(entry.value as EditorLineHeight)}
+                >
+                  <div
+                    className="flex w-full flex-col justify-center px-4"
+                    style={{
+                      gap:
+                        entry.value === 'compact'
+                          ? '3px'
+                          : entry.value === 'relaxed'
+                            ? '9px'
+                            : '6px',
+                    }}
+                  >
+                    {[0, 1, 2].map((line) => (
+                      <span
+                        key={line}
+                        className="h-0.5 w-full rounded-full bg-[hsl(var(--foreground))]/25"
+                      />
+                    ))}
+                  </div>
+                </VisualOptionCard>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Writing aids</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Optional helpers for longer writing sessions.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+          <PreferenceSwitchRow
+            first
+            id="editor-word-count"
+            icon={Gauge}
+            label="Word and character count"
+            description="Show a live count in the corner of the note."
+            checked={showWordCount}
+            onCheckedChange={setShowWordCount}
+            testId="editor-word-count"
+          />
+          <PreferenceSwitchRow
+            id="editor-focus-mode"
+            icon={Focus}
+            label="Focus mode"
+            description="Dim every block except the one you are editing."
+            checked={focusMode}
+            onCheckedChange={setFocusMode}
+            testId="editor-focus-mode"
+          />
+          <PreferenceSwitchRow
+            id="editor-typewriter-mode"
+            icon={MoveVertical}
+            label="Typewriter mode"
+            description="Keep the line you are typing vertically centered."
+            checked={typewriterMode}
+            onCheckedChange={setTypewriterMode}
+            testId="editor-typewriter-mode"
+          />
+          <PreferenceSwitchRow
+            id="editor-autolink"
+            icon={Link}
+            label="Automatic links"
+            description="Turn typed URLs and email addresses into links."
+            checked={autolink}
+            onCheckedChange={setAutolink}
+            testId="editor-autolink"
+          />
+          <PreferenceSwitchRow
+            id="editor-slash-menu"
+            icon={Slash}
+            label="Slash commands"
+            description="Show the “/” menu for inserting blocks."
+            checked={slashMenu}
+            onCheckedChange={setSlashMenu}
+            testId="editor-slash-menu"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Hints &amp; placeholders</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            The prompts shown in empty blocks.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+          <PreferenceSwitchRow
+            first
+            id="editor-show-hint"
+            icon={TextCursorInput}
+            label="Typing hint"
+            description="Show a hint in empty blocks telling you to type or press “/”."
+            checked={showHint}
+            onCheckedChange={setShowHint}
+            testId="editor-show-hint"
+          />
+          <PreferenceTextRow
+            id="editor-hint-text"
+            label="Custom hint text"
+            description="Leave empty to use the default hint."
+            value={hintText}
+            onValueChange={setHintText}
+            placeholder="Type something, or press '/' for commands..."
+            testId="editor-hint-text"
+            disabled={!showHint}
+          />
+          <PreferenceSwitchRow
+            id="editor-block-placeholders"
+            icon={Type}
+            label="Block placeholders"
+            description="Show labels in empty headings, quotes, and lists."
+            checked={showBlockPlaceholders}
+            onCheckedChange={setShowBlockPlaceholders}
+            testId="editor-block-placeholders"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Code blocks</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            How code blocks format indentation.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+          <PreferenceSelectRow
+            first
+            id="editor-code-tab-size"
+            icon={Baseline}
+            label="Tab size"
+            description="Spaces shown per tab character."
+            value={String(codeTabSize)}
+            onValueChange={(value) => setCodeTabSize(Number(value))}
+            options={EDITOR_CODE_TAB_SIZES.map((size) => ({
+              value: String(size),
+              label: `${size} ${size === 1 ? 'space' : 'spaces'}`,
+            }))}
+            testId="editor-code-tab-size"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Motion</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Reduce animation across the app.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+          <PreferenceSwitchRow
+            first
+            id="editor-reduce-motion"
+            icon={Accessibility}
+            label="Reduce motion"
+            description="Minimize transitions and animations, including those from your system setting."
+            checked={reduceMotion}
+            onCheckedChange={setReduceMotion}
+            testId="editor-reduce-motion"
+          />
+        </div>
+      </div>
 
       <div className="space-y-3">
         <div className="space-y-0.5">

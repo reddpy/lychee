@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
   $getNodeByKey,
+  $getRoot,
   $getSelection,
   $isRangeSelection,
   $isParagraphNode,
@@ -22,15 +23,30 @@ import {
 } from "@lexical/list"
 import { $isTableCellNode } from "@lexical/table"
 import { mergeRegister } from "@lexical/utils"
+import { useEditorPreferencesStore } from "@/renderer/editor-preferences-store"
 
 const PLACEHOLDER_CLASS = "is-placeholder"
 
-function getPlaceholderText(node: LexicalNode): string | null {
+type PlaceholderOptions = {
+  slashMenuEnabled: boolean
+  showHint: boolean
+  showBlockPlaceholders: boolean
+  customText: string
+}
+
+function getPlaceholderText(node: LexicalNode, options: PlaceholderOptions): string | null {
   if ($isTitleNode(node)) return null
   if ($isParagraphNode(node)) {
-    if ($isTableCellNode(node.getParent())) return "Type or press '/'"
-    return "Type something, or press '/' for commands..."
+    if (!options.showHint) return null
+    if (options.customText.trim() !== "") return options.customText
+    if ($isTableCellNode(node.getParent())) {
+      return options.slashMenuEnabled ? "Type or press '/'" : "Type"
+    }
+    return options.slashMenuEnabled
+      ? "Type something, or press '/' for commands..."
+      : "Type something..."
   }
+  if (!options.showBlockPlaceholders) return null
   if ($isHeadingNode(node)) {
     const tag = node.getTag()
     if (tag === "h1") return "Heading 1"
@@ -47,9 +63,28 @@ function getPlaceholderText(node: LexicalNode): string | null {
   return null
 }
 
+/** Remove block-label placeholders (headings/quotes/list items), leaving paragraphs. */
+function clearBlockPlaceholders(editor: ReturnType<typeof useLexicalComposerContext>[0]): void {
+  editor.getEditorState().read(() => {
+    const remove = (key: string) => {
+      const el = editor.getElementByKey(key)
+      el?.classList.remove(PLACEHOLDER_CLASS)
+      el?.removeAttribute("data-placeholder")
+    }
+    for (const child of $getRoot().getChildren()) {
+      if ($isParagraphNode(child) || $isTitleNode(child)) continue
+      remove(child.getKey())
+      if ($isListNode(child)) {
+        for (const item of child.getChildren()) remove(item.getKey())
+      }
+    }
+  })
+}
+
 function syncPlaceholderForMutations(
   mutations: Map<string, NodeMutation>,
-  editor: ReturnType<typeof useLexicalComposerContext>[0]
+  editor: ReturnType<typeof useLexicalComposerContext>[0],
+  options: PlaceholderOptions
 ): void {
   editor.getEditorState().read(() => {
     for (const [key, mutation] of mutations) {
@@ -61,7 +96,7 @@ function syncPlaceholderForMutations(
       const dom = editor.getElementByKey(key)
       if (!dom) continue
 
-      const placeholder = getPlaceholderText(node)
+      const placeholder = getPlaceholderText(node, options)
       if (!placeholder) continue
 
       const isEmpty = node.getTextContent().length === 0
@@ -78,24 +113,44 @@ function syncPlaceholderForMutations(
 
 export function BlockPlaceholderPlugin(): null {
   const [editor] = useLexicalComposerContext()
+  const slashMenu = useEditorPreferencesStore((s) => s.slashMenu)
+  const showHint = useEditorPreferencesStore((s) => s.showHint)
+  const hintText = useEditorPreferencesStore((s) => s.hintText)
+  const showBlockPlaceholders = useEditorPreferencesStore((s) => s.showBlockPlaceholders)
 
-  // Persistent placeholders via mutation listeners — fire after DOM reconciliation
+  // Block labels (headings/quotes/list items) via mutation listeners.
   useEffect(() => {
+    if (!showBlockPlaceholders) {
+      clearBlockPlaceholders(editor)
+      return
+    }
+    const options: PlaceholderOptions = {
+      slashMenuEnabled: slashMenu,
+      showHint,
+      showBlockPlaceholders,
+      customText: hintText,
+    }
     return mergeRegister(
       editor.registerMutationListener(HeadingNode, (mutations) => {
-        syncPlaceholderForMutations(mutations, editor)
+        syncPlaceholderForMutations(mutations, editor, options)
       }),
       editor.registerMutationListener(QuoteNode, (mutations) => {
-        syncPlaceholderForMutations(mutations, editor)
+        syncPlaceholderForMutations(mutations, editor, options)
       }),
       editor.registerMutationListener(ListItemNode, (mutations) => {
-        syncPlaceholderForMutations(mutations, editor)
+        syncPlaceholderForMutations(mutations, editor, options)
       })
     )
-  }, [editor])
+  }, [editor, slashMenu, showHint, hintText, showBlockPlaceholders])
 
-  // Focus-based placeholder for paragraphs only
+  // Focus-based typing hint for paragraphs only
   useEffect(() => {
+    const options: PlaceholderOptions = {
+      slashMenuEnabled: slashMenu,
+      showHint,
+      showBlockPlaceholders,
+      customText: hintText,
+    }
     let prevParagraphDom: HTMLElement | null = null
     let prevKey: string | null = null
     let focusSyncFrame = 0
@@ -110,6 +165,10 @@ export function BlockPlaceholderPlugin(): null {
     }
 
     const syncPlaceholder = () => {
+      if (!showHint) {
+        clearPlaceholder()
+        return
+      }
       editor.getEditorState().read(() => {
         const root = editor.getRootElement()
         const hasFocus =
@@ -154,9 +213,10 @@ export function BlockPlaceholderPlugin(): null {
 
         if (key && topElement) {
           const dom = editor.getElementByKey(key)
-          if (dom) {
+          const text = getPlaceholderText(topElement, options)
+          if (dom && text) {
             dom.classList.add(PLACEHOLDER_CLASS)
-            dom.setAttribute("data-placeholder", getPlaceholderText(topElement)!)
+            dom.setAttribute("data-placeholder", text)
             prevParagraphDom = dom
           }
         }
@@ -170,7 +230,7 @@ export function BlockPlaceholderPlugin(): null {
       }
     }
 
-    return mergeRegister(
+    const unregister = mergeRegister(
       editor.registerUpdateListener(() => {
         syncPlaceholder()
       }),
@@ -204,7 +264,11 @@ export function BlockPlaceholderPlugin(): null {
       ),
       cancelFocusSync
     )
-  }, [editor])
+    // Refresh immediately so toggling a placeholder preference updates an
+    // already-visible placeholder without waiting for the next keystroke.
+    syncPlaceholder()
+    return unregister
+  }, [editor, slashMenu, showHint, hintText])
 
   return null
 }
