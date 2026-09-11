@@ -8,7 +8,7 @@ import {
 } from "../ui/sidebar";
 import { useSettingsStore } from "../../renderer/settings-store";
 import { UpdateDot } from "../update-dot";
-import { TrashBinPopover } from "./trash-bin-popover";
+import { TrashBinDialog } from "./trash-bin-dialog";
 
 export function SidebarFooterContent() {
   const { open, hoverOpen } = useSidebar();
@@ -18,7 +18,7 @@ export function SidebarFooterContent() {
   return (
     <>
       <SidebarMenu className="w-full shrink-0 border-t border-[hsl(var(--sidebar-border))] px-1 py-1">
-        <TrashBinPopover />
+        <TrashBinDialog />
         {!isFloating && (
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Settings" onClick={openSettings}>

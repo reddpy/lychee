@@ -15,6 +15,13 @@ import {
 // disabled. Keep Lychee's manual-filter path constant-time during registration.
 const manualFilterPassThrough = () => 1
 
+// Shared shell styling for the app's full-bleed command dialogs (search palette,
+// trash browser): translucent backdrop, floating input pill, and inner panel.
+// Callers append their own `max-w-*` to control the dialog width.
+export const commandDialogShellClassName =
+  "w-[calc(100vw-1.5rem)] border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))]/55 p-0 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)] backdrop-blur-sm " +
+  "[&_[data-slot=command-input-wrapper]]:mt-3 [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:rounded-full [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-[hsl(var(--border))] [&_[data-slot=command-input-wrapper]]:border-b [&_[data-slot=command-input-wrapper]]:bg-[hsl(var(--background))]/95 [&_[data-slot=command-input-wrapper]]:px-4 [&_[data-slot=command-input-wrapper]]:shadow-sm [&_[data-slot=command-input-wrapper]]:ring-1 [&_[data-slot=command-input-wrapper]]:ring-black/5 [&_[data-slot=command-input-wrapper]_svg]:size-4"
+
 function Command({
   className,
   ...props
@@ -54,14 +61,17 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
       <DialogContent
         className={cn("overflow-hidden p-0", className)}
         showCloseButton={showCloseButton}
       >
+        {/* Rendered inside the content so the title only exists while the
+            dialog is open — otherwise its text leaks into the page and
+            collides with same-named triggers (e.g. the sidebar "Trash Bin"). */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
         <Command
           shouldFilter={shouldFilter}
           filter={shouldFilter === false ? manualFilterPassThrough : undefined}
