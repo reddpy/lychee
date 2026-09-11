@@ -9,11 +9,8 @@
 import { describe, it, expect, vi } from "vitest";
 import * as Y from "yjs";
 
-vi.mock("@/components/editor/nodes/bookmark-component", () => ({
-  BookmarkComponent: (): null => null,
-}));
-vi.mock("@/components/editor/nodes/image-component", () => ({
-  ImageComponent: (): null => null,
+vi.mock("@/components/editor/nodes/reference-component", () => ({
+  ReferenceComponent: (): null => null,
 }));
 
 import { createBinding, syncLexicalUpdateToYjs, syncYjsChangesToLexical, type Binding } from "@lexical/yjs";
@@ -34,12 +31,11 @@ import { LinkNode, AutoLinkNode } from "@lexical/link";
 import { TableNode, TableRowNode, TableCellNode } from "@lexical/table";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { TitleNode, $createTitleNode } from "@/components/editor/nodes/title-node";
-import { ImageNode } from "@/components/editor/nodes/image-node";
-import { BookmarkNode, $createBookmarkNode, $isBookmarkNode } from "@/components/editor/nodes/bookmark-node";
+import { ReferenceNode, $createReferenceNode, $isReferenceNode } from "@/components/editor/nodes/reference-node";
 
 const ALL_NODES: Array<Klass<LexicalNode>> = [
   TitleNode, HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode,
-  LinkNode, AutoLinkNode, TableNode, TableRowNode, TableCellNode, HorizontalRuleNode, ImageNode, BookmarkNode,
+  LinkNode, AutoLinkNode, TableNode, TableRowNode, TableCellNode, HorizontalRuleNode, ReferenceNode,
 ];
 
 function fakeProvider(): any {
@@ -202,14 +198,14 @@ describe("adversarial: decorator-field concurrency (the bookmark risk)", () => {
     const [a, b] = pairFromBase(() => {
       const r = $getRoot(); r.clear();
       const t = $createTitleNode(); t.append($createTextNode("x"));
-      const bm = $createBookmarkNode({ url: "https://e.com" });
+      const bm = $createReferenceNode({ url: "https://e.com" });
       r.append(t, bm);
     });
-    build(a, () => { $getRoot().getChildren().forEach((n) => { if ($isBookmarkNode(n)) n.setTitle("Title from A"); }); });
-    build(b, () => { $getRoot().getChildren().forEach((n) => { if ($isBookmarkNode(n)) n.setTitle("Title from B"); }); });
+    build(a, () => { $getRoot().getChildren().forEach((n) => { if ($isReferenceNode(n)) n.setTitle("Title from A"); }); });
+    build(b, () => { $getRoot().getChildren().forEach((n) => { if ($isReferenceNode(n)) n.setTitle("Title from B"); }); });
     exchange(a, b);
     const aj = JSON.stringify(jsonOf(a)), bj = JSON.stringify(jsonOf(b));
-    const titleA = jsonOf(a).root.children.find((c: any) => c.type === "bookmark").title;
+    const titleA = jsonOf(a).root.children.find((c: any) => c.type === "reference").title;
     console.log("concurrent bookmark title winner:", titleA);
     expect(aj).toEqual(bj); // must converge to the same winner
     expect(["Title from A", "Title from B"]).toContain(titleA);
@@ -219,14 +215,14 @@ describe("adversarial: decorator-field concurrency (the bookmark risk)", () => {
 
 describe("adversarial: cross-version & transport", () => {
   it("syncing a Y.Doc with an UNKNOWN node type into a client missing that node surfaces an error", () => {
-    // A has bookmarks; B's editor is NOT given BookmarkNode (simulates older client).
+    // A has references; B's editor is NOT given ReferenceNode (simulates older client).
     const a = makeBoundEditor("doc1");
     build(a, () => {
       const r = $getRoot(); r.clear();
       const t = $createTitleNode(); t.append($createTextNode("x"));
-      r.append(t, $createBookmarkNode({ url: "https://e.com" }));
+      r.append(t, $createReferenceNode({ url: "https://e.com" }));
     });
-    const bNodes = ALL_NODES.filter((n) => n !== BookmarkNode);
+    const bNodes = ALL_NODES.filter((n) => n !== ReferenceNode);
     const b = makeBoundEditor("doc1", { nodes: bNodes, captureErrors: true });
     let threw = false;
     try { syncInto(b, a); } catch { threw = true; }

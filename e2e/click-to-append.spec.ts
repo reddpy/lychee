@@ -4,8 +4,8 @@ import type { LexicalEditor } from 'lexical';
 import { clearIpcMocks, mockIpcResolve } from './ipc-mock';
 
 const metadata = { title: 'Example bookmark', description: '', imageUrl: '', faviconUrl: '' };
-const bookmark = { type: 'bookmark', version: 1, url: 'https://example.com', ...metadata, hydrationAttempted: true };
-const image = { type: 'image', version: 1, imageId: '', altText: 'Test image' };
+const bookmark = { type: 'reference', displayMode: 'card', version: 1, url: 'https://example.com', ...metadata, imageId: '', altText: '', hydrationAttempted: true };
+const image = { type: 'reference', displayMode: 'image', version: 1, imageId: '', altText: 'Test image', url: '' };
 const divider = { type: 'horizontalrule', version: 1 };
 const paragraph = { type: 'paragraph', version: 1, children: [], direction: null, format: '', indent: 0 };
 
@@ -75,11 +75,11 @@ for (const action of ['Convert to bookmark', 'Embed content']) {
     await window.getByTitle(action, { exact: true }).click();
     const card = editor(window).locator('.bookmark-card');
     await expect(card).toBeVisible();
-    await expect.poll(() => blockTypes(window)).toEqual(['title', 'bookmark']);
+    await expect.poll(() => blockTypes(window)).toEqual(['title', 'reference']);
 
     await clickBelow(window, card, true);
     await expectParagraphCaret(window);
-    await expect.poll(() => blockTypes(window)).toEqual(['title', 'bookmark', 'paragraph']);
+    await expect.poll(() => blockTypes(window)).toEqual(['title', 'reference', 'paragraph']);
     await window.keyboard.type('Keep writing');
     await expect(editor(window).locator('p')).toHaveText('Keep writing');
     await expect(card).toBeVisible();
@@ -91,10 +91,10 @@ test('clicking below the last block appends a paragraph and reuses it', async ({
   const hr = editor(window).locator('hr');
   await clickBelow(window, hr);
   await expectParagraphCaret(window);
-  await expect.poll(() => blockTypes(window)).toEqual(['title', 'image', 'horizontalrule', 'paragraph']);
+  await expect.poll(() => blockTypes(window)).toEqual(['title', 'reference', 'horizontalrule', 'paragraph']);
   await clickBelow(window, editor(window).locator('p'));
   await expectParagraphCaret(window);
-  await expect.poll(() => blockTypes(window)).toEqual(['title', 'image', 'horizontalrule', 'paragraph']);
+  await expect.poll(() => blockTypes(window)).toEqual(['title', 'reference', 'horizontalrule', 'paragraph']);
   await window.keyboard.type('After media');
   await expect(editor(window).locator('p')).toHaveText('After media');
 });
@@ -106,7 +106,7 @@ test('clicking a block or its text does not append a paragraph', async ({ window
   await editor(window).locator('p').click();
   await editor(window).locator('.bookmark-card').click();
   await expect(editor(window).locator('.bookmark-card')).toHaveClass(/selected/);
-  await expect.poll(() => blockTypes(window)).toEqual(['title', 'paragraph', 'bookmark']);
+  await expect.poll(() => blockTypes(window)).toEqual(['title', 'paragraph', 'reference']);
   await expect(editor(window).locator('p')).toHaveText('Existing text');
 });
 
@@ -121,6 +121,6 @@ test('dragging a text selection into blank space does not append a paragraph', a
   await window.mouse.down();
   await window.mouse.move(card.x + 100, card.y + card.height + 16, { steps: 8 });
   await window.mouse.up();
-  await expect.poll(() => blockTypes(window)).toEqual(['title', 'paragraph', 'bookmark']);
+  await expect.poll(() => blockTypes(window)).toEqual(['title', 'paragraph', 'reference']);
   await expect.poll(() => window.evaluate(() => window.getSelection()?.toString())).toContain('Select this text');
 });

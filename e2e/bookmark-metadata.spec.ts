@@ -107,15 +107,18 @@ async function injectBookmarkNodeAndReload(
   const content = JSON.stringify({
     root: {
       children: [
-        // Keep an empty paragraph before the bookmark so Lexical is happy
+        // Keep an empty paragraph before the reference so Lexical is happy
         { children: [], direction: null, format: '', indent: 0, type: 'paragraph', version: 1 },
         {
-          type: 'bookmark',
+          type: 'reference',
+          displayMode: 'card',
           url: bookmark.url,
           title: bookmark.title,
           description: bookmark.description,
           imageUrl: bookmark.imageUrl,
           faviconUrl: bookmark.faviconUrl,
+          imageId: '',
+          altText: '',
           hydrationAttempted: bookmark.hydrationAttempted ?? true,
           version: 1,
         },
@@ -179,7 +182,7 @@ async function getBookmarkNodeFromDb(
       docId,
     );
     const parsed = JSON.parse(doc.document.content);
-    node = findNodeByType(parsed, 'bookmark');
+    node = findNodeByType(parsed, 'reference');
     expect(node).not.toBeNull();
   }).toPass({ timeout: 6000 });
 
@@ -224,7 +227,8 @@ test.describe('Bookmark Metadata — DB Field Completeness', () => {
 
     const node = await getBookmarkNodeFromDb(window, docId);
     expect(node).toMatchObject({
-      type: 'bookmark',
+      type: 'reference',
+      displayMode: 'card',
       url: expect.stringContaining('example.com'),
       title: expect.any(String),
       description: expect.any(String),
@@ -243,7 +247,8 @@ test.describe('Bookmark Metadata — DB Field Completeness', () => {
 
     const node = await getBookmarkNodeFromDb(window, docId);
     expect(node).toMatchObject({
-      type: 'bookmark',
+      type: 'reference',
+      displayMode: 'card',
       url: expect.stringContaining('example.com'),
       title: expect.any(String),
       description: expect.any(String),
@@ -673,7 +678,7 @@ test.describe('Bookmark Metadata — Coexistence', () => {
         docId,
       );
       const content = JSON.parse(doc.document.content);
-      const nodes = findAllNodesByType(content, 'bookmark');
+      const nodes = findAllNodesByType(content, 'reference');
       expect(nodes).toHaveLength(2);
       for (const n of nodes) {
         expect(typeof n.url).toBe('string');
@@ -765,7 +770,7 @@ test.describe('Bookmark Metadata — Edge Cases & Stress', () => {
         (id: string) => (window as any).lychee.invoke('documents.get', { id }),
         docId,
       );
-      expect(findNodeByType(JSON.parse(doc.document.content), 'bookmark')).toBeNull();
+      expect(findNodeByType(JSON.parse(doc.document.content), 'reference')).toBeNull();
     }).toPass({ timeout: 5000 });
   });
 
@@ -809,7 +814,7 @@ test.describe('Bookmark Metadata — Edge Cases & Stress', () => {
         (id: string) => (window as any).lychee.invoke('documents.get', { id }),
         docId,
       );
-      const nodes = findAllNodesByType(JSON.parse(doc.document.content), 'bookmark');
+      const nodes = findAllNodesByType(JSON.parse(doc.document.content), 'reference');
       expect(nodes).toHaveLength(5);
       for (const n of nodes) {
         expect(n.url).toBeTruthy();
@@ -1037,7 +1042,7 @@ test.describe('Bookmark Metadata — Mock-driven hydration paths', () => {
     expect(node.title).toBe(''); // still bare — no metadata populated
   });
 
-  test('url.resolve returning "image" swaps BookmarkNode for ImageNode', async ({ window }) => {
+  test('url.resolve returning "image" upgrades a card reference to image mode', async ({ window }) => {
     // Simulates a Uploadcare-style extensionless image URL where the backend
     // probes content-type, downloads the bytes, and returns an image result.
     await mockIpcResolve(window, 'url.resolve', {
@@ -1070,11 +1075,11 @@ test.describe('Bookmark Metadata — Mock-driven hydration paths', () => {
       docId,
     );
     const parsed = JSON.parse(doc.document.content);
-    const imageNode = findNodeByType(parsed, 'image');
+    const imageNode = findNodeByType(parsed, 'reference');
     expect(imageNode).not.toBeNull();
+    expect(imageNode.displayMode).toBe('image');
     expect(imageNode.imageId).toBe('mock-image-id');
-    const bookmarkNode = findNodeByType(parsed, 'bookmark');
-    expect(bookmarkNode).toBeNull();
+    expect(imageNode.url).toBe('https://cdn.example.com/extensionless-image');
   });
 
   // ── Hydration gate ──
@@ -1102,12 +1107,15 @@ test.describe('Bookmark Metadata — Mock-driven hydration paths', () => {
         children: [
           { children: [], direction: null, format: '', indent: 0, type: 'paragraph', version: 1 },
           {
-            type: 'bookmark',
+            type: 'reference',
+            displayMode: 'card',
             url: 'https://example.com',
             title: '',
             description: '',
             imageUrl: '',
             faviconUrl: '',
+            imageId: '',
+            altText: '',
             hydrationAttempted: true,
             version: 1,
           },
@@ -1192,7 +1200,7 @@ test.describe('Bookmark Metadata — Mock-driven hydration paths', () => {
       (id: string) => (window as unknown as { lychee: { invoke: (c: string, p: unknown) => Promise<{ document: { content: string } }> } }).lychee.invoke('documents.get', { id }),
       docId,
     );
-    const bookmarkNode = findNodeByType(JSON.parse(doc.document.content), 'bookmark');
+    const bookmarkNode = findNodeByType(JSON.parse(doc.document.content), 'reference');
     expect(bookmarkNode).toBeNull();
   });
 });
@@ -1232,12 +1240,12 @@ test.describe('Image Embed — Mock-driven hydration paths', () => {
       (id: string) => (window as unknown as { lychee: { invoke: (c: string, p: unknown) => Promise<{ document: { content: string } }> } }).lychee.invoke('documents.get', { id }),
       docId,
     );
-    const imageNode = findNodeByType(JSON.parse(doc.document.content), 'image');
+    const imageNode = findNodeByType(JSON.parse(doc.document.content), 'reference');
     expect(imageNode).not.toBeNull();
     // Critical assertion: loading must remain true so the next mount retries.
     expect(imageNode.loading).toBe(true);
     expect(imageNode.imageId).toBe('');
-    expect(imageNode.sourceUrl).toBe('https://example.com/photo.png');
+    expect(imageNode.url).toBe('https://example.com/photo.png');
   });
 
   test('images.download success swaps src from remote URL to local file', async ({ window }) => {
@@ -1262,7 +1270,7 @@ test.describe('Image Embed — Mock-driven hydration paths', () => {
       (id: string) => (window as unknown as { lychee: { invoke: (c: string, p: unknown) => Promise<{ document: { content: string } }> } }).lychee.invoke('documents.get', { id }),
       docId,
     );
-    const imageNode = findNodeByType(JSON.parse(doc.document.content), 'image');
+    const imageNode = findNodeByType(JSON.parse(doc.document.content), 'reference');
     expect(imageNode).not.toBeNull();
     expect(imageNode.imageId).toBe('mock-img-abc');
     // loading should now be false (omitted from JSON via `|| undefined`).
@@ -1351,10 +1359,11 @@ test.describe('Image Embed — Mock-driven hydration paths', () => {
         children: [
           { children: [], direction: null, format: '', indent: 0, type: 'paragraph', version: 1 },
           {
-            type: 'image',
+            type: 'reference',
+            displayMode: 'image',
             imageId: '',
             altText: '',
-            sourceUrl: 'https://example.com/photo.png',
+            url: 'https://example.com/photo.png',
             loading: true,
             version: 1,
           },
@@ -1398,9 +1407,128 @@ test.describe('Image Embed — Mock-driven hydration paths', () => {
       (id: string) => (window as unknown as { lychee: { invoke: (c: string, p: unknown) => Promise<{ document: { content: string } }> } }).lychee.invoke('documents.get', { id }),
       docId,
     );
-    const imageNode = findNodeByType(JSON.parse(doc.document.content), 'image');
+    const imageNode = findNodeByType(JSON.parse(doc.document.content), 'reference');
     expect(imageNode).not.toBeNull();
     expect(imageNode.imageId).toBe('mock-img-retry');
     expect(imageNode.loading).toBeUndefined();
   });
 });
+
+// ── Legacy node migration ─────────────────────────────────────────────
+// Documents written before the unified reference node persisted
+// `type: "image"` / `type: "bookmark"`. On load they must upgrade to a
+// `reference` (correct displayMode) without losing the canonical URL.
+
+test.describe('Legacy node migration', () => {
+  async function injectLegacyAndReload(
+    window: Page,
+    docId: string,
+    tabTitle: string,
+    legacyNode: Record<string, unknown>,
+  ): Promise<void> {
+    const content = JSON.stringify({
+      root: {
+        children: [
+          { children: [], direction: null, format: '', indent: 0, type: 'paragraph', version: 1 },
+          legacyNode,
+        ],
+        direction: null,
+        format: '',
+        indent: 0,
+        type: 'root',
+        version: 1,
+      },
+    });
+
+    await window.evaluate(
+      ({ id, c }: { id: string; c: string }) =>
+        (window as any).lychee.invoke('documents.update', { id, content: c }),
+      { id: docId, c: content },
+    );
+    await window.evaluate(() => (window as any).__documentStore.getState().loadDocuments(true));
+    await window.waitForTimeout(200);
+
+    await window
+      .locator('[data-tab-id]')
+      .filter({ hasText: tabTitle })
+      .locator('[aria-label="Close tab"]')
+      .click({ force: true });
+    await window.waitForTimeout(300);
+
+    await window.locator(`[data-note-id="${docId}"]`).first().click();
+    await window.waitForTimeout(500);
+  }
+
+  test('legacy image node upgrades to an image reference, keeping its URL', async ({ window }) => {
+    const title = 'Legacy Image Migration';
+    const docId = await createNoteWithTitle(window, title);
+    const legacyUrl = 'https://example.com/legacy-photo.png';
+
+    await injectLegacyAndReload(window, docId, title, {
+      type: 'image',
+      imageId: '',
+      altText: 'Legacy photo',
+      sourceUrl: legacyUrl,
+      loading: false,
+      version: 1,
+    });
+
+    // Renders as an image immediately after migration-on-load.
+    await expect(window.locator('main:visible .image-container')).toBeVisible({ timeout: 10000 });
+
+    // Persisted shape is the unified reference with a canonical `url`.
+    const content = await saveAndReadReferenceContent(window, docId);
+    const node = findNodeByType(content, 'reference');
+    expect(node).not.toBeNull();
+    expect(node.displayMode).toBe('image');
+    expect(node.url).toBe(legacyUrl);
+    expect(findNodeByType(content, 'image')).toBeNull();
+  });
+
+  test('legacy bookmark node upgrades to a card reference, keeping its fields', async ({ window }) => {
+    const title = 'Legacy Bookmark Migration';
+    const docId = await createNoteWithTitle(window, title);
+    const legacyUrl = 'https://example.com/legacy-article';
+
+    await injectLegacyAndReload(window, docId, title, {
+      type: 'bookmark',
+      url: legacyUrl,
+      title: 'Legacy Article',
+      description: 'Written before the unified node existed.',
+      imageUrl: '',
+      faviconUrl: '',
+      hydrationAttempted: true,
+      version: 1,
+    });
+
+    await expect(window.locator('main:visible .bookmark-card')).toBeVisible({ timeout: 10000 });
+
+    const content = await saveAndReadReferenceContent(window, docId);
+    const node = findNodeByType(content, 'reference');
+    expect(node).not.toBeNull();
+    expect(node.displayMode).toBe('card');
+    expect(node.url).toBe(legacyUrl);
+    expect(node.title).toBe('Legacy Article');
+    expect(findNodeByType(content, 'bookmark')).toBeNull();
+  });
+});
+
+/** Focus the body, edit to trigger a debounce save, then return parsed DB JSON. */
+async function saveAndReadReferenceContent(window: Page, docId: string): Promise<any> {
+  await window.locator('main:visible .ContentEditable__root p').first().click({ force: true });
+  await window.waitForTimeout(200);
+
+  let content: any;
+  await expect(async () => {
+    await window.keyboard.type(' ');
+    await window.waitForTimeout(700);
+    const doc = await window.evaluate(
+      (id: string) => (window as any).lychee.invoke('documents.get', { id }),
+      docId,
+    );
+    content = JSON.parse(doc.document.content);
+    expect(findNodeByType(content, 'reference')).not.toBeNull();
+  }).toPass({ timeout: 6000 });
+
+  return content;
+}

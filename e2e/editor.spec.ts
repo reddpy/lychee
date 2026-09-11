@@ -855,7 +855,7 @@ test.describe('Editor — Edge Cases', () => {
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
     const content = JSON.parse(doc!.content);
-    const hasImage = content.root.children.some((c: any) => c.type === 'image');
+    const hasImage = content.root.children.some((c: any) => c.type === 'reference' && c.displayMode === 'image');
     expect(hasImage).toBe(true);
   });
 
@@ -1176,7 +1176,7 @@ test.describe('Editor — Edge Cases', () => {
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
     const content = JSON.parse(doc!.content);
-    const hasImage = content.root.children.some((c: any) => c.type === 'image');
+    const hasImage = content.root.children.some((c: any) => c.type === 'reference' && c.displayMode === 'image');
     expect(hasImage).toBe(true);
   });
 
@@ -1274,7 +1274,7 @@ test.describe('Editor — Edge Cases', () => {
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
     const content = JSON.parse(doc!.content);
-    const hasImage = content.root.children.some((c: any) => c.type === 'image');
+    const hasImage = content.root.children.some((c: any) => c.type === 'reference' && c.displayMode === 'image');
     expect(hasImage).toBe(true);
   });
 });

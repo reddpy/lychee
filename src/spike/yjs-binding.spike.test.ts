@@ -23,11 +23,8 @@ import * as Y from "yjs";
 // exist in a test/headless context. The @lexical/yjs binding never calls
 // decorate(), so stub the components to import the REAL node classes in
 // isolation. (This coupling is itself a spike finding — see feature_research.)
-vi.mock("@/components/editor/nodes/bookmark-component", () => ({
-  BookmarkComponent: (): null => null,
-}));
-vi.mock("@/components/editor/nodes/image-component", () => ({
-  ImageComponent: (): null => null,
+vi.mock("@/components/editor/nodes/reference-component", () => ({
+  ReferenceComponent: (): null => null,
 }));
 import {
   createBinding,
@@ -47,11 +44,7 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
 import { LinkNode, AutoLinkNode } from "@lexical/link";
 import { TitleNode, $createTitleNode } from "@/components/editor/nodes/title-node";
-import { ImageNode, $createImageNode } from "@/components/editor/nodes/image-node";
-import {
-  BookmarkNode,
-  $createBookmarkNode,
-} from "@/components/editor/nodes/bookmark-node";
+import { ReferenceNode, $createReferenceNode } from "@/components/editor/nodes/reference-node";
 
 // Built-ins + the custom nodes we care about.
 const NODES = [
@@ -62,8 +55,7 @@ const NODES = [
   ListItemNode,
   LinkNode,
   AutoLinkNode,
-  ImageNode,
-  BookmarkNode,
+  ReferenceNode,
 ];
 
 // Minimal fake provider — the binding only touches awareness for cursors,
@@ -170,7 +162,7 @@ function loadFixture(b: Bound) {
       const p1 = $createParagraphNode();
       p1.append($createTextNode("Some body text before the embeds."));
 
-      const bookmark = $createBookmarkNode({
+      const bookmark = $createReferenceNode({
         url: "https://example.com/article",
         title: "Example Article",
         description: "A description fetched from OG metadata.",
@@ -178,7 +170,8 @@ function loadFixture(b: Bound) {
         faviconUrl: "https://example.com/favicon.ico",
       });
 
-      const image = $createImageNode({
+      const image = $createReferenceNode({
+        displayMode: "image",
         imageId: "img-abc-123",
         altText: "An example image",
         alignment: "center",

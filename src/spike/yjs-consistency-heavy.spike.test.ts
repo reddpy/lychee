@@ -13,8 +13,7 @@
 import { describe, it, expect, vi } from "vitest";
 import * as Y from "yjs";
 
-vi.mock("@/components/editor/nodes/bookmark-component", () => ({ BookmarkComponent: (): null => null }));
-vi.mock("@/components/editor/nodes/image-component", () => ({ ImageComponent: (): null => null }));
+vi.mock("@/components/editor/nodes/reference-component", () => ({ ReferenceComponent: (): null => null }));
 
 import { createBinding, syncLexicalUpdateToYjs, syncYjsChangesToLexical, type Binding } from "@lexical/yjs";
 import { createHeadlessEditor } from "@lexical/headless";
@@ -29,12 +28,11 @@ import { LinkNode, AutoLinkNode } from "@lexical/link";
 import { TableNode, TableRowNode, TableCellNode } from "@lexical/table";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import { TitleNode, $createTitleNode } from "@/components/editor/nodes/title-node";
-import { ImageNode } from "@/components/editor/nodes/image-node";
-import { BookmarkNode, $createBookmarkNode, $isBookmarkNode } from "@/components/editor/nodes/bookmark-node";
+import { ReferenceNode, $createReferenceNode, $isReferenceNode } from "@/components/editor/nodes/reference-node";
 
 const ALL_NODES: Array<Klass<LexicalNode>> = [
   TitleNode, HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, CodeHighlightNode,
-  LinkNode, AutoLinkNode, TableNode, TableRowNode, TableCellNode, HorizontalRuleNode, ImageNode, BookmarkNode,
+  LinkNode, AutoLinkNode, TableNode, TableRowNode, TableCellNode, HorizontalRuleNode, ReferenceNode,
 ];
 
 function fakeProvider(): any {
@@ -146,7 +144,7 @@ function seedDoc(b: Bound) {
     const t = $createTitleNode(); t.append($createTextNode("Doc"));
     const p1 = $createParagraphNode(); p1.append($createTextNode("alpha"));
     const p2 = $createParagraphNode(); p2.append($createTextNode("bravo"));
-    r.append(t, p1, p2, $createBookmarkNode({ url: "https://e.com" }));
+    r.append(t, p1, p2, $createReferenceNode({ url: "https://e.com" }));
   });
 }
 
@@ -170,7 +168,7 @@ function randomOp(b: Bound, rand: () => number, round: number, allowDestructive:
         case 6: { const t = pick(texts); if (t && rand() < 0.5) t.toggleFormat("bold"); else if (t) t.toggleFormat("italic"); break; }
         case 7: { if (allowDestructive && blocks.length > 1) { const blk = pick(blocks); blk?.remove(); } break; }
         case 8: { if (allowDestructive && blocks.length > 1) { const x = pick(blocks)!; const y = pick(blocks)!; if (x !== y) y.insertBefore(x); } break; }
-        case 9: { const bm = root.getChildren().find((n) => $isBookmarkNode(n)); if (bm && $isBookmarkNode(bm)) bm.setTitle("bt" + b.id + "_" + round); else { const nb = $createBookmarkNode({ url: "https://e.com/" + round }); root.append(nb); } break; }
+        case 9: { const bm = root.getChildren().find((n) => $isReferenceNode(n)); if (bm && $isReferenceNode(bm)) bm.setTitle("bt" + b.id + "_" + round); else { const nb = $createReferenceNode({ url: "https://e.com/" + round }); root.append(nb); } break; }
       }
     });
   } catch { /* skip ops that violate a local constraint */ }

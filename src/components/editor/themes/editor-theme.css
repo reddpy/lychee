@@ -538,6 +538,29 @@ blockquote.is-placeholder,
   color: white;
 }
 
+/* Copy-link / convert-to-link controls — styled like an alignment button but
+   kept as their own classes so alignment-button queries/counts stay stable. */
+.image-toolbar-convert,
+.image-toolbar-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground));
+  transition: background 0.1s, color 0.1s;
+}
+
+.image-toolbar-convert:hover,
+.image-toolbar-copy:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
 .image-toolbar-divider {
   width: 1px;
   height: 16px;

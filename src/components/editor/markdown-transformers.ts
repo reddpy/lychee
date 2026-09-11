@@ -16,7 +16,10 @@ import {
   HIGHLIGHT,
   LINK,
 } from "@lexical/markdown"
-import { IMAGE, IMAGE_EXPORT } from "@/components/editor/plugins/image-markdown-transformer"
+import {
+  REFERENCE_EXPORT,
+  REFERENCE_IMAGE,
+} from "@/components/editor/plugins/reference-markdown-transformer"
 import { TABLE, TABLE_EXPORT } from "@/components/editor/plugins/table-markdown-transformer"
 import { TITLE_EXPORT } from "@/components/editor/plugins/title-markdown-transformer"
 
@@ -33,7 +36,7 @@ export const MARKDOWN_TRANSFORMERS = [
   UNORDERED_LIST,
   ORDERED_LIST,
   CHECK_LIST,
-  IMAGE_EXPORT,
+  REFERENCE_EXPORT,
   TABLE_EXPORT,
   CODE,
   INLINE_CODE,
@@ -45,7 +48,7 @@ export const MARKDOWN_TRANSFORMERS = [
   ITALIC_STAR,
   ITALIC_UNDERSCORE,
   STRIKETHROUGH,
-  IMAGE,
+  REFERENCE_IMAGE,
   TABLE,
   LINK,
 ]

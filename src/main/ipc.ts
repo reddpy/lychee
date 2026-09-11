@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell, type IpcMainEvent } from 'electron';
+import fs from 'fs';
 import path from 'path';
 import type { IpcContract, IpcChannel } from '../shared/ipc-types';
 import { applyChromeToAllWindows, setChromeColors, setOverlayDimmed } from './window-chrome';
@@ -14,7 +15,7 @@ import {
   trashDocument,
   updateDocument,
 } from './repos/documents';
-import { saveImage, getImagePath, getImageDataUrl, deleteImage, downloadImage } from './repos/images';
+import { saveImage, getImagePath, getImageDataUrl, deleteImage, downloadImage, readImageBytes } from './repos/images';
 import { resolveUrl } from './repos/url-resolver';
 import { fetchUrlMetadata } from './repos/url-metadata';
 import { getSetting, setSetting, getAllSettings } from './repos/settings';
@@ -177,6 +178,34 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
 
   handle('images.delete', (payload) => {
     deleteImage(payload.id);
+    return { ok: true };
+  });
+
+  handle('images.saveAs', async (payload) => {
+    const { buffer, mimeType, filename } = readImageBytes(payload.id);
+    const ext = path.extname(filename).replace(/^\./, '') || 'png';
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const options = {
+      title: 'Save Image',
+      defaultPath: path.join(app.getPath('downloads'), filename),
+      filters: [{ name: mimeType, extensions: [ext] }],
+    };
+    const result = win
+      ? await dialog.showSaveDialog(win, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { canceled: true };
+
+    fs.writeFileSync(result.filePath, buffer);
+    return { canceled: false, filePath: result.filePath };
+  });
+
+  handle('clipboard.writeImage', (payload) => {
+    const { buffer } = readImageBytes(payload.id);
+    const image = nativeImage.createFromBuffer(buffer);
+    if (image.isEmpty()) {
+      throw new Error(`Could not decode image: ${payload.id}`);
+    }
+    clipboard.writeImage(image);
     return { ok: true };
   });
 

@@ -216,7 +216,7 @@ describe('IPC Error Propagation', () => {
   });
 
   // getImagePath is called on every image render in the editor.
-  // image-component.tsx has NO .catch() on this call — an unhandled
+  // reference-component.tsx has NO .catch() on this call — an unhandled
   // rejection would crash the renderer if Electron strict mode is on.
   it('images.getPath propagates not-found errors', async () => {
     (images.getImagePath as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
@@ -300,7 +300,7 @@ describe('IPC Error Propagation', () => {
 
   // shell.openExternal can reject if the URL scheme is blocked by the OS
   // or if the shell.openExternal call itself fails.
-  // bookmark-component.tsx and image-component.tsx have NO .catch() on this.
+  // reference-component.tsx has NO .catch() on this.
   it('shell.openExternal propagates shell errors', async () => {
     (shell.openExternal as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error('Failed to open URL'),

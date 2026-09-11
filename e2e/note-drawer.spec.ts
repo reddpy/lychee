@@ -201,12 +201,15 @@ function linkNode(label: string, url: string) {
 
 function bookmarkNode(bookmark: InjectedBookmark) {
   return {
-    type: 'bookmark',
+    type: 'reference',
+    displayMode: 'card',
     url: bookmark.url,
     title: bookmark.title,
     description: bookmark.description ?? '',
     imageUrl: '',
     faviconUrl: bookmark.faviconUrl ?? '',
+    imageId: '',
+    altText: '',
     hydrationAttempted: true,
     version: 1,
   };

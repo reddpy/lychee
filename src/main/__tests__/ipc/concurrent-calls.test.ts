@@ -478,7 +478,7 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
   // Opening a note with many images (getPath stress)
   // ────────────────────────────────────────────────────────
 
-  // A media-heavy note can have 50+ images. image-component.tsx fires
+  // A media-heavy note can have 50+ images. reference-component.tsx fires
   // images.getPath for each one on mount — all concurrent.
   it('50 concurrent images.getPath calls all resolve with correct path', async () => {
     (images.getImagePath as ReturnType<typeof vi.fn>).mockImplementation(
@@ -894,9 +894,9 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
   // ────────────────────────────────────────────────────────
 
   it('calling registerIpcHandlers twice overwrites handlers (no duplicates)', () => {
-    expect(handlers.size).toBe(40);
+    expect(handlers.size).toBe(42);
     registerIpcHandlers();
-    expect(handlers.size).toBe(40);
+    expect(handlers.size).toBe(42);
   });
 
   // ────────────────────────────────────────────────────────

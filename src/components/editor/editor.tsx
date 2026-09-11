@@ -84,7 +84,7 @@ function nestFlatListItems(flatItems: any[], listType: string): any {
       direction: item.direction ?? null,
       format: item.format ?? "",
       version: 1,
-      children: [...(item.children || [])],
+      children: migrateChildren(item.children || []),
     }
 
     // If there are nested items, create a sub-list
@@ -103,6 +103,47 @@ function nestFlatListItems(flatItems: any[], listType: string): any {
 }
 
 /**
+ * Migrate a legacy ImageNode/BookmarkNode into the unified ReferenceNode shape.
+ * The URL is preserved as the reference's canonical value; the old node type
+ * only told us which display mode to start in.
+ */
+function migrateReferenceNode(node: any): any {
+  if (node.type === "image") {
+    return {
+      type: "reference",
+      displayMode: "image",
+      url: node.sourceUrl ?? "",
+      title: "",
+      description: "",
+      imageUrl: "",
+      faviconUrl: "",
+      imageId: node.imageId ?? "",
+      altText: node.altText ?? "",
+      width: node.width,
+      height: node.height,
+      alignment: node.alignment,
+      loading: node.loading,
+      version: 1,
+    }
+  }
+
+  return {
+    type: "reference",
+    displayMode: "card",
+    url: node.url ?? "",
+    title: node.title ?? "",
+    description: node.description ?? "",
+    imageUrl: node.imageUrl ?? "",
+    faviconUrl: node.faviconUrl ?? "",
+    imageId: "",
+    altText: "",
+    autoResolve: node.autoResolve,
+    hydrationAttempted: node.hydrationAttempted,
+    version: 1,
+  }
+}
+
+/**
  * Migrate children: remove legacy nodes and convert old flat "list-item" nodes
  * into proper nested list/listitem structure.
  */
@@ -115,6 +156,13 @@ function migrateChildren(children: any[]): any[] {
 
     // Filter out legacy nodes
     if (child.type === "code-snippet" || child.type === "executable-code-block") {
+      i++
+      continue
+    }
+
+    // Collapse the old split image/bookmark node types into ReferenceNode.
+    if (child.type === "image" || child.type === "bookmark") {
+      result.push(migrateReferenceNode(child))
       i++
       continue
     }
