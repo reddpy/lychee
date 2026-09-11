@@ -15,20 +15,43 @@ export function ClickToAppendPlugin(): null {
   useEffect(() => {
     let cleanup: (() => void) | null = null
 
-    const unregister = editor.registerRootListener((rootElement, prevElement) => {
+    const unregister = editor.registerRootListener((rootElement) => {
       cleanup?.()
       cleanup = null
 
       if (!rootElement) return
 
-      let main: HTMLElement | null = rootElement.parentElement
-      while (main && main.tagName !== "MAIN") main = main.parentElement
+      const main = rootElement.closest("main")
       if (!main) return
 
-      const handler = (event: MouseEvent) => {
-        if ((event.target as HTMLElement).closest?.("[contenteditable]")) return
-        if (event.clientY <= rootElement.getBoundingClientRect().bottom) return
+      let pointerStart: { x: number; y: number } | null = null
+      const onPointerDown = (event: PointerEvent) => {
+        pointerStart = { x: event.clientX, y: event.clientY }
+      }
 
+      const handler = (event: MouseEvent) => {
+        const start = pointerStart
+        pointerStart = null
+        if (!editor.isEditable()) return
+        if (event.defaultPrevented || event.button !== 0 || event.detail > 1) return
+        // A drag selection can end in blank space too; it must not append.
+        if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4) return
+
+        const target = event.target
+        if (!(target instanceof Element)) return
+        // Text and interactive content own their clicks; only the root's own
+        // blank space should append a paragraph.
+        if (target !== rootElement && target.closest("[contenteditable]")) return
+
+        // Compare against the last block rather than the editor's min-height so
+        // the first block on a short note is as easy to click past as the last.
+        const lastBlock = rootElement.lastElementChild
+        const lastBottom = lastBlock
+          ? lastBlock.getBoundingClientRect().bottom
+          : rootElement.getBoundingClientRect().top
+        if (event.clientY <= lastBottom) return
+
+        event.preventDefault()
         editor.update(() => {
           const root = $getRoot()
           const last = root.getLastChild()
@@ -42,8 +65,12 @@ export function ClickToAppendPlugin(): null {
         })
       }
 
+      main.addEventListener("pointerdown", onPointerDown)
       main.addEventListener("click", handler)
-      cleanup = () => main!.removeEventListener("click", handler)
+      cleanup = () => {
+        main.removeEventListener("pointerdown", onPointerDown)
+        main.removeEventListener("click", handler)
+      }
     })
 
     return () => {
