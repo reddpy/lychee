@@ -25,6 +25,7 @@ import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
 import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeholder-plugin"
 import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
+import { SectionRailPlugin } from "@/components/editor/plugins/section-rail-plugin"
 import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highlight-plugin"
 import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
 import { ClickToAppendPlugin } from "@/components/editor/plugins/click-to-append-plugin"
@@ -125,6 +126,9 @@ export function Plugins({
 
       {/* Section position indicator */}
       <SectionIndicatorPlugin documentId={documentId} />
+
+      {/* Right-edge section rail for fast scrolling */}
+      <SectionRailPlugin documentId={documentId} isActive={isActive} />
 
       {/* In-editor find + highlights (Cmd/Ctrl+F) */}
       {/* Per-tab selection save/restore for duplicate tabs */}
