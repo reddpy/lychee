@@ -41,6 +41,7 @@ export const editorTheme: EditorThemeClasses = {
     superscript: "sup",
     underline: "underline",
     underlineStrikethrough: "[text-decoration:underline_line-through]",
+    highlight: "rounded-sm bg-[#fde047] text-[#3f2d00]",
   },
   image: "relative inline-block user-select-none cursor-default editor-image",
   inlineImage:
@@ -105,6 +106,5 @@ export const editorTheme: EditorThemeClasses = {
   },
   hr: "",
   indent: "[--lexical-indent-base-value:40px]",
-  mark: "rounded-sm bg-brand/18 text-[hsl(var(--foreground))]",
   markOverlap: "",
 }

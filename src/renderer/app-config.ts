@@ -4,9 +4,16 @@ import {
   serializeSidebarPreferences,
   type SidebarPreferences,
 } from './sidebar-preferences';
+import {
+  APPEARANCE_SETTING_KEY,
+  type AppearancePreferences,
+  parseStoredAppearance,
+  serializeAppearance,
+} from './appearance-preferences';
 
 export type AppConfig = {
   sidebar: SidebarPreferences;
+  appearance: AppearancePreferences;
 };
 
 /**
@@ -33,8 +40,30 @@ export async function loadAppConfig(): Promise<AppConfig> {
         });
     }
 
-    return { sidebar };
+    const rawAppearance = settings[APPEARANCE_SETTING_KEY] ?? null;
+    const appearance = parseStoredAppearance(
+      typeof rawAppearance === 'string' ? rawAppearance : null,
+    );
+    const normalizedAppearance = serializeAppearance(appearance);
+
+    // Only rewrite when a stored value was present but malformed/out-of-range;
+    // a missing key is already represented by the defaults.
+    if (typeof rawAppearance === 'string' && rawAppearance !== normalizedAppearance) {
+      await window.lychee
+        .invoke('settings.set', {
+          key: APPEARANCE_SETTING_KEY,
+          value: normalizedAppearance,
+        })
+        .catch(() => {
+          // A failed repair should not prevent the app from opening safely.
+        });
+    }
+
+    return { sidebar, appearance };
   } catch {
-    return { sidebar: parseStoredSidebarPreferences(null) };
+    return {
+      sidebar: parseStoredSidebarPreferences(null),
+      appearance: parseStoredAppearance(null),
+    };
   }
 }

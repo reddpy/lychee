@@ -342,9 +342,10 @@ function FloatingToolbar({
     if (rect.width === 0 || rect.height === 0) return;
 
     if (toolbarRef.current) {
-      const maxLeft = Math.max(window.innerWidth - TOOLBAR_WIDTH - 10, 10);
+      const toolbarWidth = toolbarRef.current.offsetWidth || TOOLBAR_WIDTH;
+      const maxLeft = Math.max(window.innerWidth - toolbarWidth - 10, 10);
       const left = Math.min(
-        Math.max(rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2, 10),
+        Math.max(rect.left + rect.width / 2 - toolbarWidth / 2, 10),
         maxLeft,
       );
       const top = Math.max(rect.top - TOOLBAR_HEIGHT - TOOLBAR_GAP, minTop ?? 10);
@@ -469,9 +470,10 @@ function FloatingToolbar({
           toolbarRef.current.style.visibility = "visible";
           scrollHiddenRef.current = false;
         }
-        const maxLeft = Math.max(window.innerWidth - TOOLBAR_WIDTH - 10, 10);
+        const toolbarWidth = toolbarRef.current.offsetWidth || TOOLBAR_WIDTH;
+        const maxLeft = Math.max(window.innerWidth - toolbarWidth - 10, 10);
         const left = Math.min(
-          Math.max(rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2, 10),
+          Math.max(rect.left + rect.width / 2 - toolbarWidth / 2, 10),
           maxLeft,
         );
         const top = Math.max(rect.top - TOOLBAR_HEIGHT - TOOLBAR_GAP, TAB_BAR_HEIGHT);

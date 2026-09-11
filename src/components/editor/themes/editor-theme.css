@@ -738,3 +738,12 @@ blockquote.is-placeholder,
   height: 100%;
   object-fit: cover;
 }
+
+/* ── Highlight ─────────────────────────────────────────── */
+
+/* Lexical paints the highlight format on the inner themed span; neutralize the
+   browser's default <mark> yellow so it never peeks through at the edges. */
+.ContentEditable__root mark {
+  background-color: transparent;
+  color: inherit;
+}
