@@ -158,10 +158,13 @@ base.describe('Persistence — data survives app restart', () => {
     // Should NOT appear in the sidebar
     await expect(window.locator('[data-note-id]').filter({ hasText: 'Trash Persist' })).toHaveCount(0);
 
-    // Open trash bin and verify it's there
+    // Open trash bin and verify it's there (scoped to the browser; the preview
+    // panel renders the same title).
     await window.locator('[aria-label="Trash Bin"]').click();
     await window.waitForTimeout(500);
-    await expect(window.getByText('Trash Persist')).toBeVisible();
+    await expect(
+      window.getByTestId('trash-browser').getByText('Trash Persist').first(),
+    ).toBeVisible();
 
     await app.close();
   });

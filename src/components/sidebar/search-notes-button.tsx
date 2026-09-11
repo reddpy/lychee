@@ -36,6 +36,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  commandDialogShellClassName,
 } from "../ui/command";
 import {
   SidebarGroup,
@@ -630,7 +631,8 @@ export function SearchNotesButton() {
         title="Search notes"
         description="Search and open notes by title or content."
         className={
-          "w-[calc(100vw-1.5rem)] border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))]/55 p-0 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)] backdrop-blur-sm [&_[data-slot=command-input-wrapper]]:mt-3 [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:rounded-full [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-[hsl(var(--border))] [&_[data-slot=command-input-wrapper]]:border-b [&_[data-slot=command-input-wrapper]]:bg-[hsl(var(--background))]/95 [&_[data-slot=command-input-wrapper]]:px-4 [&_[data-slot=command-input-wrapper]]:shadow-sm [&_[data-slot=command-input-wrapper]]:ring-1 [&_[data-slot=command-input-wrapper]]:ring-black/5 [&_[data-slot=command-input-wrapper]_svg]:size-4 " +
+          commandDialogShellClassName +
+          " " +
           (shouldShowPreview
             ? "max-w-[980px] lg:max-w-[1040px]"
             : "max-w-[640px] md:max-w-[700px]")
