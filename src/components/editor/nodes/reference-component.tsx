@@ -327,6 +327,8 @@ function ReferenceContextMenu({
   }, [editor, nodeKey])
 
   const canCopyImage = isImage && imageId !== ""
+  const hasOpenActions = url !== "" || (internalDocumentId !== null && internalDocumentExists)
+  const hasCopyActions = url !== "" || canCopyImage
 
   return (
     <ContextMenu
@@ -348,7 +350,7 @@ function ReferenceContextMenu({
             Open in new tab
           </ContextMenuItem>
         )}
-        {(url || canCopyImage) && <ContextMenuSeparator />}
+        {hasOpenActions && hasCopyActions && <ContextMenuSeparator />}
         {url && (
           <ContextMenuItem onSelect={copyLink}>
             <Link2 className="h-4 w-4" />
@@ -367,7 +369,7 @@ function ReferenceContextMenu({
             Save image as…
           </ContextMenuItem>
         )}
-        <ContextMenuSeparator />
+        {(hasOpenActions || hasCopyActions) && <ContextMenuSeparator />}
         {url && (
           <ContextMenuItem onSelect={convertToLink}>
             <Unlink className="h-4 w-4" />

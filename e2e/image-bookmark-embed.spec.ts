@@ -1,5 +1,5 @@
 import { test, expect } from './electron-app';
-import type { Page } from '@playwright/test';
+import type { Page, Locator } from '@playwright/test';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -1212,6 +1212,48 @@ test.describe('Mixed Embed & Stress Tests', () => {
 // converting an embed back to a link is lossless.
 
 test.describe('Reference → Link conversion', () => {
+  function convertedLink(window: Page) {
+    return window.locator('.ContentEditable__root a').first();
+  }
+
+  function linkButton(window: Page) {
+    return window
+      .getByRole('toolbar', { name: 'Text formatting' })
+      .getByRole('button', { name: 'Link' });
+  }
+
+  /** Paste a URL → convert to bookmark → convert back to a link. */
+  async function convertBookmarkBackToLink(
+    window: Page,
+    title: string,
+    url = 'https://example.com',
+  ) {
+    await createNoteWithTitle(window, title);
+    await typeUrlInBody(window, url);
+    await expect(convertedLink(window)).toBeVisible({ timeout: 5000 });
+    await clickBookmark(window);
+
+    const card = window.locator('.bookmark-card');
+    await expect(card).toBeVisible({ timeout: 15000 });
+    await card.hover();
+    await window.waitForTimeout(300);
+    await card.locator('button[aria-label="Convert to link"]').click();
+
+    const link = convertedLink(window);
+    await expect(link).toBeVisible({ timeout: 5000 });
+    return link;
+  }
+
+  async function dragAcross(window: Page, locator: Locator) {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error('missing element bounds');
+    await window.mouse.move(box.x + 1, box.y + box.height / 2);
+    await window.mouse.down();
+    await window.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 8 });
+    await window.mouse.up();
+    await window.waitForTimeout(200);
+  }
+
   test('converting an embedded image back to a link preserves the URL', async ({ window }) => {
     const docId = await createNoteWithTitle(window, 'Image To Link');
     await typeUrlInBody(window, 'https://placehold.co/100x100.png');
@@ -1263,6 +1305,42 @@ test.describe('Reference → Link conversion', () => {
     const linkNode = findNodeByType(content, 'link');
     expect(linkNode).not.toBeNull();
     expect(linkNode.url).toContain('example.com');
+  });
+
+  test('a bookmark converted back to a link shows the raw URL as its text', async ({ window }) => {
+    const link = await convertBookmarkBackToLink(window, 'Converted Raw URL');
+    await expect(link).toHaveText('https://example.com');
+    await expect(link).toHaveAttribute('href', 'https://example.com');
+  });
+
+  test('double-clicking a converted link marks the Link toolbar button active', async ({ window }) => {
+    const link = await convertBookmarkBackToLink(window, 'Converted Link Double Click');
+    await link.dblclick();
+    await expect(linkButton(window)).toHaveClass(/bg-primary/);
+  });
+
+  test('drag-selecting a converted link marks the Link toolbar button active', async ({ window }) => {
+    const link = await convertBookmarkBackToLink(window, 'Converted Link Drag');
+    await dragAcross(window, link);
+    await expect(linkButton(window)).toHaveClass(/bg-primary/);
+  });
+
+  test('triple-clicking a converted link marks the Link toolbar button active', async ({ window }) => {
+    // Regression: a whole-line selection anchors on the paragraph, not the link.
+    const link = await convertBookmarkBackToLink(window, 'Converted Link Triple Click');
+    await link.click({ clickCount: 3 });
+    await expect(linkButton(window)).toHaveClass(/bg-primary/);
+  });
+
+  test('opening the link editor for a converted link pre-fills the URL', async ({ window }) => {
+    const link = await convertBookmarkBackToLink(window, 'Converted Link Editor');
+    await link.dblclick();
+    await expect(linkButton(window)).toHaveClass(/bg-primary/);
+
+    await linkButton(window).click();
+    await expect(
+      window.locator('input[aria-label="Search notes or enter URL"]'),
+    ).toHaveValue('https://example.com');
   });
 
   test('a pasted image with no source URL does not offer Convert to link', async ({ window }) => {
@@ -1452,6 +1530,10 @@ test.describe('Reference context menu', () => {
     for (const label of ['Open', 'Copy link', 'Copy image', 'Save image as…', 'Convert to link', 'Remove']) {
       await expect(menu(window).getByRole('menuitem', { name: label })).toBeVisible();
     }
+    // Two dividers: after the Open group and before Convert to link / Remove.
+    await expect(
+      menu(window).locator(':scope > [data-slot="context-menu-separator"]'),
+    ).toHaveCount(2);
   });
 
   test('context menu Copy link writes the canonical URL', async ({ window }) => {
@@ -1516,6 +1598,15 @@ test.describe('Reference context menu', () => {
     await expect(menu(window).getByRole('menuitem', { name: 'Open' })).toHaveCount(0);
     await expect(menu(window).getByRole('menuitem', { name: 'Copy link' })).toHaveCount(0);
     await expect(menu(window).getByRole('menuitem', { name: 'Convert to link' })).toHaveCount(0);
+
+    // No orphan leading separator: the menu opens on an item, and has exactly
+    // one divider (between the image actions and Remove).
+    await expect(
+      menu(window).locator(':scope > [data-slot="context-menu-item"]').first(),
+    ).toContainText('Copy image');
+    await expect(
+      menu(window).locator(':scope > [data-slot="context-menu-separator"]'),
+    ).toHaveCount(1);
   });
 
   test('right-clicking a bookmark card offers its link actions', async ({ window }) => {
@@ -1534,6 +1625,9 @@ test.describe('Reference context menu', () => {
     await expect(menu(window).getByRole('menuitem', { name: 'Convert to link' })).toBeVisible();
     await expect(menu(window).getByRole('menuitem', { name: 'Remove' })).toBeVisible();
     await expect(menu(window).getByRole('menuitem', { name: 'Copy image' })).toHaveCount(0);
+    await expect(
+      menu(window).locator(':scope > [data-slot="context-menu-separator"]'),
+    ).toHaveCount(2);
   });
 
   test('the formatting toolbar still appears after right-clicking an image', async ({ window }) => {

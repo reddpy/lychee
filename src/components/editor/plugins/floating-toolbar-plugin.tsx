@@ -320,13 +320,21 @@ function FloatingToolbar({
         blockType = "code";
       }
 
+      // A whole-line selection (e.g. triple-click) anchors on the paragraph,
+      // not on the link, so inspect every node the selection covers rather than
+      // only the anchor's parent.
+      const selectionNodes = selection.getNodes();
+      const isLink = selectionNodes.some(
+        (node) => $isLinkNode(node) || $isLinkNode(node.getParent()),
+      );
+
       result = {
         activeFormats: new Set(
           FORMAT_BUTTONS
             .filter(({ format }) => selection.hasFormat(format))
             .map(({ format }) => format),
         ),
-        isLink: $isLinkNode(anchorNode.getParent()),
+        isLink,
         blockType,
         isSingleBlock: anchorElement === focusElement && !$isTitleNode(anchorElement),
       };

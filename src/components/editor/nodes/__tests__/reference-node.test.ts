@@ -128,7 +128,9 @@ describe("ReferenceNode convert to link", () => {
       expect($isLinkNode(link)).toBe(true)
       if ($isLinkNode(link)) {
         expect(link.getURL()).toBe("https://example.com")
-        expect(link.getTextContent()).toBe("Example")
+        // The raw URL is the link text (not the card title), so the round-trip
+        // matches a plain auto-linked URL.
+        expect(link.getTextContent()).toBe("https://example.com")
       }
     })
   })
