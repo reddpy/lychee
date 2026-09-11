@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+import { onPreferencesReset } from './preferences-reset-event';
+
 export type SidebarSectionId = 'bookmarks' | 'notes';
 
 const STORAGE_KEY = 'lychee:sidebar-section-order';
@@ -38,6 +40,11 @@ export function useSidebarSectionOrder() {
   React.useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
   }, [order]);
+
+  // Restore the default order when all settings are reset.
+  React.useEffect(() => {
+    return onPreferencesReset(() => setOrder([...DEFAULT_ORDER]));
+  }, []);
 
   return { order, setOrder };
 }

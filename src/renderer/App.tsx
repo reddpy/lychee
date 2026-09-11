@@ -19,6 +19,8 @@ import { useDocumentStore } from "../renderer/document-store";
 import { useSettingsStore } from "../renderer/settings-store";
 import type { SidebarPreferences } from "../renderer/sidebar-preferences";
 import { useKeybindingsStore } from "../renderer/keybindings-store";
+import { useGeneralPreferencesStore } from "../renderer/general-preferences-store";
+import { startWorkspaceSessionPersistence } from "../renderer/workspace-session-runtime";
 
 // Pulls inset-centered content left by half the sidebar width to land at the
 // viewport center, clamped so the ~320px horizontal logo never crosses the
@@ -302,10 +304,19 @@ export function App({
   useMenuEventSubscriptions();
   React.useEffect(() => {
     void useKeybindingsStore.getState().initialize();
-    return window.lychee.on('keybindings:changed', (bindings) => {
+    const offKeybindings = window.lychee.on('keybindings:changed', (bindings) => {
       useKeybindingsStore.getState().applyBindings(bindings);
     });
+    const offPreferences = window.lychee.on('preferences:changed', (preferences) => {
+      useGeneralPreferencesStore.getState().applyPreferences(preferences);
+    });
+    return () => {
+      offKeybindings();
+      offPreferences();
+    };
   }, []);
+  // Persist open tabs so `restoreLastSession` can reopen them next launch.
+  React.useEffect(() => startWorkspaceSessionPersistence(), []);
   // Reset the editor boundary when the active tab changes, so a crash isolated
   // to one document recovers as soon as the user navigates away from it,
   // instead of staying stuck on the fallback until a full reload.

@@ -37,7 +37,12 @@ vi.mock('electron', () => ({
   },
   BrowserWindow: {
     getFocusedWindow: vi.fn().mockReturnValue(null),
-    getAllWindows: vi.fn().mockReturnValue([{ webContents: { send: vi.fn() } }]),
+    getAllWindows: vi.fn().mockReturnValue([
+      {
+        isDestroyed: vi.fn().mockReturnValue(false),
+        webContents: { send: vi.fn(), isDestroyed: vi.fn().mockReturnValue(false) },
+      },
+    ]),
   },
 }));
 
@@ -81,7 +86,23 @@ vi.mock('../../repos/keybindings', () => ({
   resetAllKeybindings: vi.fn().mockReturnValue({ 'format.bold': 'Mod+Y' }),
 }));
 
+vi.mock('../../preferences', () => ({
+  getGeneralPreferences: vi.fn().mockReturnValue({
+    launchAtLogin: false,
+    showInTray: false,
+    restoreLastSession: true,
+  }),
+  setGeneralPreferences: vi.fn().mockImplementation((patch: Record<string, unknown>) => ({
+    launchAtLogin: false,
+    showInTray: false,
+    restoreLastSession: true,
+    ...patch,
+  })),
+  resetAllPreferences: vi.fn(),
+}));
+
 import * as keybindings from '../../repos/keybindings';
+import * as preferences from '../../preferences';
 
 import {
   shell,
@@ -102,8 +123,8 @@ describe('IPC Handler Wiring', () => {
 
   // If a channel is missing, the renderer's invoke() call would hang forever
   // with no response. This is the most basic check.
-  it('registers exactly 37 channels', () => {
-    expect(handlers.size).toBe(37);
+  it('registers exactly 40 channels', () => {
+    expect(handlers.size).toBe(40);
   });
 
   // Verify every expected channel name exists. A typo in a channel name
@@ -134,6 +155,9 @@ describe('IPC Handler Wiring', () => {
       'settings.get',
       'settings.set',
       'settings.getAll',
+      'preferences.getGeneral',
+      'preferences.setGeneral',
+      'preferences.resetAll',
       'keybindings.getAll',
       'keybindings.set',
       'keybindings.reset',
@@ -369,6 +393,40 @@ describe('IPC Handler Wiring', () => {
     const onKeybindingsChanged = vi.fn();
     registerIpcHandlers({ onKeybindingsChanged });
     await handlers.get('keybindings.set')!(null, { id: 'format.bold', binding: 'Mod+Y' });
+    expect(onKeybindingsChanged).toHaveBeenCalledOnce();
+  });
+
+  // ────────────────────────────────────────────────────────
+  // General Preferences
+  // ────────────────────────────────────────────────────────
+
+  it('preferences.getGeneral returns the persisted preferences', async () => {
+    const handler = handlers.get('preferences.getGeneral')!;
+    expect(await handler(null, {})).toEqual({
+      launchAtLogin: false,
+      showInTray: false,
+      restoreLastSession: true,
+    });
+    expect(preferences.getGeneralPreferences).toHaveBeenCalledOnce();
+  });
+
+  it('preferences.setGeneral persists the patch and returns merged state', async () => {
+    const handler = handlers.get('preferences.setGeneral')!;
+    const result = await handler(null, { launchAtLogin: true });
+    expect(result).toEqual({
+      launchAtLogin: true,
+      showInTray: false,
+      restoreLastSession: true,
+    });
+    expect(preferences.setGeneralPreferences).toHaveBeenCalledWith({ launchAtLogin: true });
+  });
+
+  it('preferences.resetAll clears preferences and rebuilds the menu', async () => {
+    const onKeybindingsChanged = vi.fn();
+    registerIpcHandlers({ onKeybindingsChanged });
+    const result = await handlers.get('preferences.resetAll')!(null, {});
+    expect(result).toEqual({ ok: true });
+    expect(preferences.resetAllPreferences).toHaveBeenCalledOnce();
     expect(onKeybindingsChanged).toHaveBeenCalledOnce();
   });
 

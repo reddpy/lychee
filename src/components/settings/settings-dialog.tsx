@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
+  AlertTriangle,
   Check,
   ChevronDown,
   Download,
@@ -11,10 +12,12 @@ import {
   Keyboard,
   Monitor,
   Moon,
+  PanelTop,
   PenLine,
   Palette,
   Pipette,
   Plus,
+  Power,
   RotateCw,
   RotateCcw,
   Search,
@@ -37,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/renderer/settings-store';
 import { useThemeStore } from '@/renderer/theme-store';
 import { useAppearanceStore } from '@/renderer/appearance-store';
+import { useGeneralPreferencesStore } from '@/renderer/general-preferences-store';
 import {
   ACCENT_PRESETS,
   DEFAULT_ACCENT_HEX,
@@ -44,6 +48,7 @@ import {
 } from '@/renderer/appearance-preferences';
 import { useUpdateStore } from '@/renderer/update-store';
 import { type UpdateAction, describeUpdate } from '@/renderer/update-status-view';
+import { resetAllSettings } from '@/renderer/preferences-reset';
 import type { DataLocations, SpellCheckState } from '@/shared/ipc-types';
 import {
   displayKeybinding,
@@ -56,13 +61,14 @@ import {
 } from '@/shared/keybindings';
 import { useKeybindingsStore } from '@/renderer/keybindings-store';
 
-type SectionKey = 'general' | 'appearance' | 'editor' | 'keyboard' | 'about';
+type SectionKey = 'general' | 'appearance' | 'editor' | 'keyboard' | 'data' | 'about';
 
 const sections: { key: SectionKey; label: string; icon: typeof Settings }[] = [
   { key: 'general', label: 'General', icon: SlidersHorizontal },
   { key: 'appearance', label: 'Appearance', icon: Palette },
   { key: 'editor', label: 'Editor', icon: PenLine },
   { key: 'keyboard', label: 'Shortcuts', icon: Keyboard },
+  { key: 'data', label: 'Data', icon: Database },
   { key: 'about', label: 'About', icon: Info },
 ];
 
@@ -402,6 +408,233 @@ function AppearanceSettings() {
 }
 
 function GeneralSettings() {
+  const launchAtLogin = useGeneralPreferencesStore((s) => s.launchAtLogin);
+  const showInTray = useGeneralPreferencesStore((s) => s.showInTray);
+  const restoreLastSession = useGeneralPreferencesStore((s) => s.restoreLastSession);
+  const setLaunchAtLogin = useGeneralPreferencesStore((s) => s.setLaunchAtLogin);
+  const setShowInTray = useGeneralPreferencesStore((s) => s.setShowInTray);
+  const setRestoreLastSession = useGeneralPreferencesStore(
+    (s) => s.setRestoreLastSession,
+  );
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const updatePreference = (
+    action: () => Promise<void>,
+    message: string,
+  ): void => {
+    setPreferenceError(null);
+    void action().catch(() => setPreferenceError(message));
+  };
+
+  const resetEverything = async (): Promise<void> => {
+    setResetting(true);
+    setResetError(null);
+    try {
+      await resetAllSettings();
+      setConfirmingReset(false);
+    } catch {
+      setResetError('Lychee couldn’t reset your settings. Try again.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="General"
+        description="App-wide preferences and startup options."
+      />
+
+      {preferenceError && (
+        <p role="alert" className="text-xs text-[hsl(var(--destructive))]">
+          {preferenceError}
+        </p>
+      )}
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Startup &amp; background</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Control how Lychee starts and runs in the background.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+          <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+            <div className="flex min-w-0 flex-1 items-start gap-2.5">
+              <Power className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+              <div className="grid gap-1.5">
+                <Label htmlFor="launch-at-login">Launch at login</Label>
+                <p
+                  id="launch-at-login-description"
+                  className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]"
+                >
+                  Start Lychee automatically when you sign in to your computer.
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="launch-at-login"
+              data-testid="launch-at-login"
+              aria-label="Launch at login"
+              aria-describedby="launch-at-login-description"
+              checked={launchAtLogin}
+              onCheckedChange={(checked) =>
+                updatePreference(
+                  () => setLaunchAtLogin(checked),
+                  'Lychee couldn’t update the launch-at-login setting.',
+                )
+              }
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+            <div className="flex min-w-0 flex-1 items-start gap-2.5">
+              <PanelTop className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+              <div className="grid gap-1.5">
+                <Label htmlFor="show-in-tray">
+                  {window.lychee.platform === 'darwin'
+                    ? 'Show in menu bar'
+                    : 'Show in system tray'}
+                </Label>
+                <p
+                  id="show-in-tray-description"
+                  className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]"
+                >
+                  {window.lychee.platform === 'darwin'
+                    ? 'Keep quick access to Lychee in the menu bar. Closing the window parks it there.'
+                    : 'Keep quick access in the system tray. Closing the window parks it there.'}
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="show-in-tray"
+              data-testid="show-in-tray"
+              aria-label="Show in system tray"
+              aria-describedby="show-in-tray-description"
+              checked={showInTray}
+              onCheckedChange={(checked) =>
+                updatePreference(
+                  () => setShowInTray(checked),
+                  'Lychee couldn’t update the tray setting.',
+                )
+              }
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+            <div className="flex min-w-0 flex-1 items-start gap-2.5">
+              <RotateCw className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+              <div className="grid gap-1.5">
+                <Label htmlFor="restore-last-session">Restore last session</Label>
+                <p
+                  id="restore-last-session-description"
+                  className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]"
+                >
+                  Reopen the notes you had open when you last quit.
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="restore-last-session"
+              data-testid="restore-last-session"
+              aria-label="Restore last session"
+              aria-describedby="restore-last-session-description"
+              checked={restoreLastSession}
+              onCheckedChange={(checked) =>
+                updatePreference(
+                  () => setRestoreLastSession(checked),
+                  'Lychee couldn’t update the restore-session setting.',
+                )
+              }
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Reset</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Restore every setting and shortcut to its default. Your notes are never touched.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/5 px-4 py-3.5">
+          {confirmingReset ? (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--destructive))]" />
+                <p className="text-sm">
+                  Reset all settings? This can’t be undone.
+                </p>
+              </div>
+              {resetError && (
+                <p role="alert" className="text-xs text-[hsl(var(--destructive))]">
+                  {resetError}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  data-testid="reset-settings-confirm"
+                  disabled={resetting}
+                  onClick={() => void resetEverything()}
+                >
+                  {resetting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Reset everything
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={resetting}
+                  onClick={() => {
+                    setConfirmingReset(false);
+                    setResetError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Reset all settings</p>
+                <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                  Theme, appearance, layout, shortcuts, and preferences.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="reset-settings"
+                className="shrink-0"
+                onClick={() => {
+                  setResetError(null);
+                  setConfirmingReset(true);
+                }}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset…
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DataSettings() {
   const revealFileLabel =
     window.lychee.platform === 'darwin'
       ? 'Reveal in Finder'
@@ -471,120 +704,111 @@ function GeneralSettings() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="General"
-        description="App-wide preferences and startup options."
+        title="Data"
+        description="Find and manage Lychee's local files."
       />
 
-      <div className="space-y-3">
-        <div className="space-y-0.5">
-          <p className="text-sm font-medium">Data</p>
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">
-            Find and manage Lychee's local files.
+      <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+        <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Storage location</p>
+            <p
+              title={locations?.userDataPath}
+              className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
+            >
+              {locations?.userDataPath ?? 'Loading…'}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={!locations || activeAction !== null}
+            onClick={() => void openDataFolder()}
+          >
+            {activeAction === 'open-folder' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FolderOpen className="h-3.5 w-3.5" />
+            )}
+            Open Data Folder
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <Database className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+              <p className="text-sm font-medium">Notes database</p>
+            </div>
+            <p
+              title={locations?.databasePath}
+              className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
+            >
+              lychee.sqlite3
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            disabled={!locations || activeAction !== null}
+            onClick={() => void revealDatabase()}
+          >
+            {activeAction === 'reveal-database' && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            )}
+            {revealFileLabel}
+          </Button>
+        </div>
+
+        <div className="border-t border-[hsl(var(--border))] px-4 py-3.5">
+          <p className="text-sm font-medium">Images</p>
+          <p
+            title={locations?.imagesPath}
+            className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
+          >
+            images/
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
-          <div className="flex items-center justify-between gap-4 px-4 py-3.5">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Storage location</p>
-              <p
-                title={locations?.userDataPath}
-                className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
-              >
-                {locations?.userDataPath ?? 'Loading…'}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              disabled={!locations || activeAction !== null}
-              onClick={() => void openDataFolder()}
-            >
-              {activeAction === 'open-folder' ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <FolderOpen className="h-3.5 w-3.5" />
-              )}
-              Open Data Folder
-            </Button>
-          </div>
-
-          <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <Database className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
-                <p className="text-sm font-medium">Notes database</p>
-              </div>
-              <p
-                title={locations?.databasePath}
-                className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
-              >
-                lychee.sqlite3
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="shrink-0"
-              disabled={!locations || activeAction !== null}
-              onClick={() => void revealDatabase()}
-            >
-              {activeAction === 'reveal-database' && (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              )}
-              {revealFileLabel}
-            </Button>
-          </div>
-
-          <div className="border-t border-[hsl(var(--border))] px-4 py-3.5">
-            <p className="text-sm font-medium">Images</p>
-            <p
-              title={locations?.imagesPath}
-              className="mt-1 truncate font-mono text-xs text-[hsl(var(--muted-foreground))]"
-            >
-              images/
+        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Database backup</p>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              Save a consistent snapshot of your notes and settings. Images are not included.
             </p>
           </div>
-
-          <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Database backup</p>
-              <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
-                Save a consistent snapshot of your notes and settings. Images are not included.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              disabled={activeAction !== null}
-              onClick={() => void createBackup()}
-            >
-              {activeAction === 'backup' && (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              )}
-              Create Backup…
-            </Button>
-          </div>
-
-          {(actionError || backupPath) && (
-            <div className="border-t border-[hsl(var(--border))] px-4 py-3">
-              {actionError ? (
-                <p role="alert" className="text-xs text-[hsl(var(--destructive))]">
-                  {actionError}
-                </p>
-              ) : (
-                <p role="status" className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                  Backup saved to <span className="font-mono">{backupPath}</span>
-                </p>
-              )}
-            </div>
-          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={activeAction !== null}
+            onClick={() => void createBackup()}
+          >
+            {activeAction === 'backup' && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            )}
+            Create Backup…
+          </Button>
         </div>
+
+        {(actionError || backupPath) && (
+          <div className="border-t border-[hsl(var(--border))] px-4 py-3">
+            {actionError ? (
+              <p role="alert" className="text-xs text-[hsl(var(--destructive))]">
+                {actionError}
+              </p>
+            ) : (
+              <p role="status" className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                Backup saved to <span className="font-mono">{backupPath}</span>
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1013,6 +1237,7 @@ function KeyboardSettings() {
 function SectionContent({ section }: { section: SectionKey }) {
   if (section === 'general') return <GeneralSettings />;
   if (section === 'appearance') return <AppearanceSettings />;
+  if (section === 'data') return <DataSettings />;
   if (section === 'about') return <AboutSettings />;
   if (section === 'editor') return <EditorSettings />;
   if (section === 'keyboard') return <KeyboardSettings />;

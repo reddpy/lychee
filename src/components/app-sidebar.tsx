@@ -3,6 +3,7 @@ import { Reorder } from 'framer-motion';
 import { SquarePen } from 'lucide-react';
 
 import { useDocumentStore, selectActiveDocId } from '../renderer/document-store';
+import { restoreWorkspaceSession } from '../renderer/workspace-session-runtime';
 import { useSidebarSectionOrder, type SidebarSectionId } from '../renderer/sidebar-section-order';
 import {
   Sidebar,
@@ -33,7 +34,7 @@ export function AppSidebar() {
   const [notesOpen, setNotesOpen] = React.useState(true);
 
   React.useEffect(() => {
-    void loadDocuments();
+    void loadDocuments().then(() => restoreWorkspaceSession());
   }, [loadDocuments]);
 
   // Keep expandedIds in sync when documents change (e.g. after trash: remove ids that no longer exist)

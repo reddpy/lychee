@@ -16,6 +16,12 @@ const DEFAULT_APPEARANCE: AppearancePreferences = {
   accent: null,
   highlightPalette: [...DEFAULT_HIGHLIGHT_PALETTE],
 };
+const DEFAULT_GENERAL = {
+  launchAtLogin: false,
+  showInTray: false,
+  restoreLastSession: true,
+};
+const DEFAULT_SESSION = { tabs: [] as string[], selectedIndex: 0 };
 
 beforeEach(() => {
   invoke.mockReset();
@@ -37,6 +43,8 @@ describe('loadAppConfig', () => {
     await expect(loadAppConfig()).resolves.toEqual({
       sidebar: { open: false, width: 352 },
       appearance: DEFAULT_APPEARANCE,
+      general: DEFAULT_GENERAL,
+      session: DEFAULT_SESSION,
     });
     expect(invoke).toHaveBeenCalledWith('settings.getAll', {});
   });
@@ -60,6 +68,8 @@ describe('loadAppConfig', () => {
     await expect(loadAppConfig()).resolves.toEqual({
       sidebar: DEFAULT_SIDEBAR,
       appearance: { accent: '#0ea5e9', highlightPalette: ['#facc15', '#4ade80'] },
+      general: DEFAULT_GENERAL,
+      session: DEFAULT_SESSION,
     });
   });
 
@@ -69,6 +79,8 @@ describe('loadAppConfig', () => {
     await expect(loadAppConfig()).resolves.toEqual({
       sidebar: DEFAULT_SIDEBAR,
       appearance: DEFAULT_APPEARANCE,
+      general: DEFAULT_GENERAL,
+      session: DEFAULT_SESSION,
     });
   });
 
@@ -82,6 +94,8 @@ describe('loadAppConfig', () => {
     await expect(loadAppConfig()).resolves.toEqual({
       sidebar: DEFAULT_SIDEBAR,
       appearance: DEFAULT_APPEARANCE,
+      general: DEFAULT_GENERAL,
+      session: DEFAULT_SESSION,
     });
     expect(invoke).toHaveBeenNthCalledWith(2, 'settings.set', {
       key: SIDEBAR_PREFERENCES_SETTING_KEY,
@@ -105,6 +119,8 @@ describe('loadAppConfig', () => {
     await expect(loadAppConfig()).resolves.toEqual({
       sidebar: { open: false, width: 480 },
       appearance: DEFAULT_APPEARANCE,
+      general: DEFAULT_GENERAL,
+      session: DEFAULT_SESSION,
     });
     expect(invoke).toHaveBeenNthCalledWith(2, 'settings.set', {
       key: SIDEBAR_PREFERENCES_SETTING_KEY,
@@ -133,6 +149,8 @@ describe('loadAppConfig', () => {
     await expect(loadAppConfig()).resolves.toEqual({
       sidebar: DEFAULT_SIDEBAR,
       appearance: { accent: null, highlightPalette: ['#4ade80'] },
+      general: DEFAULT_GENERAL,
+      session: DEFAULT_SESSION,
     });
     expect(invoke).toHaveBeenNthCalledWith(2, 'settings.set', {
       key: APPEARANCE_SETTING_KEY,

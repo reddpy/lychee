@@ -22,6 +22,11 @@ export function setSetting(key: string, value: string): void {
   ).run(key, value);
 }
 
+/** Delete every stored preference, reverting all keys to their defaults. */
+export function clearSettings(): void {
+  getDb().prepare('DELETE FROM settings').run();
+}
+
 export function getAllSettings(): Record<string, string> {
   const db = getDb();
   const rows = db.prepare('SELECT key, value FROM settings').all() as {

@@ -19,6 +19,11 @@ import { resolveUrl } from './repos/url-resolver';
 import { fetchUrlMetadata } from './repos/url-metadata';
 import { getSetting, setSetting, getAllSettings } from './repos/settings';
 import {
+  getGeneralPreferences,
+  resetAllPreferences,
+  setGeneralPreferences,
+} from './preferences';
+import {
   getKeybindings,
   resetAllKeybindings,
   resetKeybinding,
@@ -191,6 +196,32 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
   handle('settings.getAll', () => ({
     settings: getAllSettings(),
   }));
+
+  const broadcastPreferences = (preferences: ReturnType<typeof getGeneralPreferences>) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
+      win.webContents.send('preferences:changed', preferences);
+    }
+    return preferences;
+  };
+
+  handle('preferences.getGeneral', () => getGeneralPreferences());
+
+  handle('preferences.setGeneral', (payload) =>
+    broadcastPreferences(setGeneralPreferences(payload)),
+  );
+
+  handle('preferences.resetAll', () => {
+    resetAllPreferences();
+    broadcastPreferences(getGeneralPreferences());
+    options.onKeybindingsChanged?.();
+    const bindings = getKeybindings();
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
+      win.webContents.send('keybindings:changed', bindings);
+    }
+    return { ok: true };
+  });
 
   const publishKeybindings = (bindings: ReturnType<typeof getKeybindings>) => {
     options.onKeybindingsChanged?.();
