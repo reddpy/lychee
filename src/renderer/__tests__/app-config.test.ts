@@ -8,6 +8,7 @@ import {
   DEFAULT_HIGHLIGHT_PALETTE,
   type AppearancePreferences,
 } from '../appearance-preferences';
+import { DEFAULT_EDITOR_PREFERENCES } from '../editor-preferences';
 
 const invoke = vi.fn();
 
@@ -21,6 +22,7 @@ const DEFAULT_GENERAL = {
   showInTray: false,
   restoreLastSession: true,
 };
+const DEFAULT_EDITOR = { ...DEFAULT_EDITOR_PREFERENCES };
 const DEFAULT_SESSION = { tabs: [] as string[], selectedIndex: 0 };
 
 beforeEach(() => {
@@ -44,6 +46,7 @@ describe('loadAppConfig', () => {
       sidebar: { open: false, width: 352 },
       appearance: DEFAULT_APPEARANCE,
       general: DEFAULT_GENERAL,
+      editor: DEFAULT_EDITOR,
       session: DEFAULT_SESSION,
     });
     expect(invoke).toHaveBeenCalledWith('settings.getAll', {});
@@ -69,6 +72,7 @@ describe('loadAppConfig', () => {
       sidebar: DEFAULT_SIDEBAR,
       appearance: { accent: '#0ea5e9', highlightPalette: ['#facc15', '#4ade80'] },
       general: DEFAULT_GENERAL,
+      editor: DEFAULT_EDITOR,
       session: DEFAULT_SESSION,
     });
   });
@@ -80,6 +84,7 @@ describe('loadAppConfig', () => {
       sidebar: DEFAULT_SIDEBAR,
       appearance: DEFAULT_APPEARANCE,
       general: DEFAULT_GENERAL,
+      editor: DEFAULT_EDITOR,
       session: DEFAULT_SESSION,
     });
   });
@@ -95,6 +100,7 @@ describe('loadAppConfig', () => {
       sidebar: DEFAULT_SIDEBAR,
       appearance: DEFAULT_APPEARANCE,
       general: DEFAULT_GENERAL,
+      editor: DEFAULT_EDITOR,
       session: DEFAULT_SESSION,
     });
     expect(invoke).toHaveBeenNthCalledWith(2, 'settings.set', {
@@ -120,6 +126,7 @@ describe('loadAppConfig', () => {
       sidebar: { open: false, width: 480 },
       appearance: DEFAULT_APPEARANCE,
       general: DEFAULT_GENERAL,
+      editor: DEFAULT_EDITOR,
       session: DEFAULT_SESSION,
     });
     expect(invoke).toHaveBeenNthCalledWith(2, 'settings.set', {
@@ -150,6 +157,7 @@ describe('loadAppConfig', () => {
       sidebar: DEFAULT_SIDEBAR,
       appearance: { accent: null, highlightPalette: ['#4ade80'] },
       general: DEFAULT_GENERAL,
+      editor: DEFAULT_EDITOR,
       session: DEFAULT_SESSION,
     });
     expect(invoke).toHaveBeenNthCalledWith(2, 'settings.set', {

@@ -1,6 +1,8 @@
 import { defaultKeybindings } from '@/shared/keybindings';
 
 import { useAppearanceStore } from './appearance-store';
+import { DEFAULT_EDITOR_PREFERENCES } from './editor-preferences';
+import { useEditorPreferencesStore } from './editor-preferences-store';
 import { useGeneralPreferencesStore } from './general-preferences-store';
 import { useKeybindingsStore } from './keybindings-store';
 import { useThemeStore } from './theme-store';
@@ -20,5 +22,6 @@ export async function resetAllSettings(): Promise<void> {
   useAppearanceStore.getState().resetAppearance();
   useKeybindingsStore.getState().applyBindings(defaultKeybindings());
   useGeneralPreferencesStore.getState().resetLocal();
+  useEditorPreferencesStore.getState().applyPreferences({ ...DEFAULT_EDITOR_PREFERENCES });
   emitPreferencesReset();
 }

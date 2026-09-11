@@ -247,7 +247,7 @@ hr.selected:after {
 /* Title styles */
 .editor-title {
   position: relative;
-  font-size: 3rem;
+  font-size: 3em;
   font-weight: 800;
   letter-spacing: -0.025em;
   line-height: 1.1;
@@ -382,7 +382,7 @@ blockquote.is-placeholder,
   line-height: 1.53;
   padding: 12px;
   color: hsl(var(--foreground));
-  tab-size: 2;
+  tab-size: var(--editor-code-tab-size, 2);
   overflow-x: auto;
   position: relative;
   outline: none;
@@ -747,3 +747,47 @@ blockquote.is-placeholder,
   background-color: transparent;
   color: inherit;
 }
+
+/* ── Editor typography (Settings → Editor) ─────────────── */
+
+/* Body text follows the app-wide font family + size. Headings are expressed in
+   `em` so changing the body size scales the whole document proportionally,
+   overriding the fixed Tailwind text-* sizes supplied by the theme classes. */
+.ContentEditable__root {
+  font-family: var(--editor-font-family, inherit);
+  font-size: var(--editor-font-size, 16px);
+  line-height: var(--editor-line-height, 1.75);
+}
+
+/* Body blocks follow the line-height setting; headings/title keep their own. */
+.ContentEditable__root p,
+.ContentEditable__root li,
+.ContentEditable__root blockquote {
+  line-height: var(--editor-line-height, 1.75);
+}
+
+.ContentEditable__root h1 { font-size: 2.25em; }
+.ContentEditable__root h2 { font-size: 1.875em; }
+.ContentEditable__root h3 { font-size: 1.5em; }
+.ContentEditable__root h4 { font-size: 1.25em; }
+.ContentEditable__root h5 { font-size: 1.125em; }
+.ContentEditable__root h6 { font-size: 1em; }
+
+/* The note title is a structural h1; keep it larger than body headings. */
+.ContentEditable__root .editor-title { font-size: 3em; }
+
+/* ── Focus mode ────────────────────────────────────────── */
+
+.editor-focus-dim {
+  opacity: 0.3;
+  transition: opacity 120ms ease;
+}
+
+.editor-focus-dim:hover {
+  opacity: 0.65;
+}
+
+.editor-focus-active {
+  opacity: 1;
+}
+

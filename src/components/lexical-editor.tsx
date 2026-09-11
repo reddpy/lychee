@@ -3,6 +3,8 @@ import debounce from "lodash/debounce";
 import { ChevronDown, ChevronUp, Search, Smile, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDocumentStore } from "@/renderer/document-store";
+import { useEditorPreferencesStore } from "@/renderer/editor-preferences-store";
+import { useEditorStatsStore } from "@/renderer/editor-stats-store";
 import {
   isActiveMatchInView,
   useSearchHighlightStore,
@@ -279,6 +281,8 @@ export function LexicalEditor({
   const updateDocumentInStore = useDocumentStore(
     (s) => s.updateDocumentInStore,
   );
+  const showWordCount = useEditorPreferencesStore((s) => s.showWordCount);
+  const editorStats = useEditorStatsStore((s) => s.byDoc[documentId]);
 
   const editorSerializedState = React.useMemo(
     () => getSerializedState(document.content),
@@ -504,7 +508,11 @@ export function LexicalEditor({
         </div>
       </div>
 
-      <div className="mx-auto max-w-225 px-8 py-20">
+      <div
+        data-testid="editor-content"
+        className="mx-auto px-8 py-20"
+        style={{ maxWidth: "var(--editor-content-max-width, 900px)" }}
+      >
         {/* Emoji above editor */}
         {document.emoji && (
           <div className="pl-8 mb-2">
@@ -583,6 +591,18 @@ export function LexicalEditor({
           onTitleChange={handleTitleChange}
         />
       </div>
+
+      {showWordCount && editorStats && (
+        <div className="pointer-events-none sticky bottom-3 z-30 flex justify-end px-6 pt-2">
+          <div
+            data-testid="word-count"
+            className="flex flex-col items-end gap-0.5 rounded-lg bg-[hsl(var(--muted))]/70 px-2.5 py-1.5 text-[11px] leading-tight text-[hsl(var(--muted-foreground))] backdrop-blur-sm"
+          >
+            <span>{editorStats.words.toLocaleString()} words</span>
+            <span>{editorStats.characters.toLocaleString()} characters</span>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

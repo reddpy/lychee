@@ -23,11 +23,18 @@ import {
   serializeWorkspaceSession,
   type WorkspaceSession,
 } from './workspace-session';
+import {
+  EDITOR_PREFERENCES_SETTING_KEY,
+  type EditorPreferences,
+  parseStoredEditorPreferences,
+  serializeEditorPreferences,
+} from './editor-preferences';
 
 export type AppConfig = {
   sidebar: SidebarPreferences;
   appearance: AppearancePreferences;
   general: GeneralPreferences;
+  editor: EditorPreferences;
   session: WorkspaceSession;
 };
 
@@ -98,12 +105,29 @@ export async function loadAppConfig(): Promise<AppConfig> {
       typeof rawSession === 'string' ? rawSession : null,
     );
 
-    return { sidebar, appearance, general, session };
+    const rawEditor = settings[EDITOR_PREFERENCES_SETTING_KEY] ?? null;
+    const editor = parseStoredEditorPreferences(
+      typeof rawEditor === 'string' ? rawEditor : null,
+    );
+    const normalizedEditor = serializeEditorPreferences(editor);
+    if (typeof rawEditor === 'string' && rawEditor !== normalizedEditor) {
+      await window.lychee
+        .invoke('settings.set', {
+          key: EDITOR_PREFERENCES_SETTING_KEY,
+          value: normalizedEditor,
+        })
+        .catch(() => {
+          // A failed repair should not prevent the app from opening safely.
+        });
+    }
+
+    return { sidebar, appearance, general, editor, session };
   } catch {
     return {
       sidebar: parseStoredSidebarPreferences(null),
       appearance: parseStoredAppearance(null),
       general: parseStoredGeneralPreferences(null),
+      editor: parseStoredEditorPreferences(null),
       session: DEFAULT_WORKSPACE_SESSION,
     };
   }

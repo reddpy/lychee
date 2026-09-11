@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/error-boundary';
 import { loadAppConfig } from './renderer/app-config';
 import { hydrateAppearance } from './renderer/appearance-store';
 import { hydrateGeneralPreferences } from './renderer/general-preferences-store';
+import { hydrateEditorPreferences } from './renderer/editor-preferences-store';
 import { setPendingWorkspaceSession } from './renderer/workspace-session-runtime';
 
 const el = document.getElementById('root');
@@ -16,6 +17,7 @@ async function bootstrap() {
   const config = await loadAppConfig();
   hydrateAppearance(config.appearance);
   hydrateGeneralPreferences(config.general);
+  hydrateEditorPreferences(config.editor);
   setPendingWorkspaceSession(config.session);
   createRoot(el).render(
     React.createElement(

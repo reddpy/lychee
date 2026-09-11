@@ -601,31 +601,29 @@ test.describe('Settings Modal — General preferences', () => {
     electronApp,
     window,
   }) => {
+    // Windows reflects login items reliably in CI. Linux uses an autostart file
+    // (covered by unit tests) and unsigned macOS bundles can't persist via
+    // SMAppService, so those are verified manually.
     test.skip(
-      process.platform === 'linux' ||
+      process.platform !== 'win32' ||
         process.env.LYCHEE_E2E_OS_INTEGRATION !== '1',
-      'requires a real OS and LYCHEE_E2E_OS_INTEGRATION=1',
+      'requires Windows + LYCHEE_E2E_OS_INTEGRATION=1',
     );
 
     const dialog = await openGeneralSettings(window);
     const launchSwitch = dialog.getByTestId('launch-at-login');
     await expect(launchSwitch).toHaveAttribute('aria-checked', 'false');
 
+    const osState = () =>
+      electronApp.evaluate(({ app }) => app.getLoginItemSettings().openAtLogin);
+
     await launchSwitch.click();
     await expect(launchSwitch).toHaveAttribute('aria-checked', 'true');
-    await expect
-      .poll(() =>
-        electronApp.evaluate(({ app }) => app.getLoginItemSettings().openAtLogin),
-      )
-      .toBe(true);
+    await expect.poll(osState).toBe(true);
 
     // Leave the runner's login items untouched.
     await launchSwitch.click();
-    await expect
-      .poll(() =>
-        electronApp.evaluate(({ app }) => app.getLoginItemSettings().openAtLogin),
-      )
-      .toBe(false);
+    await expect.poll(osState).toBe(false);
   });
 
   test('reset all settings restores preferences and theme', async ({ window }) => {
@@ -704,6 +702,19 @@ test.describe('Settings Modal — General preferences', () => {
       )
       .not.toBe('');
 
+    // Pick a non-default editor font size.
+    await dialog.locator('nav').getByText('Editor', { exact: true }).click();
+    await window
+      .locator('[data-testid="editor-font-size"][data-option="20"]')
+      .click();
+    await expect
+      .poll(() =>
+        window.evaluate(
+          () => document.documentElement.style.getPropertyValue('--editor-font-size'),
+        ),
+      )
+      .toBe('20px');
+
     await dialog.locator('nav').getByText('General', { exact: true }).click();
     await dialog.getByTestId('reset-settings').click();
     await dialog.getByTestId('reset-settings-confirm').click();
@@ -717,6 +728,14 @@ test.describe('Settings Modal — General preferences', () => {
         ),
       )
       .toBe('');
+    // Editor preferences restored.
+    await expect
+      .poll(() =>
+        window.evaluate(
+          () => document.documentElement.style.getPropertyValue('--editor-font-size'),
+        ),
+      )
+      .toBe('16px');
     // Sidebar re-expanded.
     await expect(window.locator('aside[data-state="expanded"]')).toHaveCount(1);
     // Shortcuts restored to defaults.

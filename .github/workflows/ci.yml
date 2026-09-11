@@ -128,6 +128,8 @@ jobs:
             workers: 1
           - name: menu-shortcuts
             specs: e2e/menu-shortcuts.spec.ts
+          - name: editor-settings
+            specs: e2e/editor-settings.spec.ts
           - name: misc
             specs: e2e/settings.spec.ts e2e/keybindings.spec.ts e2e/sidebar.spec.ts e2e/tabs.spec.ts e2e/app-launch.spec.ts e2e/content-security-policy.spec.ts e2e/error-boundary.spec.ts
             workers: 1
@@ -250,10 +252,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # Real launch-at-login registration can only be verified on macOS/Windows
-      # (Linux uses a .desktop file, covered by unit tests). LYCHEE_E2E_OS_INTEGRATION
-      # opts this one test past the E2E OS-write gate; the test cleans up after itself.
+      # Real OS login-item registration is only observable on Windows in CI.
+      # Linux uses a .desktop file and unsigned macOS bundles can't persist via
+      # SMAppService — both are covered by unit tests / manual QA instead.
+      # LYCHEE_E2E_OS_INTEGRATION opts the test past the E2E OS-write gate.
       - name: Run launch-at-login OS smoke test
+        if: runner.os == 'Windows'
         shell: bash
         run: >-
           pnpm exec playwright test
