@@ -1731,11 +1731,64 @@ test.describe("In-note search", () => {
     const { total } = await readCounter(window);
     expect(total).toBe(38);
 
+    // The note was built with the caret at the end, so the viewport sits near
+    // the bottom. Start at the top so the first match is already visible and
+    // each Enter advances through the code block instead of revealing match 1.
+    await window.evaluate(() => {
+      const main = document.querySelector<HTMLElement>(
+        'main:not([style*="display: none"])',
+      );
+      if (main) main.scrollTop = 0;
+    });
+
     for (let i = 0; i < 14; i += 1) {
       await window.keyboard.press("Enter");
     }
     // 14 presses from 1/38 → 15/38
     await expect(findCounter(window)).toHaveText("15/38");
+  });
+
+  test("Enter reveals the first match before advancing when it is scrolled out of view", async ({
+    window,
+  }) => {
+    const filler = Array.from(
+      { length: 40 },
+      (_, i) => `filler line ${i + 1} keeps the matches below the fold.`,
+    );
+    await createNoteWithBody(window, "Offscreen first match", [
+      ...filler,
+      "needle one",
+      "needle two",
+      "needle three",
+    ]);
+
+    await ensureFindOpen(window);
+    await findInput(window).fill("needle");
+    await expect(findCounter(window)).toHaveText("1/3");
+
+    // Force the viewport to the top so the first match is below the fold.
+    await window.evaluate(() => {
+      const main = document.querySelector<HTMLElement>(
+        'main:not([style*="display: none"])',
+      );
+      if (main) main.scrollTop = 0;
+    });
+    const scrollBefore = await readActiveMainScrollTop(window);
+    expect(scrollBefore).toBeLessThan(50);
+
+    // First Enter must reveal match 1, not skip to match 2.
+    await window.keyboard.press("Enter");
+    await expect(findCounter(window)).toHaveText("1/3");
+    await expect
+      .poll(async () => readActiveMainScrollTop(window))
+      .toBeGreaterThan(scrollBefore + 50);
+
+    // Once match 1 is visible, subsequent Enters advance normally.
+    await window.keyboard.press("Enter");
+    await expect(findCounter(window)).toHaveText("2/3");
+
+    await window.keyboard.press("Enter");
+    await expect(findCounter(window)).toHaveText("3/3");
   });
 
   test("live edits: counter updates while find is open and active index stays valid", async ({

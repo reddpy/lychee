@@ -2,6 +2,31 @@ import { create } from "zustand";
 
 const transientClearTimers = new Map<string, number>();
 
+/**
+ * Probes registered by SearchHighlightPlugin (one per active editor) that report
+ * whether the currently-active in-note find match is visible in the viewport.
+ * Kept outside Zustand state so visibility checks never trigger re-renders.
+ */
+const activeMatchProbes = new Map<string, () => boolean>();
+
+export function setActiveMatchProbe(
+  tabId: string,
+  probe: (() => boolean) | null,
+) {
+  if (probe) activeMatchProbes.set(tabId, probe);
+  else activeMatchProbes.delete(tabId);
+}
+
+/**
+ * Whether the active in-note find match for `tabId` is currently on screen.
+ * Defaults to `true` when no probe is registered so navigation falls back to
+ * advancing rather than getting stuck revealing an unknown match.
+ */
+export function isActiveMatchInView(tabId: string): boolean {
+  const probe = activeMatchProbes.get(tabId);
+  return probe ? probe() : true;
+}
+
 /** Per-tab search state (keyed by tabId). */
 type SearchHighlightTabState = {
   query: string;

@@ -1,7 +1,10 @@
 import * as React from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 
-import { useSearchHighlightStore } from "@/renderer/search-highlight-store";
+import {
+  setActiveMatchProbe,
+  useSearchHighlightStore,
+} from "@/renderer/search-highlight-store";
 import { useKeybindingsStore } from "@/renderer/keybindings-store";
 import { matchesKeybinding } from "@/shared/keybindings";
 
@@ -89,58 +92,77 @@ function getScrollContainer(element: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-function shouldScrollMatchIntoView(
-  element: HTMLElement,
-  container: HTMLElement | null,
-) {
-  if (!container) return true;
-  const elementRect = element.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
-  const topInset = 24;
-  const bottomInset = 24;
-  const visibleTop = containerRect.top + topInset;
-  const visibleBottom = containerRect.bottom - bottomInset;
-  return elementRect.top < visibleTop || elementRect.bottom > visibleBottom;
+const MATCH_VIEW_INSET = 24;
+
+/**
+ * Bounding rect for a match range. A range's rect can be collapsed (zero size)
+ * when the browser has not laid it out yet, so fall back to its first client
+ * rect. Using the range (not the parent element) keeps visibility accurate for
+ * matches inside tall nodes like code blocks.
+ */
+function getRangeRect(range: Range): DOMRect | null {
+  const rect = range.getBoundingClientRect();
+  if (rect.width > 0 || rect.height > 0) return rect;
+  const rects = range.getClientRects();
+  return rects.length > 0 ? rects[0] : null;
 }
 
-function scrollMatchIntoView(
-  element: HTMLElement,
+function isRangeVisible(
+  range: Range,
+  container: HTMLElement | null,
+  inset = 0,
+): boolean {
+  const rect = getRangeRect(range);
+  if (!rect) return false;
+  if (!container) return true;
+  const containerRect = container.getBoundingClientRect();
+  return (
+    rect.bottom > containerRect.top + inset &&
+    rect.top < containerRect.bottom - inset
+  );
+}
+
+function scrollRangeIntoView(
+  range: Range,
   container: HTMLElement | null,
   preferCenter: boolean,
 ) {
+  const rect = getRangeRect(range);
+  if (!rect) return;
+
   if (!container) {
-    element.scrollIntoView({
+    range.startContainer.parentElement?.scrollIntoView({
       behavior: "auto",
       block: preferCenter ? "center" : "nearest",
       inline: "nearest",
     });
     return;
   }
-  if (!shouldScrollMatchIntoView(element, container)) return;
+
+  const containerRect = container.getBoundingClientRect();
+  const visibleTop = containerRect.top + MATCH_VIEW_INSET;
+  const visibleBottom = containerRect.bottom - MATCH_VIEW_INSET;
+  if (rect.bottom > visibleTop && rect.top < visibleBottom) return;
 
   if (preferCenter) {
-    element.scrollIntoView({
-      behavior: "auto",
-      block: "center",
-      inline: "nearest",
-    });
+    const targetCenter = rect.top + rect.height / 2;
+    const containerCenter = containerRect.top + containerRect.height / 2;
+    container.scrollTop += targetCenter - containerCenter;
     return;
   }
 
   // Step navigation should keep a small visual cushion, not snap to an edge.
-  const elementRect = element.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
   const containerHeight = Math.max(1, containerRect.height);
   const padding = Math.min(40, Math.max(18, containerHeight * 0.12));
-  const visibleTop = containerRect.top + padding;
-  const visibleBottom = containerRect.bottom - padding;
+  const cushionTop = containerRect.top + padding;
+  const cushionBottom = containerRect.bottom - padding;
 
-  if (elementRect.top < visibleTop) {
-    container.scrollTop += elementRect.top - visibleTop;
+  if (rect.top < cushionTop) {
+    container.scrollTop += rect.top - cushionTop;
     return;
   }
-  if (elementRect.bottom > visibleBottom) {
-    container.scrollTop += elementRect.bottom - visibleBottom;
+  if (rect.bottom > cushionBottom) {
+    container.scrollTop += rect.bottom - cushionBottom;
   }
 }
 
@@ -183,8 +205,10 @@ export function SearchHighlightPlugin({
   const activeMatchIndexRef = React.useRef(0);
   // Ref so that stale closures (update listener, mutation observer, etc.)
   // always read the *current* tabId rather than a captured-at-creation value.
+  // Updated during render (not in an effect) so layout effects below — which
+  // run before passive effects — never observe the previous tab's id.
   const tabIdRef = React.useRef(tabId);
-  React.useEffect(() => { tabIdRef.current = tabId; }, [tabId]);
+  tabIdRef.current = tabId;
   const wasVisibleRef = React.useRef(false);
   const highlightNames = React.useMemo(
     () => ({
@@ -304,7 +328,9 @@ export function SearchHighlightPlugin({
         if (element) {
           const scrollContainer = getScrollContainer(element);
           // Initial reveal can center; step navigation should be minimally invasive.
-          scrollMatchIntoView(element, scrollContainer, !moveSelection);
+          // Scroll by the matched range so matches inside tall nodes (e.g. code
+          // blocks) land precisely instead of scrolling the whole block.
+          scrollRangeIntoView(activeRange.range, scrollContainer, !moveSelection);
         }
       }
     },
@@ -413,11 +439,35 @@ export function SearchHighlightPlugin({
     };
   }, [clearAllHighlights]);
 
+  // Expose the active match's on-screen state to the find bar so Enter/chevrons
+  // can reveal the current match instead of skipping it when it is off-screen.
+  // Only the active editor registers; hidden editors share the documentId key.
+  React.useEffect(() => {
+    if (!isActive) return;
+    setActiveMatchProbe(tabId, () => {
+      const ranges = allRangesRef.current;
+      if (ranges.length === 0) return true;
+      const index = clampIndex(activeMatchIndexRef.current, ranges.length);
+      const active = ranges[index];
+      if (!active) return true;
+      const anchor = active.anchorNode;
+      const element =
+        anchor.nodeType === Node.TEXT_NODE
+          ? anchor.parentElement
+          : (anchor as HTMLElement);
+      return isRangeVisible(active.range, getScrollContainer(element));
+    });
+    return () => setActiveMatchProbe(tabId, null);
+  }, [isActive, tabId]);
+
   const prevQueryRef = React.useRef(effectiveQuery);
   const prevIndexRef = React.useRef(effectiveActiveIndex);
   const prevTabIdRef = React.useRef(tabId);
 
-  React.useEffect(() => {
+  // Layout effect so navigation scrolling settles in the same commit as the
+  // index change. Otherwise a rapid next/prev (or Enter) can read a stale
+  // viewport, think the active match is off-screen, and reveal instead of step.
+  React.useLayoutEffect(() => {
     if (!isOpenForDoc) return;
     const tabSwitched = prevTabIdRef.current !== tabId;
     prevTabIdRef.current = tabId;

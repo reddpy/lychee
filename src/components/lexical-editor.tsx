@@ -3,7 +3,10 @@ import debounce from "lodash/debounce";
 import { ChevronDown, ChevronUp, Search, Smile, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDocumentStore } from "@/renderer/document-store";
-import { useSearchHighlightStore } from "@/renderer/search-highlight-store";
+import {
+  isActiveMatchInView,
+  useSearchHighlightStore,
+} from "@/renderer/search-highlight-store";
 import type { DocumentRow } from "@/shared/documents";
 import type { EditorState, SerializedEditorState } from "lexical";
 
@@ -85,25 +88,50 @@ function SearchBar({ tabId }: { tabId: string }) {
     }
   }, [isOpen, tabId, clearHighlight, openHighlight]);
 
+  // Typing highlights the first match but intentionally does not scroll to it.
+  // Before stepping, reveal the current match if it is off-screen so the first
+  // Enter/chevron lands on the first match instead of skipping past it.
+  const revealIfActiveMatchOffscreen = React.useCallback(() => {
+    if (isActiveMatchInView(tabId)) return false;
+    requestScroll(tabId);
+    return true;
+  }, [tabId, requestScroll]);
+
   const handlePrev = React.useCallback(() => {
     if (matchCount <= 0) return;
+    if (revealIfActiveMatchOffscreen()) return;
     const next = (activeIndex - 1 + matchCount) % matchCount;
     if (next === activeIndex) {
       requestScroll(tabId);
     } else {
       setActiveIndex(tabId, next);
     }
-  }, [activeIndex, matchCount, tabId, setActiveIndex, requestScroll]);
+  }, [
+    activeIndex,
+    matchCount,
+    tabId,
+    setActiveIndex,
+    requestScroll,
+    revealIfActiveMatchOffscreen,
+  ]);
 
   const handleNext = React.useCallback(() => {
     if (matchCount <= 0) return;
+    if (revealIfActiveMatchOffscreen()) return;
     const next = (activeIndex + 1) % matchCount;
     if (next === activeIndex) {
       requestScroll(tabId);
     } else {
       setActiveIndex(tabId, next);
     }
-  }, [activeIndex, matchCount, tabId, setActiveIndex, requestScroll]);
+  }, [
+    activeIndex,
+    matchCount,
+    tabId,
+    setActiveIndex,
+    requestScroll,
+    revealIfActiveMatchOffscreen,
+  ]);
 
   return (
     <div
