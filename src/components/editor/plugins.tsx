@@ -27,7 +27,7 @@ import { FocusModePlugin } from "@/components/editor/plugins/focus-mode-plugin"
 import { TypewriterPlugin } from "@/components/editor/plugins/typewriter-plugin"
 import { WordCountPlugin } from "@/components/editor/plugins/word-count-plugin"
 import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
-import { SectionIndicatorPlugin } from "@/components/editor/plugins/section-indicator-plugin"
+import { NoteDrawerPlugin } from "@/components/editor/note-drawer"
 import { SectionRailPlugin } from "@/components/editor/plugins/section-rail-plugin"
 import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highlight-plugin"
 import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
@@ -129,14 +129,14 @@ export function Plugins({
       {/* Image drop, paste, and insert command */}
       <ImagePlugin />
 
-      {/* Block highlight (shared by the section indicator and other features) */}
+      {/* Block highlight (shared by the note drawer and other features) */}
       <BlockHighlightPlugin />
 
       {/* Click below last block to append paragraph */}
       <ClickToAppendPlugin />
 
-      {/* Section position indicator */}
-      <SectionIndicatorPlugin documentId={documentId} />
+      {/* Note drawer: outline, links, highlights, in-note bookmarks */}
+      <NoteDrawerPlugin documentId={documentId} />
 
       {/* Right-edge section rail for fast scrolling */}
       <SectionRailPlugin documentId={documentId} isActive={isActive} />

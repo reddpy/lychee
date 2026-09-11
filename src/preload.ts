@@ -15,8 +15,13 @@ type MockSpec =
 
 const mocks = new Map<string, MockSpec>();
 
+// E2E-only call log. Records every invoke (mocked or real) so tests can assert
+// which channels fired with which payloads without stubbing the main process.
+const invokeCalls: Array<{ channel: string; payload: unknown }> = [];
+
 const invoke: IpcInvoke = (channel, payload) => {
   if (isE2E) {
+    invokeCalls.push({ channel: channel as string, payload });
     const mock = mocks.get(channel as string);
     if (mock) {
       const settle = (): Promise<never> =>
@@ -74,6 +79,10 @@ if (isE2E) {
     clearAll: () => {
       mocks.clear();
     },
+    calls: () => invokeCalls.slice(),
+    clearCalls: () => {
+      invokeCalls.length = 0;
+    },
   };
 }
 
@@ -95,6 +104,8 @@ declare global {
         ) => void;
         clear: (channel: string) => void;
         clearAll: () => void;
+        calls: () => Array<{ channel: string; payload: unknown }>;
+        clearCalls: () => void;
       };
     };
   }

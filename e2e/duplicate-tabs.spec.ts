@@ -164,8 +164,8 @@ async function ensureFindOpen(window: Page) {
   await expect(findInput(window)).toBeVisible();
 }
 
-/** Section indicator (TOC) trigger. */
-const SECTION_TRIGGER = '[aria-label="Navigate sections"]';
+/** Note drawer (TOC) trigger. */
+const SECTION_TRIGGER = '[aria-label="Open note drawer"]';
 
 /** Get scroll position of the active main element. */
 async function getScrollTop(window: Page): Promise<number> {

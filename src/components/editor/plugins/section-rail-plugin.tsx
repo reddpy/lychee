@@ -100,7 +100,7 @@ export function SectionRailPlugin({
   const jumpTargetRef = useRef<number | null>(null)
 
   // Rebuild the heading list on structural changes and on text edits inside
-  // headings, mirroring SectionIndicatorPlugin's detection.
+  // headings, mirroring the note drawer's outline detection.
   useEffect(() => {
     const read = () => {
       const next = readHeadings(editor)

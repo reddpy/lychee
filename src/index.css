@@ -229,6 +229,22 @@ body {
   display: none;
 }
 
+/* Note drawer: slide in from the right edge */
+@keyframes note-drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.note-drawer-enter {
+  animation: note-drawer-enter 0.18s ease-out;
+}
+
 /* Raised tab: soft shadow on left and right edges */
 .tab-raised {
   box-shadow:
