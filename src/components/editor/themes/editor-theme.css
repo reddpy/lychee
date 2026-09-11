@@ -452,6 +452,17 @@ blockquote.is-placeholder,
   border-radius: 4px;
 }
 
+/* In-note bookmark marker: zero-width, rendered only in the note drawer */
+.editor-note-bookmark {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  vertical-align: baseline;
+}
+
 /* ── Image block ──────────────────────────────────────── */
 
 .editor-image {

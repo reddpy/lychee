@@ -21,6 +21,7 @@ import {
 } from "./list-backspace"
 import { $insertMatchingChecklistItemBefore } from "./list-enter"
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin"
+import { TOGGLE_NOTE_BOOKMARK_COMMAND } from "./note-bookmark-plugin"
 import { defaultKeybindings, matchesKeybinding } from "@/shared/keybindings"
 import { useKeybindingsStore } from "@/renderer/keybindings-store"
 
@@ -225,6 +226,13 @@ export function KeyboardShortcutsPlugin(): null {
         if (matchesKeybinding(event, bindings['format.link'], window.lychee.platform)) {
           event.preventDefault()
           editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined)
+          return true
+        }
+
+        // Cmd/Ctrl + Alt + B = Bookmark current block
+        if (matchesKeybinding(event, bindings['editor.bookmark'], window.lychee.platform)) {
+          event.preventDefault()
+          editor.dispatchCommand(TOGGLE_NOTE_BOOKMARK_COMMAND, undefined)
           return true
         }
 

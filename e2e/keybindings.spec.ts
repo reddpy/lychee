@@ -54,7 +54,7 @@ test.describe('Keyboard shortcut settings — discovery', () => {
     for (const category of ['Editor', 'Navigation', 'Tabs', 'Formatting']) {
       await expect(dialog.getByRole('heading', { name: category, exact: true })).toBeVisible();
     }
-    await expect(dialog.getByRole('button', { name: /^Change shortcut for / })).toHaveCount(15);
+    await expect(dialog.getByRole('button', { name: /^Change shortcut for / })).toHaveCount(16);
     await expect(dialog.getByText('Quit', { exact: true })).toHaveCount(0);
     await expect(dialog.getByText('Copy', { exact: true })).toHaveCount(0);
     await expect(dialog.getByText('Reload', { exact: true })).toHaveCount(0);
@@ -72,7 +72,7 @@ test.describe('Keyboard shortcut settings — discovery', () => {
     await expect(dialog.getByText(/No shortcuts match/)).toBeVisible();
     await dialog.getByRole('button', { name: 'Clear shortcut search' }).click();
     await expect(search).toHaveValue('');
-    await expect(dialog.getByRole('button', { name: /^Change shortcut for / })).toHaveCount(15);
+    await expect(dialog.getByRole('button', { name: /^Change shortcut for / })).toHaveCount(16);
   });
 });
 

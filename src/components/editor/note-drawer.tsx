@@ -21,12 +21,18 @@ import {
   Highlighter,
   Link2,
   SquareLibrary,
+  Trash2,
   X,
 } from "lucide-react"
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
 import { $isBookmarkNode } from "@/components/editor/nodes/bookmark-node"
+import { $isNoteBookmarkNode } from "@/components/editor/nodes/note-bookmark-node"
+import {
+  $getBookmarkBlockForNode,
+  removeBookmarkByKey,
+} from "@/components/editor/plugins/note-bookmark-plugin"
 import { HIGHLIGHT_BLOCK_COMMAND } from "@/components/editor/plugins/block-highlight-plugin"
 import { emitToolbarExclusive, onToolbarExclusive } from "@/components/lexical-editor"
 import { cn } from "@/lib/utils"
@@ -75,16 +81,24 @@ interface HighlightInfo {
   text: string
 }
 
+interface BookmarkInfo {
+  key: NodeKey
+  label: string
+  createdAt: string
+}
+
 interface NoteData {
   links: LinkInfo[]
   highlights: HighlightInfo[]
+  bookmarks: BookmarkInfo[]
 }
 
-const EMPTY_DATA: NoteData = { links: [], highlights: [] }
+const EMPTY_DATA: NoteData = { links: [], highlights: [], bookmarks: [] }
 
 function readNoteData(editor: LexicalEditor): NoteData {
   const links: LinkInfo[] = []
   const highlights: HighlightInfo[] = []
+  const bookmarks: BookmarkInfo[] = []
 
   editor.getEditorState().read(() => {
     const root = $getRoot()
@@ -113,6 +127,12 @@ function readNoteData(editor: LexicalEditor): NoteData {
           faviconUrl: node.getFaviconUrl(),
           internalDocumentId: parseInternalNoteUrl(node.getUrl())?.documentId ?? null,
         })
+      } else if ($isNoteBookmarkNode(node)) {
+        bookmarks.push({
+          key: node.getKey(),
+          label: node.getLabel(),
+          createdAt: node.getCreatedAt(),
+        })
       }
 
       if ($isTextNode(node) && node.hasFormat("highlight")) {
@@ -128,12 +148,13 @@ function readNoteData(editor: LexicalEditor): NoteData {
     for (const child of root.getChildren()) visit(child)
   })
 
-  return { links, highlights }
+  return { links, highlights, bookmarks }
 }
 
 function noteDataEqual(a: NoteData, b: NoteData): boolean {
   if (a.links.length !== b.links.length) return false
   if (a.highlights.length !== b.highlights.length) return false
+  if (a.bookmarks.length !== b.bookmarks.length) return false
   for (let i = 0; i < a.links.length; i++) {
     if (
       a.links[i].key !== b.links[i].key ||
@@ -145,6 +166,14 @@ function noteDataEqual(a: NoteData, b: NoteData): boolean {
   }
   for (let i = 0; i < a.highlights.length; i++) {
     if (a.highlights[i].key !== b.highlights[i].key || a.highlights[i].text !== b.highlights[i].text) {
+      return false
+    }
+  }
+  for (let i = 0; i < a.bookmarks.length; i++) {
+    if (
+      a.bookmarks[i].key !== b.bookmarks[i].key ||
+      a.bookmarks[i].label !== b.bookmarks[i].label
+    ) {
       return false
     }
   }
@@ -180,11 +209,10 @@ const PANEL_GAP = 10
 
 /**
  * Toolbar trigger + floating panel that gathers everything worth navigating
- * to in a note: every link/bookmark embed and highlighted text. It reads as a
- * themed popover (rounded, bordered, shadowed) rather than a full-height
- * sidebar, and caps its own height so it never overflows the editor viewport.
- * In-note bookmarks get their own tab so the feature can slot in later without
- * reshuffling the panel.
+ * to in a note: every link/bookmark embed, highlighted text, and user-made
+ * in-note bookmark. It reads as a themed popover (rounded, bordered, shadowed)
+ * rather than a full-height sidebar, and caps its own height so it never
+ * overflows the editor viewport.
  */
 export function NoteDrawerPlugin({ documentId }: { documentId: string }): ReactElement | null {
   const [editor] = useLexicalComposerContext()
@@ -285,6 +313,28 @@ export function NoteDrawerPlugin({ documentId }: { documentId: string }): ReactE
           if ($isTextNode(node)) node.select(0, node.getTextContentSize())
         })
       }
+    },
+    [editor],
+  )
+
+  const jumpToBookmark = useCallback(
+    (key: NodeKey) => {
+      let blockKey: NodeKey | null = null
+      editor.getEditorState().read(() => {
+        const node = $getNodeByKey(key)
+        if ($isNoteBookmarkNode(node)) {
+          const block = $getBookmarkBlockForNode(node)
+          if (block) blockKey = block.getKey()
+        }
+      })
+      if (blockKey) jumpToNode(blockKey)
+    },
+    [editor, jumpToNode],
+  )
+
+  const removeBookmark = useCallback(
+    (key: NodeKey) => {
+      removeBookmarkByKey(editor, key)
     },
     [editor],
   )
@@ -530,13 +580,44 @@ export function NoteDrawerPlugin({ documentId }: { documentId: string }): ReactE
                   ))
                 ))}
 
-              {activeTab === "bookmarks" && (
-                <DrawerEmpty
-                  icon={Bookmark}
-                  title="In-note bookmarks"
-                  hint="Save specific spots inside this note. Coming soon."
-                />
-              )}
+              {activeTab === "bookmarks" &&
+                (data.bookmarks.length === 0 ? (
+                  <DrawerEmpty
+                    icon={Bookmark}
+                    title="No bookmarks yet"
+                    hint="Select text or place your cursor, then use the bookmark action or shortcut."
+                  />
+                ) : (
+                  data.bookmarks.map((bookmark) => (
+                    <div
+                      key={bookmark.key}
+                      data-testid="drawer-bookmark-row"
+                      data-bookmark-key={bookmark.key}
+                      className="group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-[hsl(var(--accent))]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => jumpToBookmark(bookmark.key)}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        title={bookmark.label}
+                      >
+                        <Bookmark className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
+                        <span className="min-w-0 truncate text-sm text-[hsl(var(--foreground))]">
+                          {bookmark.label}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="drawer-bookmark-delete"
+                        onClick={() => removeBookmark(bookmark.key)}
+                        aria-label={`Remove bookmark ${bookmark.label}`}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity hover:bg-[hsl(var(--background))] hover:text-brand focus:opacity-100 group-hover:opacity-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))
+                ))}
             </div>
 
             <div

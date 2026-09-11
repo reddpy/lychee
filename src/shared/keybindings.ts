@@ -16,6 +16,7 @@ export const shortcutRegistry = [
   { id: 'format.highlight', label: 'Highlight', description: 'Toggle highlighted text.', category: 'Formatting', defaultBinding: 'Mod+Shift+H', location: 'editor' },
   { id: 'format.inlineCode', label: 'Inline code', description: 'Toggle inline code.', category: 'Formatting', defaultBinding: 'Mod+E', location: 'editor' },
   { id: 'format.link', label: 'Insert or edit link', description: 'Open the link editor for the selection.', category: 'Formatting', defaultBinding: 'Mod+K', location: 'editor' },
+  { id: 'editor.bookmark', label: 'Bookmark block', description: 'Bookmark the block the cursor is in.', category: 'Editor', defaultBinding: 'Mod+Alt+B', location: 'editor' },
 ] as const;
 
 export type ShortcutDefinition = (typeof shortcutRegistry)[number];

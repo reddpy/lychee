@@ -28,6 +28,7 @@ import { TypewriterPlugin } from "@/components/editor/plugins/typewriter-plugin"
 import { WordCountPlugin } from "@/components/editor/plugins/word-count-plugin"
 import { CodeBlockPlugin } from "@/components/editor/plugins/code-block-plugin"
 import { NoteDrawerPlugin } from "@/components/editor/note-drawer"
+import { NoteBookmarkPlugin } from "@/components/editor/plugins/note-bookmark-plugin"
 import { SectionRailPlugin } from "@/components/editor/plugins/section-rail-plugin"
 import { BlockHighlightPlugin } from "@/components/editor/plugins/block-highlight-plugin"
 import { ImagePlugin } from "@/components/editor/plugins/image-plugin"
@@ -137,6 +138,9 @@ export function Plugins({
 
       {/* Note drawer: outline, links, highlights, in-note bookmarks */}
       <NoteDrawerPlugin documentId={documentId} />
+
+      {/* In-note bookmark toggle (floating toolbar, shortcut, context menu) */}
+      <NoteBookmarkPlugin isActive={isActive} />
 
       {/* Right-edge section rail for fast scrolling */}
       <SectionRailPlugin documentId={documentId} isActive={isActive} />

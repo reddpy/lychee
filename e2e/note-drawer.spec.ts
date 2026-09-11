@@ -9,7 +9,7 @@
  *   - link filters (All / Links / Notes / Other)
  *   - copy + open actions (including the internal-note tab focus rules)
  *   - Highlights tab
- *   - Bookmarks placeholder
+ *   - Bookmarks tab (in-note bookmarks)
  *   - live content sync + footer stats
  *   - edge cases (missing notes, self-links, long text, duplicates)
  *   - stress (many rows, rapid toggling / filtering / tab switching)
@@ -30,6 +30,8 @@ const TRIGGER = '[aria-label="Open note drawer"]';
 const DRAWER = '[data-testid="note-drawer"]';
 const LINK_ROW = '[data-testid="drawer-link-row"]';
 const HIGHLIGHT_ROW = '[data-testid="drawer-highlight-row"]';
+const BOOKMARK_ROW = '[data-testid="drawer-bookmark-row"]';
+const BOOKMARK_DELETE = '[data-testid="drawer-bookmark-delete"]';
 const LINK_COPY = '[data-testid="drawer-link-copy"]';
 const LINK_OPEN_INTERNAL = '[data-testid="drawer-link-open-internal"]';
 const LINK_OPEN_EXTERNAL = '[data-testid="drawer-link-open-external"]';
@@ -212,6 +214,15 @@ function bookmarkNode(bookmark: InjectedBookmark) {
   };
 }
 
+function noteBookmark(label: string) {
+  return {
+    type: 'note-bookmark',
+    label,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    version: 1,
+  };
+}
+
 function internalUrl(docId: string) {
   return `https://note.lychee.invalid/${docId}`;
 }
@@ -260,6 +271,23 @@ async function openDrawer(window: Page) {
 
 async function selectTab(window: Page, name: 'Links' | 'Highlights' | 'Bookmarks') {
   await drawer(window).getByRole('tab', { name }).click();
+}
+
+/** Focus the body paragraph and select its whole line. */
+async function selectCurrentLine(window: Page) {
+  await focusBody(window);
+  await window.keyboard.press('End');
+  await window.keyboard.press('Shift+Home');
+}
+
+/** Bookmark the current block through the floating toolbar action. */
+async function bookmarkViaToolbar(window: Page) {
+  await selectCurrentLine(window);
+  await window.locator('[aria-label="Bookmark block"]').click();
+}
+
+function bookmarkRows(window: Page): Locator {
+  return drawer(window).locator(BOOKMARK_ROW);
 }
 
 async function selectFilter(window: Page, id: 'all' | 'links' | 'notes' | 'other') {
@@ -836,13 +864,113 @@ test.describe('Note Drawer — highlights tab', () => {
   });
 });
 
-test.describe('Note Drawer — bookmarks tab placeholder', () => {
-  test('always shows the coming-soon placeholder', async ({ window }) => {
-    await createNote(window, 'Bookmarks Placeholder');
+test.describe('Note Drawer — bookmarks tab', () => {
+  test('shows the empty state when there are no bookmarks', async ({ window }) => {
+    await createNote(window, 'No Bookmarks');
     await openDrawer(window);
     await selectTab(window, 'Bookmarks');
-    await expect(window.getByText('In-note bookmarks')).toBeVisible();
-    await expect(window.getByText(/Coming soon/i)).toBeVisible();
+    await expect(window.getByText('No bookmarks yet')).toBeVisible();
+    await expect(bookmarkRows(window)).toHaveCount(0);
+  });
+
+  test('renders persisted in-note bookmarks in document order', async ({ window }) => {
+    const { docId } = await createNote(window, 'Stored Bookmarks');
+    await injectContentAndReload(window, docId, 'Stored Bookmarks', [
+      paragraph([noteBookmark('Intro mark'), textNode('Intro text')]),
+      paragraph([textNode('Body text'), noteBookmark('Body mark')]),
+    ]);
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+
+    const rows = bookmarkRows(window);
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('Intro mark');
+    await expect(rows.nth(1)).toContainText('Body mark');
+  });
+
+  test('the floating toolbar action bookmarks the selected block', async ({ window }) => {
+    await createNote(window, 'Toolbar Bookmark', 'bookmark this line');
+    await bookmarkViaToolbar(window);
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+
+    await expect(bookmarkRows(window)).toHaveCount(1);
+    await expect(bookmarkRows(window).first()).toContainText('bookmark this line');
+  });
+
+  test('the keyboard shortcut bookmarks the selected block', async ({ window }) => {
+    await createNote(window, 'Shortcut Bookmark', 'shortcut this line');
+    await selectCurrentLine(window);
+    await window.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+Alt+b' : 'Control+Alt+b',
+    );
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+    await expect(bookmarkRows(window)).toHaveCount(1);
+  });
+
+  test('a newly created bookmark appears live while the drawer is open', async ({ window }) => {
+    await createNote(window, 'Live Bookmark', 'live mark');
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+    await expect(window.getByText('No bookmarks yet')).toBeVisible();
+
+    await bookmarkViaToolbar(window);
+    await expect(bookmarkRows(window)).toHaveCount(1);
+  });
+
+  test('clicking a bookmark highlights the block it belongs to', async ({ window }) => {
+    await createNote(window, 'Bookmark Jump', 'jump target line');
+    await bookmarkViaToolbar(window);
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+    await bookmarkRows(window).first().click();
+    await window.waitForTimeout(200);
+
+    await expect(activeEditor(window).locator('.heading-highlight')).toContainText(
+      'jump target line',
+    );
+  });
+
+  test('re-toggling an existing bookmark removes it', async ({ window }) => {
+    await createNote(window, 'Toggle Off', 'remove me');
+    await bookmarkViaToolbar(window);
+    // The same toolbar action now reads as a removal.
+    await window.locator('[aria-label="Remove bookmark"]').click();
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+    await expect(window.getByText('No bookmarks yet')).toBeVisible();
+    await expect(bookmarkRows(window)).toHaveCount(0);
+  });
+
+  test('the drawer delete action removes a bookmark', async ({ window }) => {
+    await createNote(window, 'Delete Bookmark', 'delete me');
+    await bookmarkViaToolbar(window);
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+    await expect(bookmarkRows(window)).toHaveCount(1);
+
+    await bookmarkRows(window).first().locator(BOOKMARK_DELETE).click();
+    await expect(bookmarkRows(window)).toHaveCount(0);
+    await expect(window.getByText('No bookmarks yet')).toBeVisible();
+  });
+
+  test('bookmarks persist across closing and reopening the note', async ({ window }) => {
+    const { docId } = await createNote(window, 'Persisted Bookmark', 'persist me');
+    await bookmarkViaToolbar(window);
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+    await expect(bookmarkRows(window)).toHaveCount(1);
+
+    await window.waitForTimeout(900);
+    await closeTabsForDocument(window, docId);
+    await window.locator(`[data-note-id="${docId}"]`).first().click();
+    await window.waitForTimeout(500);
+
+    await openDrawer(window);
+    await selectTab(window, 'Bookmarks');
+    await expect(bookmarkRows(window)).toHaveCount(1);
+    await expect(bookmarkRows(window).first()).toContainText('persist me');
   });
 });
 

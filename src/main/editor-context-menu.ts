@@ -68,6 +68,15 @@ export function buildEditorContextMenuTemplate(
   if (params.isEditable) {
     appendGroup(template, [
       {
+        label: platform === 'darwin' ? 'Bookmark Block' : 'Bookmark block',
+        click: () => contents.send('context-menu:bookmark-block'),
+      },
+    ]);
+  }
+
+  if (params.isEditable) {
+    appendGroup(template, [
+      {
         label: 'Spelling and Grammar',
         submenu: [
           {
