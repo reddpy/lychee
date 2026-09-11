@@ -23,6 +23,7 @@ import { $isCodeNode, $createCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
 import { $isTitleNode } from "@/components/editor/nodes/title-node";
+import { RENDERER_CONTEXT_MENU_CLOSED_EVENT } from "@/shared/editor-events";
 import {
   $isListNode,
   INSERT_UNORDERED_LIST_COMMAND,
@@ -319,13 +320,21 @@ function FloatingToolbar({
         blockType = "code";
       }
 
+      // A whole-line selection (e.g. triple-click) anchors on the paragraph,
+      // not on the link, so inspect every node the selection covers rather than
+      // only the anchor's parent.
+      const selectionNodes = selection.getNodes();
+      const isLink = selectionNodes.some(
+        (node) => $isLinkNode(node) || $isLinkNode(node.getParent()),
+      );
+
       result = {
         activeFormats: new Set(
           FORMAT_BUTTONS
             .filter(({ format }) => selection.hasFormat(format))
             .map(({ format }) => format),
         ),
-        isLink: $isLinkNode(anchorNode.getParent()),
+        isLink,
         blockType,
         isSingleBlock: anchorElement === focusElement && !$isTitleNode(anchorElement),
       };
@@ -441,6 +450,26 @@ function FloatingToolbar({
       restoreAfterContextMenuRef.current = false;
       if (shouldRestore) scheduleSelectionSync(60);
     });
+  }, [scheduleSelectionSync]);
+
+  // Renderer-owned context menus (reference blocks) do not go through main, so
+  // they announce their own close. Clear the suppression state the same way.
+  useEffect(() => {
+    const handleRendererMenuClosed = () => {
+      const shouldRestore = restoreAfterContextMenuRef.current;
+      contextMenuOpenRef.current = false;
+      restoreAfterContextMenuRef.current = false;
+      if (shouldRestore) scheduleSelectionSync(60);
+    };
+    window.addEventListener(
+      RENDERER_CONTEXT_MENU_CLOSED_EVENT,
+      handleRendererMenuClosed,
+    );
+    return () =>
+      window.removeEventListener(
+        RENDERER_CONTEXT_MENU_CLOSED_EVENT,
+        handleRendererMenuClosed,
+      );
   }, [scheduleSelectionSync]);
 
   useEffect(() => () => {

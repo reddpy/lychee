@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 
-// Mock the React component imported by image-node.tsx so it works in a Node test environment
-vi.mock('../../nodes/image-component', () => ({ ImageComponent: (): null => null }))
+// Mock the React component imported by reference-node.tsx so it works in a Node test environment
+vi.mock('../../nodes/reference-component', () => ({ ReferenceComponent: (): null => null }))
 import {
   createEditor,
   $getRoot,
@@ -22,12 +22,12 @@ import {
   $isTableCellNode,
   TableCellHeaderStates,
 } from '@lexical/table'
-import { ImageNode, $createImageNode } from '../../nodes/image-node'
+import { ReferenceNode, $createReferenceNode } from '../../nodes/reference-node'
 import { TABLE, TABLE_EXPORT, parseCells } from '../table-markdown-transformer'
 
 function makeEditor(): LexicalEditor {
   return createEditor({
-    nodes: [ParagraphNode, TextNode, TableNode, TableRowNode, TableCellNode, ImageNode],
+    nodes: [ParagraphNode, TextNode, TableNode, TableRowNode, TableCellNode, ReferenceNode],
     onError: (err) => { throw err },
   })
 }
@@ -1341,15 +1341,15 @@ describe('DB storage — stress and load', () => {
   })
 })
 
-// ─── ImageNode in table cell — DB serialization ───────────────────────────────
+// ─── ReferenceNode (image) in table cell — DB serialization ───────────────────
 //
-// Images CAN be placed inside table cells at the data-model level. The paste
+// References CAN be placed inside table cells at the data-model level. The paste
 // flow uses $insertNodeToNearestRoot (which inserts at root), but the DB
-// format must correctly round-trip an image wherever it appears in the tree.
-// These tests verify the ImageNode JSON schema and survival through
+// format must correctly round-trip a reference wherever it appears in the tree.
+// These tests verify the ReferenceNode JSON schema and survival through
 // JSON.stringify → parseEditorState cycles.
 
-describe('ImageNode in table cell — DB serialization', () => {
+describe('ReferenceNode (image) in table cell — DB serialization', () => {
   function dbRoundTrip(sourceEditor: LexicalEditor): LexicalEditor {
     const dbJson = JSON.stringify(sourceEditor.getEditorState().toJSON())
     const loaded = makeEditor()
@@ -1357,8 +1357,8 @@ describe('ImageNode in table cell — DB serialization', () => {
     return loaded
   }
 
-  /** Build a single-cell header table containing an ImageNode (not a text node). */
-  function tableWithImage(params: Parameters<typeof $createImageNode>[0]): LexicalEditor {
+  /** Build a single-cell header table containing an image ReferenceNode. */
+  function tableWithImage(params: Parameters<typeof $createReferenceNode>[0]): LexicalEditor {
     const editor = makeEditor()
     editor.update(() => {
       const root = $getRoot()
@@ -1366,7 +1366,7 @@ describe('ImageNode in table cell — DB serialization', () => {
       const table = $createTableNode()
       const row = $createTableRowNode()
       const cell = $createTableCellNode(TableCellHeaderStates.NO_STATUS)
-      cell.append($createImageNode(params))
+      cell.append($createReferenceNode({ displayMode: 'image', ...params }))
       row.append(cell)
       table.append(row)
       root.append(table)
@@ -1376,12 +1376,13 @@ describe('ImageNode in table cell — DB serialization', () => {
 
   // ── JSON schema ───────────────────────────────────────────────────────────
 
-  it('serializes ImageNode inside a tablecell with type "image"', () => {
+  it('serializes an image ReferenceNode inside a tablecell with type "reference"', () => {
     const editor = tableWithImage({ imageId: 'img-001', altText: 'test' })
     const json = editor.getEditorState().toJSON() as any
     const cell = json.root.children[0].children[0].children[0]
-    // ImageNode is a block-level DecoratorNode — it is a direct child of the cell
-    expect(cell.children[0].type).toBe('image')
+    // ReferenceNode is a block-level DecoratorNode — it is a direct child of the cell
+    expect(cell.children[0].type).toBe('reference')
+    expect(cell.children[0].displayMode).toBe('image')
   })
 
   it('serializes imageId correctly', () => {
@@ -1413,20 +1414,19 @@ describe('ImageNode in table cell — DB serialization', () => {
     expect(imageNode.alignment).toBe('center')
   })
 
-  it('serializes sourceUrl when provided', () => {
+  it('serializes the canonical url when provided', () => {
     const url = 'https://example.com/image.png'
-    const editor = tableWithImage({ imageId: 'x', altText: '', sourceUrl: url })
+    const editor = tableWithImage({ imageId: 'x', altText: '', url })
     const json = editor.getEditorState().toJSON() as any
     const imageNode = json.root.children[0].children[0].children[0].children[0]
-    expect(imageNode.sourceUrl).toBe(url)
+    expect(imageNode.url).toBe(url)
   })
 
-  it('omits sourceUrl from serialization when empty', () => {
-    const editor = tableWithImage({ imageId: 'x', altText: '', sourceUrl: '' })
+  it('serializes an empty canonical url as an empty string', () => {
+    const editor = tableWithImage({ imageId: 'x', altText: '' })
     const json = editor.getEditorState().toJSON() as any
     const imageNode = json.root.children[0].children[0].children[0].children[0]
-    // exportJSON returns `sourceUrl || undefined` so empty string → not present
-    expect(imageNode.sourceUrl).toBeUndefined()
+    expect(imageNode.url).toBe('')
   })
 
   it('serializes version: 1', () => {
@@ -1444,8 +1444,8 @@ describe('ImageNode in table cell — DB serialization', () => {
     loaded.read(() => {
       const table = $getRoot().getFirstChild() as TableNode
       const cell = (table.getFirstChild() as TableRowNode).getFirstChild() as TableCellNode
-      const img = cell.getFirstChild() as ImageNode
-      expect(img.getType()).toBe('image')
+      const img = cell.getFirstChild() as ReferenceNode
+      expect(img.getType()).toBe('reference')
       expect((img as any).__imageId).toBe('persist-id')
     })
   })
@@ -1479,13 +1479,13 @@ describe('ImageNode in table cell — DB serialization', () => {
     })
   })
 
-  it('sourceUrl survives round-trip', () => {
+  it('canonical url survives round-trip', () => {
     const url = 'https://cdn.example.com/photo.jpg'
-    const editor = tableWithImage({ imageId: 'x', altText: '', sourceUrl: url })
+    const editor = tableWithImage({ imageId: 'x', altText: '', url })
     const loaded = dbRoundTrip(editor)
     loaded.read(() => {
       const cell = (($getRoot().getFirstChild() as TableNode).getFirstChild() as TableRowNode).getFirstChild() as TableCellNode
-      expect((cell.getFirstChild() as any).__sourceUrl).toBe(url)
+      expect((cell.getFirstChild() as any).__url).toBe(url)
     })
   })
 
@@ -1521,7 +1521,7 @@ describe('ImageNode in table cell — DB serialization', () => {
   })
 
   it('idempotency — two consecutive round-trips produce identical JSON', () => {
-    const editor = tableWithImage({ imageId: 'x', altText: 'test', width: 400, height: 300, alignment: 'center', sourceUrl: 'https://example.com/img.jpg' })
+    const editor = tableWithImage({ imageId: 'x', altText: 'test', width: 400, height: 300, alignment: 'center', url: 'https://example.com/img.jpg' })
     const json1 = JSON.stringify(editor.getEditorState().toJSON())
     const e2 = makeEditor()
     e2.setEditorState(e2.parseEditorState(json1))

@@ -26,7 +26,7 @@ import {
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
-import { $isBookmarkNode } from "@/components/editor/nodes/bookmark-node"
+import { $isReferenceNode } from "@/components/editor/nodes/reference-node"
 import { HIGHLIGHT_BLOCK_COMMAND } from "@/components/editor/plugins/block-highlight-plugin"
 import { emitToolbarExclusive, onToolbarExclusive } from "@/components/lexical-editor"
 import { cn } from "@/lib/utils"
@@ -103,16 +103,31 @@ function readNoteData(editor: LexicalEditor): NoteData {
             internalDocumentId: parseInternalNoteUrl(url)?.documentId ?? null,
           })
         }
-      } else if ($isBookmarkNode(node)) {
-        links.push({
-          key: node.getKey(),
-          url: node.getUrl(),
-          text: node.getTitle() || node.getUrl(),
-          kind: "bookmark",
-          title: node.getTitle(),
-          faviconUrl: node.getFaviconUrl(),
-          internalDocumentId: parseInternalNoteUrl(node.getUrl())?.documentId ?? null,
-        })
+      } else if ($isReferenceNode(node)) {
+        if (node.getDisplayMode() === "image") {
+          // Images are listed as references too — the canonical URL is the link.
+          if (node.getUrl()) {
+            links.push({
+              key: node.getKey(),
+              url: node.getUrl(),
+              text: node.getAltText() || node.getUrl(),
+              kind: "bookmark",
+              title: node.getAltText(),
+              faviconUrl: "",
+              internalDocumentId: parseInternalNoteUrl(node.getUrl())?.documentId ?? null,
+            })
+          }
+        } else {
+          links.push({
+            key: node.getKey(),
+            url: node.getUrl(),
+            text: node.getTitle() || node.getUrl(),
+            kind: "bookmark",
+            title: node.getTitle(),
+            faviconUrl: node.getFaviconUrl(),
+            internalDocumentId: parseInternalNoteUrl(node.getUrl())?.documentId ?? null,
+          })
+        }
       }
 
       if ($isTextNode(node) && node.hasFormat("highlight")) {

@@ -18,12 +18,12 @@ import {
 } from "lexical"
 import { $createCodeHighlightNode, $createCodeNode } from "@lexical/code"
 import { $insertNodeToNearestRoot } from "@lexical/utils"
-import { $createImageNode, ImageNode, $isImageNode, type CreateImageNodeParams } from "@/components/editor/nodes/image-node"
+import { $createReferenceNode, ReferenceNode, $isReferenceNode, type ReferenceNodeParams } from "@/components/editor/nodes/reference-node"
 
 const IMAGE_MARKDOWN_RE = /^!\[([^\]]*)\]\(([^)]+)\)$/
 const CODE_BLOCK_MARKDOWN_RE = /^```([\w-]*)\s*\n([\s\S]+?)\n?\s*```\s*$/
 
-export const INSERT_IMAGE_COMMAND: LexicalCommand<CreateImageNodeParams> = createCommand("INSERT_IMAGE")
+export const INSERT_IMAGE_COMMAND: LexicalCommand<ReferenceNodeParams> = createCommand("INSERT_IMAGE")
 
 const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 
@@ -57,7 +57,7 @@ async function saveImageAndUpdate(
 
   editor.update(() => {
     const node = $getNodeByKey(nodeKey)
-    if (!$isImageNode(node)) return
+    if (!$isReferenceNode(node) || node.getDisplayMode() !== "image") return
     node.setImageId(id)
     node.setSrc(filePath)
     node.setLoading(false)
@@ -84,18 +84,18 @@ async function downloadAndSaveImage(
     const { id, filePath } = await window.lychee.invoke("images.download", { url })
     editor.update(() => {
       const node = $getNodeByKey(nodeKey)
-      if (!$isImageNode(node)) return
+      if (!$isReferenceNode(node) || node.getDisplayMode() !== "image") return
       node.setImageId(id)
       node.setSrc(filePath)
-      node.setSourceUrl(url)
+      node.setUrl(url)
       node.setLoading(false)
     }, { tag: "history-merge" })
   } catch {
     editor.update(() => {
       const node = $getNodeByKey(nodeKey)
-      if (!$isImageNode(node)) return
+      if (!$isReferenceNode(node) || node.getDisplayMode() !== "image") return
       node.setSrc("")
-      node.setSourceUrl(url)
+      node.setUrl(url)
       node.setLoading(false)
     }, { tag: "history-merge" })
   } finally {
@@ -115,7 +115,7 @@ export function ImagePlugin(): null {
     const removeInsertCommand = editor.registerCommand(
       INSERT_IMAGE_COMMAND,
       (payload) => {
-        const imageNode = $createImageNode(payload)
+        const imageNode = $createReferenceNode({ displayMode: "image", ...payload })
         $insertNodeToNearestRoot(imageNode)
         return true
       },
@@ -133,7 +133,7 @@ export function ImagePlugin(): null {
 
         for (const file of files) {
           // Insert a loading placeholder immediately (already in update context)
-          const node = $createImageNode({ loading: true })
+          const node = $createReferenceNode({ displayMode: "image", loading: true })
           $insertNodeToNearestRoot(node)
           // Save file in background, then update the node
           saveImageAndUpdate(editor, node.getKey(), file)
@@ -172,7 +172,7 @@ export function ImagePlugin(): null {
 
         for (const file of files) {
           // Already in update context from command handler
-          const node = $createImageNode({ loading: true })
+          const node = $createReferenceNode({ displayMode: "image", loading: true })
           $insertNodeToNearestRoot(node)
           saveImageAndUpdate(editor, node.getKey(), file)
         }
@@ -196,7 +196,13 @@ export function ImagePlugin(): null {
         event.preventDefault()
         const [, altText, src] = match
         const isExternal = isExternalUrl(src)
-        const imageNode = $createImageNode({ src, altText, loading: isExternal })
+        const imageNode = $createReferenceNode({
+          displayMode: "image",
+          url: isExternal ? src : "",
+          src,
+          altText,
+          loading: isExternal,
+        })
         $insertNodeToNearestRoot(imageNode)
         // Download is triggered by the mutation listener
         return true
@@ -227,25 +233,25 @@ export function ImagePlugin(): null {
 
     // Download external URL images locally + clean up stale loading nodes.
     const removeMutationListener = editor.registerMutationListener(
-      ImageNode,
+      ReferenceNode,
       (mutations) => {
         editor.update(() => {
           for (const [key, type] of mutations) {
             if (type === "destroyed") continue
             const node = $getNodeByKey(key)
-            if (!$isImageNode(node)) continue
+            if (!$isReferenceNode(node) || node.getDisplayMode() !== "image") continue
 
             // Download external URL images locally (e.g. from markdown shortcut or paste)
             if (type === "created") {
-              const src = node.__src
-              if (src && !node.__imageId && isExternalUrl(src)) {
+              const src = node.getSrc()
+              if (src && !node.getImageId() && isExternalUrl(src)) {
                 if (!node.__loading) node.setLoading(true)
                 downloadAndSaveImage(editor, key, src)
               }
             }
 
             // Undo can restore a node stuck in loading state — remove it
-            if (type === "updated" && node.__loading && !node.__imageId) {
+            if (type === "updated" && node.__loading && !node.getImageId()) {
               node.remove()
             }
           }

@@ -154,6 +154,15 @@ export type IpcContract = {
     req: { id: string };
     res: { ok: true };
   };
+  'images.saveAs': {
+    req: { id: string };
+    res: { canceled: true } | { canceled: false; filePath: string };
+  };
+  // Write image bytes to the OS clipboard (native image), not the URL.
+  'clipboard.writeImage': {
+    req: { id: string };
+    res: { ok: true };
+  };
   'url.resolve': {
     req: { url: string };
     res: ResolvedUrlResult;
