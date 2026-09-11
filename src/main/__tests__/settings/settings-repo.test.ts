@@ -92,6 +92,30 @@ describe('Settings Repo', () => {
     });
   });
 
+  it('stores appearance (accent + highlight palette) in the settings table', () => {
+    const value = JSON.stringify({
+      version: 1,
+      accent: '#0ea5e9',
+      highlightPalette: ['#facc15', '#4ade80'],
+    });
+    setSetting('ui.appearance', value);
+
+    // Readable through the repo...
+    expect(JSON.parse(getSetting('ui.appearance')!)).toEqual({
+      version: 1,
+      accent: '#0ea5e9',
+      highlightPalette: ['#facc15', '#4ade80'],
+    });
+
+    // ...and physically present in the settings key-value table.
+    const db = getTestDb();
+    const row = db
+      .prepare('SELECT value FROM settings WHERE key = ?')
+      .get('ui.appearance') as { value: string } | undefined;
+    expect(row, 'ui.appearance row should exist in the settings table').toBeTruthy();
+    expect(JSON.parse(row!.value).accent).toBe('#0ea5e9');
+  });
+
   // ────────────────────────────────────────────────────────
   // getAllSettings
   // ────────────────────────────────────────────────────────

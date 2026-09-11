@@ -13,6 +13,8 @@ import {
   Moon,
   PenLine,
   Palette,
+  Pipette,
+  Plus,
   RotateCw,
   RotateCcw,
   Search,
@@ -27,12 +29,19 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ColorPickerPopover } from '@/components/ui/color-picker';
 import { Switch } from '@/components/ui/switch';
 import { LycheeLogo } from '@/components/sidebar/lychee-logo';
 import { UpdateDot } from '@/components/update-dot';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/renderer/settings-store';
 import { useThemeStore } from '@/renderer/theme-store';
+import { useAppearanceStore } from '@/renderer/appearance-store';
+import {
+  ACCENT_PRESETS,
+  DEFAULT_ACCENT_HEX,
+  MAX_HIGHLIGHT_COLORS,
+} from '@/renderer/appearance-preferences';
 import { useUpdateStore } from '@/renderer/update-store';
 import { type UpdateAction, describeUpdate } from '@/renderer/update-status-view';
 import type { DataLocations, SpellCheckState } from '@/shared/ipc-types';
@@ -103,9 +112,121 @@ function SectionHeader({
   );
 }
 
+/** Marker colors offered in Appearance. Selecting one toggles it in/out of the
+ *  active highlight palette. */
+const HIGHLIGHT_PRESET_COLORS = [
+  '#f87171',
+  '#fb923c',
+  '#facc15',
+  '#4ade80',
+  '#34d399',
+  '#38bdf8',
+  '#60a5fa',
+  '#c084fc',
+  '#f472b6',
+  '#94a3b8',
+];
+
+function AccentSwatch({
+  hex,
+  label,
+  active,
+  onClick,
+}: {
+  hex: string | null;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const color = hex ?? DEFAULT_ACCENT_HEX;
+  return (
+    <button
+      type="button"
+      data-testid="accent-preset"
+      data-accent={hex ?? 'default'}
+      onClick={onClick}
+      aria-label={`${label} accent`}
+      aria-pressed={active}
+      title={label}
+      className={cn(
+        'relative flex h-9 w-9 items-center justify-center rounded-full border transition-transform hover:scale-105',
+        active
+          ? 'border-[hsl(var(--foreground))]/60 ring-2 ring-[hsl(var(--ring))]/30'
+          : 'border-[hsl(var(--border))]',
+      )}
+      style={{ backgroundColor: color }}
+    >
+      {active && (
+        <Check className="h-4 w-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" strokeWidth={3} />
+      )}
+    </button>
+  );
+}
+
+function HighlightSwatch({
+  hex,
+  active,
+  onToggle,
+}: {
+  hex: string;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid="highlight-preset"
+      data-color={hex}
+      aria-label={`Highlight color ${hex}`}
+      aria-pressed={active}
+      title={active ? `${hex} (click to remove)` : `${hex} (click to add)`}
+      onClick={onToggle}
+      className={cn(
+        'relative flex h-9 w-9 items-center justify-center rounded-full border transition-transform hover:scale-105',
+        active
+          ? 'border-[hsl(var(--foreground))]/60 ring-2 ring-[hsl(var(--ring))]/30'
+          : 'border-[hsl(var(--border))]',
+      )}
+      style={{ backgroundColor: hex }}
+    >
+      {active && (
+        <Check className="h-4 w-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" strokeWidth={3} />
+      )}
+    </button>
+  );
+}
+
 function AppearanceSettings() {
   const mode = useThemeStore((s) => s.mode);
   const setMode = useThemeStore((s) => s.setMode);
+
+  const accent = useAppearanceStore((s) => s.accent);
+  const setAccent = useAppearanceStore((s) => s.setAccent);
+  const resetAccent = useAppearanceStore((s) => s.resetAccent);
+  const palette = useAppearanceStore((s) => s.highlightPalette);
+  const addHighlightColor = useAppearanceStore((s) => s.addHighlightColor);
+  const removeHighlightColor = useAppearanceStore((s) => s.removeHighlightColor);
+  const resetHighlightPalette = useAppearanceStore((s) => s.resetHighlightPalette);
+
+  const [draftColor, setDraftColor] = useState('#f472b6');
+
+  const isCustomAccent =
+    accent !== null && !ACCENT_PRESETS.some((preset) => preset.hex === accent);
+
+  const presetSwatches = [
+    ...HIGHLIGHT_PRESET_COLORS,
+    ...palette.filter((color) => !HIGHLIGHT_PRESET_COLORS.includes(color)),
+  ];
+
+  const toggleHighlight = (hex: string) => {
+    const index = palette.indexOf(hex);
+    if (index >= 0) removeHighlightColor(index);
+    else addHighlightColor(hex);
+  };
+
+  const commitDraftColor = () => {
+    addHighlightColor(draftColor);
+  };
 
   return (
     <div className="space-y-6">
@@ -154,6 +275,126 @@ function AppearanceSettings() {
               </button>
             );
           })}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Accent color</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              Used for highlights, selection, and active controls.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="accent-reset"
+            onClick={resetAccent}
+            disabled={accent === null}
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {ACCENT_PRESETS.map((preset) => (
+            <AccentSwatch
+              key={preset.name}
+              hex={preset.hex}
+              label={preset.name}
+              active={accent === preset.hex}
+              onClick={() => setAccent(preset.hex)}
+            />
+          ))}
+
+          <ColorPickerPopover
+            value={accent ?? DEFAULT_ACCENT_HEX}
+            onChange={setAccent}
+          >
+            <button
+              type="button"
+              data-testid="accent-custom"
+              aria-label="Custom accent color"
+              aria-pressed={isCustomAccent}
+              title="Custom color"
+              className={cn(
+                'relative flex h-9 w-9 items-center justify-center rounded-full border border-dashed transition-transform hover:scale-105',
+                isCustomAccent
+                  ? 'border-[hsl(var(--foreground))]/60 ring-2 ring-[hsl(var(--ring))]/30'
+                  : 'border-[hsl(var(--muted-foreground))]/50 text-[hsl(var(--muted-foreground))]',
+              )}
+              style={isCustomAccent ? { backgroundColor: accent } : undefined}
+            >
+              {isCustomAccent ? (
+                <Check className="h-4 w-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" strokeWidth={3} />
+              ) : (
+                <Pipette className="h-4 w-4" />
+              )}
+            </button>
+          </ColorPickerPopover>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Highlight colors</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              Marker swatches shown in the editor toolbar.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="palette-reset"
+            onClick={resetHighlightPalette}
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {presetSwatches.map((hex) => (
+            <HighlightSwatch
+              key={hex}
+              hex={hex}
+              active={palette.includes(hex)}
+              onToggle={() => toggleHighlight(hex)}
+            />
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ColorPickerPopover value={draftColor} onChange={setDraftColor}>
+            <button
+              type="button"
+              data-testid="highlight-custom"
+              aria-label="Custom highlight color"
+              title="Custom color"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--muted-foreground))]/50 text-[hsl(var(--muted-foreground))] transition-transform hover:scale-105"
+            >
+              <Pipette className="h-4 w-4" />
+            </button>
+          </ColorPickerPopover>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="highlight-add"
+            onClick={commitDraftColor}
+            disabled={palette.length >= MAX_HIGHLIGHT_COLORS}
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add
+          </Button>
         </div>
       </div>
     </div>
