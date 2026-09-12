@@ -7,6 +7,7 @@ import { TableNode, TableRowNode, TableCellNode } from "@lexical/table"
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode"
 import { TitleNode } from "@/components/editor/nodes/title-node"
 import { ReferenceNode } from "@/components/editor/nodes/reference-node"
+import { NoteBookmarkNode } from "@/components/editor/nodes/note-bookmark-node"
 
 export const nodes: Array<Klass<LexicalNode>> = [
   TitleNode,
@@ -23,4 +24,5 @@ export const nodes: Array<Klass<LexicalNode>> = [
   TableCellNode,
   HorizontalRuleNode,
   ReferenceNode,
+  NoteBookmarkNode,
 ]

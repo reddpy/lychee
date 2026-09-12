@@ -22,6 +22,11 @@ import {
 import { $isCodeNode, $createCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import { OPEN_LINK_EDITOR_COMMAND } from "./link-editor-plugin";
+import {
+  TOGGLE_NOTE_BOOKMARK_COMMAND,
+  $getBookmarkBlock,
+  $isBlockBookmarked,
+} from "./note-bookmark-plugin";
 import { $isTitleNode } from "@/components/editor/nodes/title-node";
 import { RENDERER_CONTEXT_MENU_CLOSED_EVENT } from "@/shared/editor-events";
 import {
@@ -38,6 +43,7 @@ import {
   Code,
   Highlighter,
   Link,
+  Bookmark,
   ChevronDown,
   Type,
   Heading1,
@@ -231,6 +237,7 @@ interface ToolbarState {
   isVisible: boolean;
   activeFormats: ReadonlySet<ToolbarFormat>;
   isLink: boolean;
+  isBookmarked: boolean;
   blockType: BlockType;
   isSingleBlock: boolean;
 }
@@ -239,6 +246,7 @@ const HIDDEN_STATE: ToolbarState = {
   isVisible: false,
   activeFormats: new Set<ToolbarFormat>(),
   isLink: false,
+  isBookmarked: false,
   blockType: "paragraph",
   isSingleBlock: true,
 };
@@ -328,6 +336,8 @@ function FloatingToolbar({
         (node) => $isLinkNode(node) || $isLinkNode(node.getParent()),
       );
 
+      const bookmarkedBlock = $getBookmarkBlock(anchorNode);
+
       result = {
         activeFormats: new Set(
           FORMAT_BUTTONS
@@ -335,6 +345,7 @@ function FloatingToolbar({
             .map(({ format }) => format),
         ),
         isLink,
+        isBookmarked: bookmarkedBlock ? $isBlockBookmarked(bookmarkedBlock) : false,
         blockType,
         isSingleBlock: anchorElement === focusElement && !$isTitleNode(anchorElement),
       };
@@ -527,6 +538,10 @@ function FloatingToolbar({
     editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined);
   }, [editor]);
 
+  const handleBookmark = useCallback(() => {
+    editor.dispatchCommand(TOGGLE_NOTE_BOOKMARK_COMMAND, undefined);
+  }, [editor]);
+
   if (!state.isVisible) return null;
 
   return createPortal(
@@ -580,6 +595,30 @@ function FloatingToolbar({
           </button>
         </TooltipTrigger>
         <TooltipContent sideOffset={8}>Link <kbd className="ml-1.5 opacity-60">{displayKeybinding(bindings['format.link'], window.lychee.platform)}</kbd></TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              // Preserve the selected range until the command reads it.
+              event.preventDefault();
+            }}
+            onClick={handleBookmark}
+            className={cn(
+              "h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors",
+              state.isBookmarked
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted text-foreground"
+            )}
+            aria-label={state.isBookmarked ? "Remove bookmark" : "Bookmark block"}
+            aria-pressed={state.isBookmarked}
+          >
+            <Bookmark className="h-4 w-4" fill={state.isBookmarked ? "currentColor" : "none"} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={8}>{state.isBookmarked ? "Remove bookmark" : "Bookmark block"} <kbd className="ml-1.5 opacity-60">{displayKeybinding(bindings['editor.bookmark'], window.lychee.platform)}</kbd></TooltipContent>
       </Tooltip>
     </div>,
     document.body

@@ -88,6 +88,7 @@ function params(overrides: Partial<ContextMenuParams> = {}): ContextMenuParams {
 function contents(): WebContents {
   return {
     replaceMisspelling: mocks.replaceMisspelling,
+    send: mocks.send,
     session: { addWordToSpellCheckerDictionary: mocks.addWord },
   } as unknown as WebContents;
 }
@@ -196,6 +197,26 @@ describe('editor context-menu copy and states', () => {
     ]);
     expect(items.some((item) => item.label === 'Spelling and Grammar')).toBe(false);
     expect(items.some((item) => String(item.label).includes('Search'))).toBe(false);
+  });
+
+  it('offers a Bookmark block action that notifies the renderer', () => {
+    const template = buildEditorContextMenuTemplate(contents(), params(), 'darwin');
+    const item = actionable(template).find((entry) => entry.label === 'Bookmark Block');
+    expect(item).toBeTruthy();
+
+    (item!.click as () => void)();
+    expect(mocks.send).toHaveBeenCalledWith('context-menu:bookmark-block');
+  });
+
+  it('omits the Bookmark block action for read-only selections', () => {
+    const template = buildEditorContextMenuTemplate(
+      contents(),
+      params({ isEditable: false, selectionText: 'read only' }),
+      'darwin',
+    );
+    expect(
+      actionable(template).some((entry) => entry.label === 'Bookmark Block'),
+    ).toBe(false);
   });
 });
 

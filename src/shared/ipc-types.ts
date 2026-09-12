@@ -288,6 +288,7 @@ export type IpcEvents = {
   'menu:undo': void;
   'menu:redo': void;
   'context-menu:closed': void;
+  'context-menu:bookmark-block': void;
   'spellcheck:state': SpellCheckState;
   'update:status': UpdateStatus;
   'keybindings:changed': KeybindingMap;
