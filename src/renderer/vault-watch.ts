@@ -44,6 +44,21 @@ function canonicalFromContent(content: string): string {
   return exportDocumentMarkdown(editor)
 }
 
+/**
+ * Coalesce document-list reloads. A startup import or a sync burst delivers one
+ * event per file; reloading (and re-rendering the whole sidebar tree) once per
+ * event is O(n²) and pins a CPU core for a large vault. A short trailing
+ * debounce collapses the burst into a handful of reloads.
+ */
+let reloadTimer: ReturnType<typeof setTimeout> | null = null
+function requestDocumentReload(): void {
+  if (reloadTimer) return
+  reloadTimer = setTimeout(() => {
+    reloadTimer = null
+    void useDocumentStore.getState().loadDocuments(true)
+  }, 120)
+}
+
 export async function handleVaultFileChanged(event: VaultFileChangedEvent): Promise<void> {
   if (event.action === "import") {
     const { content, bodyMarkdown } = convertBody(event.body)
@@ -62,7 +77,7 @@ export async function handleVaultFileChanged(event: VaultFileChangedEvent): Prom
       content,
       bodyMarkdown,
     })
-    await useDocumentStore.getState().loadDocuments(true)
+    requestDocumentReload()
     return
   }
 
@@ -80,7 +95,7 @@ export async function handleVaultFileChanged(event: VaultFileChangedEvent): Prom
       content,
       bodyMarkdown,
     })
-    await useDocumentStore.getState().loadDocuments(true)
+    requestDocumentReload()
     // Let an open editor refresh itself from the new content (only if clean).
     window.dispatchEvent(new CustomEvent("lychee-vault-applied", { detail: { id: event.id } }))
     return
@@ -92,7 +107,7 @@ export async function handleVaultFileChanged(event: VaultFileChangedEvent): Prom
     for (const tab of store.openTabs) {
       if (removed.has(tab.docId)) store.closeTab(tab.tabId, { skipHistory: true })
     }
-    await store.loadDocuments(true)
+    requestDocumentReload()
     return
   }
 
@@ -102,7 +117,7 @@ export async function handleVaultFileChanged(event: VaultFileChangedEvent): Prom
     for (const tab of store.openTabs) {
       if (removed.has(tab.docId)) store.closeTab(tab.tabId, { skipHistory: true })
     }
-    await store.loadDocuments(true)
+    requestDocumentReload()
     return
   }
 

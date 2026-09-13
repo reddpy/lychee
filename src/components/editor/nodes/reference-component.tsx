@@ -563,6 +563,7 @@ function ReferenceCard({
                 className="bookmark-favicon"
                 src={faviconUrl}
                 alt=""
+                decoding="async"
                 onError={(e) => {
                   ;(e.target as HTMLImageElement).style.display = "none"
                 }}
@@ -581,6 +582,8 @@ function ReferenceCard({
             <img
               src={imageUrl}
               alt=""
+              decoding="async"
+              loading="lazy"
               onError={(e) => {
                 ;(e.target as HTMLImageElement).parentElement!.style.display = "none"
               }}
@@ -812,6 +815,7 @@ function ReferenceImage({
           ref={imageRef}
           src={resolvedSrc}
           alt={altText}
+          decoding="async"
           style={{
             width: width ? `${width}px` : undefined,
             height: height ? `${height}px` : undefined,

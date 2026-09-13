@@ -1,53 +1,38 @@
-import { test as base, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
+import { test as base, expect, type ElectronApplication, type Page } from '@playwright/test';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import {
-  findPackagedBinary,
-  hasDevBuild,
-  PROJECT_ROOT,
-  listDocumentsFromDb,
-} from './electron-app';
+import { launchLychee, firstWindowReady, listDocumentsFromDb } from './electron-app';
 
 /**
  * Persistence tests verify that data survives an app restart.
  * They manage the Electron lifecycle manually (launch → interact → close → relaunch → verify).
+ *
+ * After the file-based rearchitecture a hermetic run needs BOTH a temp userData
+ * dir (SQLite) and a temp vault dir (markdown files). `launchLychee` sets
+ * `LYCHEE_VAULT_DIR`, so a fresh run never scans or writes the real
+ * `~/Documents/Lychee` vault.
  */
 
-function buildLaunchOpts(tmpDir: string) {
-  const packagedBinary = findPackagedBinary();
-  const opts: Parameters<typeof _electron.launch>[0] = {
-    env: { ...process.env, NODE_ENV: 'test' },
-    timeout: 30_000,
-  };
-
-  const extraArgs = process.env.CI ? ['--no-sandbox'] : [];
-
-  if (packagedBinary) {
-    opts.executablePath = packagedBinary;
-    opts.args = [`--user-data-dir=${tmpDir}`, ...extraArgs];
-  } else if (hasDevBuild()) {
-    opts.args = [PROJECT_ROOT, `--user-data-dir=${tmpDir}`, ...extraArgs];
-  } else {
-    throw new Error('No Electron build found.');
-  }
-
-  return opts;
-}
-
-async function launchAndGetWindow(tmpDir: string): Promise<{ app: ElectronApplication; window: Page }> {
-  const app = await _electron.launch(buildLaunchOpts(tmpDir));
-  const window = await app.firstWindow();
-  await window.waitForLoadState('domcontentloaded');
-  await window.waitForSelector('aside[data-state]', { timeout: 15_000 });
+async function launchAndGetWindow(
+  userDataDir: string,
+  vaultDir: string,
+): Promise<{ app: ElectronApplication; window: Page }> {
+  const app = await launchLychee({ userDataDir, vaultDir });
+  const window = await firstWindowReady(app);
   return { app, window };
 }
 
 base.describe('Persistence — data survives app restart', () => {
   let tmpDir: string;
+  let userDataDir: string;
+  let vaultDir: string;
 
   base.beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-persist-'));
+    userDataDir = path.join(tmpDir, 'userdata');
+    vaultDir = path.join(tmpDir, 'vault');
+    fs.mkdirSync(vaultDir, { recursive: true });
   });
 
   base.afterAll(() => {
@@ -56,13 +41,14 @@ base.describe('Persistence — data survives app restart', () => {
 
   base('notes persist after closing and reopening the app', async () => {
     // ── Session 1: create notes ──
-    let { app, window } = await launchAndGetWindow(tmpDir);
+    let { app, window } = await launchAndGetWindow(userDataDir, vaultDir);
 
     // Create first note with a title
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
     await window.locator('main:visible h1.editor-title').click();
     await window.keyboard.type('Persistent Note A');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     // Create second note with a title
@@ -70,6 +56,7 @@ base.describe('Persistence — data survives app restart', () => {
     await window.waitForTimeout(400);
     await window.locator('main:visible h1.editor-title').click();
     await window.keyboard.type('Persistent Note B');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     // Verify both exist in DB before closing
@@ -80,7 +67,7 @@ base.describe('Persistence — data survives app restart', () => {
     await app.close();
 
     // ── Session 2: reopen and verify ──
-    ({ app, window } = await launchAndGetWindow(tmpDir));
+    ({ app, window } = await launchAndGetWindow(userDataDir, vaultDir));
 
     // Both notes should be in the sidebar
     await expect(window.locator('[data-note-id]')).toHaveCount(2);
@@ -98,7 +85,7 @@ base.describe('Persistence — data survives app restart', () => {
 
   base('edited content persists after restart', async () => {
     // ── Session 1: create a note and add body content ──
-    let { app, window } = await launchAndGetWindow(tmpDir);
+    let { app, window } = await launchAndGetWindow(userDataDir, vaultDir);
 
     // There may be notes from the previous test; create a fresh one
     await window.locator('[aria-label="New note"]').click();
@@ -118,7 +105,7 @@ base.describe('Persistence — data survives app restart', () => {
     await app.close();
 
     // ── Session 2: verify content ──
-    ({ app, window } = await launchAndGetWindow(tmpDir));
+    ({ app, window } = await launchAndGetWindow(userDataDir, vaultDir));
 
     // Click the note in the sidebar to open it
     const noteInSidebar = window.locator('[data-note-id]').filter({ hasText: 'Content Test' });
@@ -134,12 +121,13 @@ base.describe('Persistence — data survives app restart', () => {
 
   base('trashed notes stay trashed after restart', async () => {
     // ── Session 1: create and trash a note ──
-    let { app, window } = await launchAndGetWindow(tmpDir);
+    let { app, window } = await launchAndGetWindow(userDataDir, vaultDir);
 
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
     await window.locator('main:visible h1.editor-title').click();
     await window.keyboard.type('Trash Persist');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     const note = window.locator('[data-note-id]').filter({ hasText: 'Trash Persist' });
@@ -153,7 +141,7 @@ base.describe('Persistence — data survives app restart', () => {
     await app.close();
 
     // ── Session 2: verify it's still trashed ──
-    ({ app, window } = await launchAndGetWindow(tmpDir));
+    ({ app, window } = await launchAndGetWindow(userDataDir, vaultDir));
 
     // Should NOT appear in the sidebar
     await expect(window.locator('[data-note-id]').filter({ hasText: 'Trash Persist' })).toHaveCount(0);

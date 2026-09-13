@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import { InitialConfigType, LexicalComposer } from "@lexical/react/LexicalComposer"
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
-import { $createParagraphNode, $getRoot, type LexicalEditor } from "lexical"
+import type { LexicalEditor } from "lexical"
 
 import { editorTheme } from "@/components/editor/themes/editor-theme"
 import { nodes } from "@/components/editor/nodes"
@@ -40,41 +40,13 @@ const editorConfig: InitialConfigType = {
 }
 
 /**
- * Applies stored content after mount instead of via LexicalComposer's
- * `editorState` (which throws if the parsed state is empty). Any failure here
- * falls back to a valid empty paragraph, so a bad note can never crash the app.
+ * Applies stored content to `LexicalComposer` at mount time (single pass) when a
+ * validated, non-empty state is available. Deliberately avoids applying the
+ * state in a `useEffect` after mount: that rendered the whole document twice
+ * (empty → filled), which caused a visible flash and a second full mount of
+ * every block/decorator. `editorState` here is pre-validated by
+ * `safeComposerState`, so Lexical never receives an empty state (which throws).
  */
-function InitialContentPlugin({ editorState }: { editorState?: string }): null {
-  const [editor] = useLexicalComposerContext()
-  const applied = useRef(false)
-
-  useEffect(() => {
-    if (applied.current) return
-    applied.current = true
-
-    if (editorState) {
-      try {
-        const parsed = editor.parseEditorState(editorState)
-        if (!parsed.isEmpty()) {
-          editor.setEditorState(parsed)
-          return
-        }
-      } catch {
-        // fall through to default content
-      }
-    }
-
-    editor.update(
-      () => {
-        const root = $getRoot()
-        if (root.isEmpty()) root.append($createParagraphNode())
-      },
-      { discrete: true },
-    )
-  }, [editor, editorState])
-
-  return null
-}
 
 export function Editor({
   documentId,
@@ -95,8 +67,9 @@ export function Editor({
 }) {
   return (
     <div className="bg-background overflow-hidden">
-      <LexicalComposer initialConfig={editorConfig}>
-        <InitialContentPlugin editorState={editorState} />
+      <LexicalComposer
+        initialConfig={editorState ? { ...editorConfig, editorState } : editorConfig}
+      >
         <Plugins
           documentId={documentId}
           tabId={tabId}

@@ -1,6 +1,5 @@
 import * as parcelWatcher from "@parcel/watcher";
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { revisionOf } from "../shared/hash";
 import { shouldIgnoreVaultPath, isConflictCopyPath } from "../shared/vault-watch";
@@ -16,10 +15,9 @@ import { shouldIgnoreVaultPath, isConflictCopyPath } from "../shared/vault-watch
  * - settles before reading (an editor's temp→rename or a partial write is never
  *   imported half-written),
  * - suppresses our own writes by path + content revision,
- * - watches the tombstone directory separately,
- * - scans existing files once on start (`@parcel/watcher` only reports changes),
- * - runs a periodic `getEventsSince` safety net for events `subscribe` may have
- *   coalesced away (a create+delete within its C++ throttle window).
+ * - watches the tombstone directory separately (with a periodic lightweight
+ *   reconcile), and
+ * - scans existing files once on start (`@parcel/watcher` only reports changes).
  */
 
 export interface VaultFileEvent {
@@ -44,11 +42,8 @@ const DEBOUNCE_MS = 250;
 const SETTLE_MS = 250;
 const SUPPRESS_TTL_MS = 8000;
 /**
- * Safety-net query interval. `subscribe` coalesces a create + delete within its
- * C++ throttle window into a single (possibly no-op) notification, so a delete
- * of a file the app just wrote can be missed. `getEventsSince` against a
- * snapshot taken at start recovers those. On FSEvents/Watchman this is a cached
- * lookup; on Linux/Windows it is a tree walk (acceptable for a notes vault).
+ * Safety-net interval for tombstone reconciliation (reads only the small
+ * tombstone logs). There is intentionally no periodic whole-vault query.
  */
 const POLL_MS = 3000;
 
@@ -62,7 +57,8 @@ export class VaultWatcher implements VaultWatcherLike {
   private readonly initialPaths = new Set<string>();
   private tombstoneTimer: NodeJS.Timeout | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
-  private snapshotPath: string | null = null;
+  /** Live `.md` paths (relative), used by the non-blocking safety-net diff. */
+  private knownPaths = new Set<string>();
   private queue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -146,7 +142,7 @@ export class VaultWatcher implements VaultWatcherLike {
           // @parcel/watcher only reports changes after subscription, so import
           // files that already exist on launch with a one-shot walk.
           this.initialScan();
-          void this.startPolling(resolved);
+          this.startPolling(resolved);
         } else {
           void sub.unsubscribe();
         }
@@ -178,9 +174,9 @@ export class VaultWatcher implements VaultWatcherLike {
     this.tombstoneTimer = null;
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = null;
-    this.snapshotPath = null;
     this.suppressed.clear();
     this.initialPaths.clear();
+    this.knownPaths.clear();
     const subscription = this.subscription;
     const tombstoneSubscription = this.tombstoneSubscription;
     this.subscription = null;
@@ -190,46 +186,65 @@ export class VaultWatcher implements VaultWatcherLike {
     if (tombstoneSubscription) void tombstoneSubscription.unsubscribe();
   }
 
-  /** Query for changes that subscribe may have coalesced away, then re-snapshot. */
-  private async startPolling(resolved: string): Promise<void> {
-    const snapshotPath = path.join(
-      os.tmpdir(),
-      `lychee-watch-${revisionOf(resolved).slice(0, 16)}.snapshot`,
-    );
-    this.snapshotPath = snapshotPath;
-    const snapshot = async (): Promise<void> => {
+  /**
+   * Periodic safety net + tombstone reconcile.
+   *
+   * `subscribe` can coalesce a create+delete (or a directory rename's
+   * delete+create) within its C++ throttle window into a single, possibly
+   * no-op notification, so some events would otherwise be missed. We recover
+   * them with our own async directory diff rather than `@parcel/watcher`'s
+   * `getEventsSince`: the native query runs synchronously on the calling
+   * thread and was measured blocking Electron's main process for ~625ms every
+   * 3s on a real vault, freezing the whole app. `fs.promises.readdir` runs on
+   * the thread pool and yields, so a big vault cannot stall the main thread.
+   */
+  private startPolling(resolved: string): void {
+    this.pollTimer = setInterval(() => {
+      if (this.directory !== resolved) return;
+      void this.sweep(resolved);
+    }, POLL_MS);
+  }
+
+  /** Diff the on-disk `.md` set against what we last saw; schedule any change. */
+  private async sweep(resolved: string): Promise<void> {
+    if (this.directory !== resolved) return;
+    this.onTombstones();
+    const current = await this.collectMarkdown(resolved);
+    if (this.directory !== resolved) return;
+    for (const relativePath of current) {
+      if (!this.knownPaths.has(relativePath)) this.schedule(relativePath);
+    }
+    for (const relativePath of this.knownPaths) {
+      if (!current.has(relativePath)) this.schedule(relativePath);
+    }
+    this.knownPaths = current;
+  }
+
+  /** Async recursive walk of note `.md` files (skips dot-dirs and artifacts). */
+  private async collectMarkdown(root: string): Promise<Set<string>> {
+    const out = new Set<string>();
+    const walk = async (dir: string): Promise<void> => {
+      let entries: fs.Dirent[];
       try {
-        await parcelWatcher.writeSnapshot(resolved, snapshotPath);
-      } catch (error) {
-        console.error("[vault-watcher] snapshot failed", error);
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (entry.name.startsWith(".")) continue;
+        const absolute = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(absolute);
+          continue;
+        }
+        if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) continue;
+        const relativePath = path.relative(root, absolute).split(path.sep).join("/");
+        if (isConflictCopyPath(relativePath) || this.isIgnored(relativePath)) continue;
+        out.add(relativePath);
       }
     };
-    await snapshot();
-    if (this.directory !== resolved) return;
-    this.pollTimer = setInterval(() => {
-      void (async () => {
-        if (this.directory !== resolved) return;
-        // Tombstones are a separate subscription with their own file writes;
-        // reconcile them on the same cadence as a safety net in case a create
-        // event was coalesced or arrived before the subscription was ready.
-        this.onTombstones();
-        try {
-          const events = await parcelWatcher.getEventsSince(resolved, snapshotPath);
-          for (const event of events) {
-            const relativePath = path
-              .relative(resolved, event.path)
-              .split(path.sep)
-              .join("/");
-            this.schedule(relativePath);
-          }
-          await snapshot();
-        } catch (error) {
-          // A missing/corrupt snapshot must not kill the loop; recreate it.
-          console.error("[vault-watcher] event query failed", error);
-          await snapshot();
-        }
-      })();
-    }, POLL_MS);
+    await walk(root);
+    return out;
   }
 
   /** Walk the tree once and schedule every existing `.md` file (ignoreInitial). */
@@ -253,6 +268,7 @@ export class VaultWatcher implements VaultWatcherLike {
         if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) continue;
         const relativePath = path.relative(directory, absolute).split(path.sep).join("/");
         this.initialPaths.add(relativePath);
+        this.knownPaths.add(relativePath);
         this.schedule(relativePath);
       }
     };

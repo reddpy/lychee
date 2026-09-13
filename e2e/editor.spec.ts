@@ -27,8 +27,11 @@ test.describe('Editor', () => {
     const title = window.locator('h1.editor-title');
     await title.click();
     await window.keyboard.type('Updated Title');
+    // The title is a separate field now (Obsidian model); typing drafts it and
+    // Enter/✓/blur commits it. Commit before expecting the sidebar to update.
+    await window.keyboard.press('Enter');
 
-    // Wait for debounced save
+    // Wait for the commit + IPC round-trip
     await window.waitForTimeout(700);
 
     // The sidebar should reflect the title
@@ -58,13 +61,10 @@ test.describe('Editor', () => {
     // Wait for debounced content save (600ms debounce + buffer)
     await window.waitForTimeout(1000);
 
-    // ── Backend: content is persisted as Lexical JSON in SQLite ──
+    // ── Backend: content is persisted as markdown in SQLite ──
     const docs = await listDocumentsFromDb(window);
     expect(docs).toHaveLength(1);
-    expect(docs[0].content).toBeTruthy();
-    const contentJson = JSON.parse(docs[0].content);
-    expect(contentJson.root).toBeTruthy();
-    expect(contentJson.root.children.length).toBeGreaterThan(0);
+    expect(docs[0].content).toContain('Hello, this is body text.');
   });
 
   test('slash command menu appears when typing /', async ({ window }) => {
@@ -103,9 +103,7 @@ test.describe('Editor', () => {
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const hasHeading = content.root.children.some((c: any) => c.type === 'heading' && c.tag === 'h1');
-    expect(hasHeading).toBe(true);
+    expect(doc!.content).toContain('# My Heading');
   });
 
   test('bold formatting via keyboard shortcut', async ({ window }) => {
@@ -673,7 +671,8 @@ test.describe('Editor — Block Behavior', () => {
     await window.keyboard.type('> Quote');
 
     const editorRoot = window.locator('.ContentEditable__root');
-    await expect(editorRoot).toContainText('Doc Title');
+    // The title is a separate field above the body, not part of the markdown body.
+    await expect(window.locator('h1.editor-title')).toContainText('Doc Title');
     await expect(editorRoot).toContainText('Section');
     await expect(editorRoot).toContainText('Bullet');
     await expect(editorRoot).toContainText('Quote');
@@ -681,11 +680,10 @@ test.describe('Editor — Block Behavior', () => {
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const types = content.root.children.map((c: any) => c.type);
-    expect(types).toContain('heading');
-    expect(types).toContain('list');
-    expect(types).toContain('quote');
+    // DB content is markdown, not Lexical JSON.
+    expect(doc!.content).toContain('## Section');
+    expect(doc!.content).toContain('- Bullet');
+    expect(doc!.content).toContain('> Quote');
   });
 });
 
@@ -726,7 +724,7 @@ test.describe('Editor — Content Persistence', () => {
     await expect(editorRoot).toContainText('italic');
   });
 
-  test('content JSON structure is valid in DB', async ({ window }) => {
+  test('content is persisted as markdown in DB', async ({ window }) => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
 
@@ -742,11 +740,9 @@ test.describe('Editor — Content Persistence', () => {
     const doc = docs.find((d) => d.title === 'DB Structure');
     expect(doc).toBeTruthy();
     expect(doc!.content).toBeTruthy();
-
-    const content = JSON.parse(doc!.content);
-    expect(content.root).toBeTruthy();
-    expect(Array.isArray(content.root.children)).toBe(true);
-    expect(content.root.children.length).toBeGreaterThan(0);
+    // The file-based architecture stores the markdown body (title lives in the
+    // filename/frontmatter, not the body).
+    expect(doc!.content).toContain('Body with **formatting**');
   });
 });
 
@@ -761,15 +757,15 @@ test.describe('Editor — Edge Cases', () => {
   test('backspace on empty paragraph merges with previous', async ({ window }) => {
     const title = window.locator('h1.editor-title');
     await title.click();
+    await window.keyboard.type('Merge Test');
+    await window.keyboard.press('Enter');
     await window.keyboard.type('First');
     await window.keyboard.press('Enter');
     await window.keyboard.type('Second');
-    await window.keyboard.press('ArrowLeft');
-    await window.keyboard.press('ArrowLeft');
-    await window.keyboard.press('ArrowLeft');
-    await window.keyboard.press('ArrowLeft');
-    await window.keyboard.press('ArrowLeft');
-    await window.keyboard.press('ArrowLeft');
+    // Move the caret to the start of "Second", then join it to "First".
+    for (let i = 0; i < 6; i++) {
+      await window.keyboard.press('ArrowLeft');
+    }
     await window.keyboard.press('Backspace');
 
     const editorRoot = window.locator('.ContentEditable__root');
@@ -854,9 +850,10 @@ test.describe('Editor — Edge Cases', () => {
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const hasImage = content.root.children.some((c: any) => c.type === 'reference' && c.displayMode === 'image');
-    expect(hasImage).toBe(true);
+    // Markdown image line + lychee-reference fence; the asset token is rewritten
+    // to a portable path at the vault boundary.
+    expect(doc!.content).toContain('![');
+    expect(doc!.content).toContain('lychee-reference');
   });
 
   test('copying a note embeds local images in native clipboard HTML', async ({ window, electronApp }) => {
@@ -914,16 +911,16 @@ test.describe('Editor — Edge Cases', () => {
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const contentStr = JSON.stringify(content);
-    expect(contentStr).toContain('example.com');
-    expect(contentStr).toContain('link');
+    expect(doc!.content).toContain('example.com');
+    expect(doc!.content).toContain('link');
   });
 
   test('Cmd+K searches note titles, inserts a stable page link, and opens it inside Lychee', async ({ window }) => {
     const visibleTitle = window.locator('main:visible h1.editor-title');
     await visibleTitle.click();
     await window.keyboard.type('Target Note');
+    // Commit the title (separate field) so the note is findable by title.
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(800);
 
     const target = (await listDocumentsFromDb(window)).find((doc) => doc.title === 'Target Note');
@@ -998,6 +995,8 @@ test.describe('Editor — Edge Cases', () => {
     const visibleTitle = window.locator('main:visible h1.editor-title');
     await visibleTitle.click();
     await window.keyboard.type('Reference Target');
+    // Commit the title (separate field) so the note is findable by title.
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(800);
     const target = (await listDocumentsFromDb(window)).find((doc) => doc.title === 'Reference Target');
     expect(target).toBeTruthy();
@@ -1055,15 +1054,7 @@ test.describe('Editor — Edge Cases', () => {
 
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
-    const content = JSON.parse(doc!.content);
-    const linkNode = content.root.children
-      .flatMap((node: any) => node.children ?? [])
-      .find((node: any) => node.type === 'link');
-    expect(linkNode).toMatchObject({
-      type: 'link',
-      url: 'https://example.com',
-      children: [{ type: 'text', text: 'example.com' }],
-    });
+    expect(doc!.content).toContain('example.com');
   });
 
   test('Cmd+K clears an unsubmitted URL when reopened on an empty line', async ({ window }) => {
@@ -1129,9 +1120,8 @@ test.describe('Editor — Edge Cases', () => {
 
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
-    const content = JSON.parse(doc!.content);
-    expect(JSON.stringify(content)).toContain(longParagraph);
-    expect(JSON.stringify(content)).toContain('https://separate.example');
+    expect(doc!.content).toContain(longParagraph);
+    expect(doc!.content).toContain('https://separate.example');
   });
 
   test('Cmd+K inserts linked text into an empty list item', async ({ window }) => {
@@ -1175,9 +1165,10 @@ test.describe('Editor — Edge Cases', () => {
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const hasImage = content.root.children.some((c: any) => c.type === 'reference' && c.displayMode === 'image');
-    expect(hasImage).toBe(true);
+    // Markdown image line + lychee-reference fence; the asset token is rewritten
+    // to a portable path at the vault boundary.
+    expect(doc!.content).toContain('![');
+    expect(doc!.content).toContain('lychee-reference');
   });
 
   test('code block: paste markdown code block creates code block and persists to DB', async ({
@@ -1199,17 +1190,8 @@ test.describe('Editor — Edge Cases', () => {
     await window.waitForTimeout(1500);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const codeTypes = ['code', 'code-block', 'code-snippet', 'executable-code-block'];
-    const findCode = (nodes: any[]): boolean =>
-      nodes.some(
-        (c: any) =>
-          codeTypes.includes(c?.type) ||
-          (c?.children && findCode(c.children)),
-      );
-    const hasCode = findCode(content.root?.children ?? []);
-    expect(hasCode).toBe(true);
-    expect(JSON.stringify(content)).toMatch(/const.*x.*=.*1/);
+    expect(doc!.content).toContain('```');
+    expect(doc!.content).toContain('const x = 1');
   });
 
   test('code block: Escape exits edit mode', async ({ window }) => {
@@ -1237,7 +1219,7 @@ test.describe('Editor — Edge Cases', () => {
     await window.keyboard.press('Enter');
 
     const editorRoot = window.locator('.ContentEditable__root');
-    await expect(editorRoot).toContainText('Title');
+    await expect(editorRoot).toBeVisible();
     await expect(window.locator('h1.editor-title')).toContainText('Title');
   });
 
@@ -1273,23 +1255,28 @@ test.describe('Editor — Edge Cases', () => {
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    const hasImage = content.root.children.some((c: any) => c.type === 'reference' && c.displayMode === 'image');
-    expect(hasImage).toBe(true);
+    // Markdown image line + lychee-reference fence; the asset token is rewritten
+    // to a portable path at the vault boundary.
+    expect(doc!.content).toContain('![');
+    expect(doc!.content).toContain('lychee-reference');
   });
 });
 
 test.describe('Editor — Focus Behavior', () => {
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
-  const PNG_1x1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  // A 100×100 PNG. Deliberately not 1×1: for a 1×1 image the hover alignment
+  // toolbar (and its hover bridge) overlaps the container's centre, so a click
+  // aimed at the image lands on the toolbar instead of selecting the block.
+  const PNG_SAMPLE =
+    'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAAtElEQVR4nO3QQQkAIADAQLsK9reBFfzIEA4WYNyYa+uykR98FCxYsPJgwYKVBwsWrDxYsGDlwYIFKw8WLFh5sGDByoMFC1YeLFiw8mDBgpUHCxasPFiwYOXBggUrDxYsWHmwYMHKgwULVh4sWLDyYMGClQcLFqw8WLBg5cGCBSsPFixYebBgwcqDBQtWHixYsPJgwYKVBwsWrDxYsGDlwYIFKw8WLFh5sGDByoMFC1YeLFhvOhG7dY6uRGT6AAAAAElFTkSuQmCC';
 
-  /** Paste a 1×1 PNG into the editor from the clipboard. */
+  /** Paste a small sample PNG into the editor from the clipboard. */
   async function pasteImage(window: any) {
     await window.evaluate(async (base64: string) => {
       const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: 'image/png' });
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-    }, PNG_1x1);
+    }, PNG_SAMPLE);
     await window.keyboard.press(`${mod}+v`);
     await window.waitForTimeout(2000);
   }
@@ -1650,11 +1637,12 @@ test.describe('Editor — Focus Behavior', () => {
     await visibleTitle(window).click();
     await window.waitForTimeout(200);
 
-    // Verify the editor received focus (title is inside the ContentEditable)
-    expect(await editorBodyHasFocus(window)).toBe(true);
+    // The title is its own field above the body; clicking it focuses that field.
+    await expect(visibleTitle(window)).toBeFocused();
 
-    // Typing should land in the title, not jump elsewhere
-    await window.keyboard.press('End');
+    // Typing should land in the title, not jump elsewhere. Move to the end of
+    // the field first (macOS has no dedicated End key).
+    await window.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
     await window.keyboard.type(' Edited');
     await expect(visibleTitle(window)).toContainText('Title Focus Edited');
   });

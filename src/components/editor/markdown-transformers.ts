@@ -46,9 +46,12 @@ export const MARKDOWN_TRANSFORMERS = [
   HEADING,
   QUOTE,
   HORIZONTAL_RULE,
+  // CHECK_LIST must precede the generic list transformers: UNORDERED_LIST's
+  // regex (`/^(\s*)[-*+]\s/`) also matches `- [x] task`, so a checklist would
+  // otherwise import as a bullet whose text is literally "[x] task".
+  CHECK_LIST,
   UNORDERED_LIST,
   ORDERED_LIST,
-  CHECK_LIST,
   REFERENCE_EXPORT,
   UNKNOWN_EXPORT,
   TABLE_EXPORT,

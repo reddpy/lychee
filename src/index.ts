@@ -53,6 +53,17 @@ const RENDERER_CSP = [
   "base-uri 'self'",
 ].join('; ');
 
+// Dev convenience: `LYCHEE_DEBUG_PORT=9222 pnpm start` exposes the renderer's
+// DevTools Protocol (used for perf profiling: Profiler/Tracing). No-op normally.
+if (process.env.LYCHEE_DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.LYCHEE_DEBUG_PORT);
+}
+// Dev convenience: `LYCHEE_USER_DATA_DIR=/tmp/x pnpm start` keeps a dev run
+// hermetic (its own DB/settings) instead of touching the real app data.
+if (process.env.LYCHEE_USER_DATA_DIR) {
+  app.setPath('userData', process.env.LYCHEE_USER_DATA_DIR);
+}
+
 function registerContentSecurityPolicy(): void {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (details.resourceType !== 'mainFrame') {

@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "start": "electron-forge start",
-    "prestart": "electron-rebuild -f -w better-sqlite3",
+    "prestart": "electron-rebuild -f -o better-sqlite3",
     "package": "electron-forge package",
     "package:mac": "dotenv -e .env -- electron-forge package",
     "package:win": "dotenv -e .env -- electron-forge package",

@@ -544,16 +544,16 @@ test.describe('List backspace → paragraph in place (#222)', () => {
     await caretToItemStart(window, 0);
     await window.keyboard.press('Backspace');
 
-    // Converted to a paragraph in place; the title is left empty (no merge).
+    // Converted to a paragraph in place; the title is a separate field and is
+    // never merged into by a body Backspace.
     await expectStructure(window, 'P("A")');
     await expect(window.locator('h1.editor-title')).toHaveText('');
 
-    // A *second* Backspace at the start of the first paragraph is the point at
-    // which Notion-style title-merge kicks in (existing behavior).
+    // A second Backspace at the start of the first paragraph stays in the body.
     await window.waitForTimeout(60);
     await window.keyboard.press('Backspace');
-    await expect(window.locator('h1.editor-title')).toHaveText('A');
-    await expectStructure(window, '');
+    await expect(window.locator('h1.editor-title')).toHaveText('');
+    await expectStructure(window, 'P("A")');
   });
 
   test('undo restores the original list in a single step', async ({ window }) => {
@@ -599,18 +599,17 @@ test.describe('List backspace → paragraph in place (#222)', () => {
     await window.keyboard.press('Backspace');
     await expectStructure(window, 'BULLET[A] | P("B") | BULLET[C]');
 
-    // Wait for the debounced content save, then inspect the persisted JSON.
+    // Wait for the debounced content save, then inspect the persisted markdown.
     await window.waitForTimeout(1000);
     const doc = await getLatestDocumentFromDb(window);
     expect(doc?.content).toBeTruthy();
-    const content = JSON.parse(doc!.content);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bodyTypes = content.root.children
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((c: any) => c.type)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((t: string) => t !== 'title');
-    expect(bodyTypes).toEqual(['list', 'paragraph', 'list']);
+    // Markdown body should preserve the order: list(- A), paragraph(B), list(- C).
+    const atA = doc!.content.indexOf('- A');
+    const atB = doc!.content.indexOf('B', atA + 1);
+    const atC = doc!.content.indexOf('- C', atB + 1);
+    expect(atA).toBeGreaterThanOrEqual(0);
+    expect(atB).toBeGreaterThan(atA);
+    expect(atC).toBeGreaterThan(atB);
   });
 
   test('inside a table cell: converts in place, the split stays within the cell', async ({ window }) => {

@@ -34,6 +34,8 @@ async function createNote(window: Page, title: string): Promise<{ tabId: string;
   await window.waitForTimeout(400);
   await window.locator('main:visible h1.editor-title').click();
   await window.keyboard.type(title);
+  // The title is a separate field; commit it (Enter) so the tab/sidebar reflect it.
+  await window.keyboard.press('Enter');
   await window.waitForTimeout(700);
   const { tabId, docId } = await window.evaluate(() => {
     const store = (window as any).__documentStore;
@@ -355,6 +357,8 @@ test.describe('Duplicate Tabs — Tab Strip UI', () => {
     await titleEl.click();
     await window.keyboard.press(`${mod}+a`);
     await window.keyboard.type('Renamed Dup');
+    // Commit the separate title field so the store (and both tabs) update.
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     // Both tabs should show the new title
@@ -1302,6 +1306,8 @@ test.describe('Duplicate Tabs — Multi-Note Interaction', () => {
     await titleEl.click();
     await window.keyboard.press(`${mod}+a`);
     await window.keyboard.type('Dup Rename After');
+    // Commit the separate title field so the store/tabs/sidebar update.
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     // Both tabs in strip should show new name
@@ -2402,10 +2408,13 @@ test.describe('Duplicate Tabs — Plugin Stress Tests', () => {
     await window.keyboard.type('bullet item');
     await window.keyboard.press('Enter');
     await window.keyboard.press('Enter'); // exit list
-    // Quote via slash
+    // Quote via slash (type-to-filter: the menu can overflow the window, so
+    // clicking a low option is not reliably actionable)
     await window.keyboard.type('/');
     await window.waitForTimeout(300);
-    await window.getByRole('option', { name: 'Quote' }).click();
+    await window.keyboard.type('quote');
+    await window.waitForTimeout(150);
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(200);
     await window.keyboard.type('quoted text');
     await window.keyboard.press('Enter');
@@ -2413,7 +2422,9 @@ test.describe('Duplicate Tabs — Plugin Stress Tests', () => {
     // Divider
     await window.keyboard.type('/');
     await window.waitForTimeout(300);
-    await window.getByRole('option', { name: 'Divider' }).click();
+    await window.keyboard.type('divider');
+    await window.waitForTimeout(150);
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(300);
 
     // Now switch to duplicate and verify everything

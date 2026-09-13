@@ -20,12 +20,12 @@ import { SidebarFooterContent } from './sidebar/sidebar-footer-content';
 import { SidebarSectionDnd } from './sidebar/sidebar-section-dnd';
 
 export function AppSidebar() {
-  const {
-    documents,
-    loading,
-    createDocument,
-    loadDocuments,
-  } = useDocumentStore();
+  // Granular selectors: a whole-store subscription re-rendered the entire note
+  // tree on every state change (tab selection, lastCreatedId, error, ...).
+  const documents = useDocumentStore((s) => s.documents);
+  const loading = useDocumentStore((s) => s.loading);
+  const createDocument = useDocumentStore((s) => s.createDocument);
+  const loadDocuments = useDocumentStore((s) => s.loadDocuments);
   const activeDocId = useDocumentStore(selectActiveDocId);
   const { order, setOrder } = useSidebarSectionOrder();
 

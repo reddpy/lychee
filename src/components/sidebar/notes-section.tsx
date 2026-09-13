@@ -79,24 +79,6 @@ function getAncestorIds(documents: DocumentRow[], docId: string): string[] {
   return ids;
 }
 
-/** Get all descendant IDs of a document (for preventing circular drops). */
-function getDescendantIds(
-  childrenByParent: Map<string | null, DocumentRow[]>,
-  docId: string,
-): Set<string> {
-  const descendants = new Set<string>();
-  const stack = [docId];
-  while (stack.length > 0) {
-    const id = stack.pop()!;
-    const children = childrenByParent.get(id) ?? [];
-    for (const child of children) {
-      descendants.add(child.id);
-      stack.push(child.id);
-    }
-  }
-  return descendants;
-}
-
 /** Flat list in preorder so one AnimatePresence tracks all rows for delete exit animation. */
 function buildFlatList(
   rootDocs: DocumentRow[],
@@ -172,14 +154,27 @@ export function NotesSection({
     [rootDocs, childrenByParent, expandedIds],
   );
 
-  // Precompute descendant sets for each document
+  // Precompute descendant sets for each document. One bottom-up pass over the
+  // tree (each note walks up to its ancestors) is O(n·depth) instead of the
+  // O(n·subtree) a per-document DFS would cost on every documents change.
   const descendantsByDoc = React.useMemo(() => {
     const map = new Map<string, Set<string>>();
+    const byId = new Map<string, DocumentRow>();
     for (const doc of documents) {
-      map.set(doc.id, getDescendantIds(childrenByParent, doc.id));
+      map.set(doc.id, new Set());
+      byId.set(doc.id, doc);
+    }
+    for (const doc of documents) {
+      let ancestorId = doc.parentId;
+      const seen = new Set<string>();
+      while (ancestorId && !seen.has(ancestorId)) {
+        seen.add(ancestorId);
+        map.get(ancestorId)?.add(doc.id);
+        ancestorId = byId.get(ancestorId)?.parentId ?? null;
+      }
     }
     return map;
-  }, [documents, childrenByParent]);
+  }, [documents]);
 
   const toggleExpanded = React.useCallback((id: string) => {
     setExpandedIds((prev) => {

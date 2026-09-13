@@ -414,6 +414,8 @@ test.describe('Settings Modal — Editor preferences', () => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
     await window.locator('main:visible h1.editor-title').click();
+    await window.keyboard.type('Focus Mode Test');
+    await window.keyboard.press('Enter');
     await window.keyboard.type('First block');
     await window.keyboard.press('Enter');
     await window.keyboard.type('Second block');
@@ -435,6 +437,8 @@ test.describe('Settings Modal — Editor preferences', () => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
     await window.locator('main:visible h1.editor-title').click();
+    await window.keyboard.type('Word Count Test');
+    await window.keyboard.press('Enter');
     await window.keyboard.type('Hello world');
     await window.keyboard.press('Enter');
     await window.keyboard.type('One two three');

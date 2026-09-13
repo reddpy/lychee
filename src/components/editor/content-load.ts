@@ -302,21 +302,6 @@ export function toSafeEditorStateString(content: string | undefined): string | u
   return JSON.stringify(result.editorState)
 }
 
-let validationEditor: ReturnType<typeof createHeadlessEditor> | null = null
-
-function getValidationEditor() {
-  if (!validationEditor) {
-    validationEditor = createHeadlessEditor({
-      namespace: "content-load-validation",
-      nodes,
-      onError: (error) => {
-        throw error
-      },
-    })
-  }
-  return validationEditor
-}
-
 /** Markdown body → SerializedEditorState (title ownership + lychee encodings). */
 export function markdownToSerializedState(markdown: string): SerializedEditorState {
   // A fresh editor per call: `$convertFromMarkdownString` appends to the root,
@@ -341,17 +326,15 @@ export function markdownToSerializedState(markdown: string): SerializedEditorSta
  * Serialize a state for `LexicalComposer`, but only if Lexical can actually parse
  * it into a non-empty root. Prevents the "editor state is empty" crash from any
  * malformed/edge-case state.
+ *
+ * Note: we no longer round-trip the state through a throwaway headless editor
+ * here. `parseDocumentContent` already guarantees a valid, non-empty state
+ * (sanitized + unknown nodes wrapped), and `LexicalComposer` parses it once on
+ * mount — the extra parse was a measurable part of the open-a-note stall.
  */
 export function safeComposerState(state: SerializedEditorState | undefined): string | undefined {
   if (state == null) return undefined
   const children = (state as { root?: { children?: unknown[] } }).root?.children
   if (!Array.isArray(children) || children.length === 0) return undefined
-  const json = JSON.stringify(state)
-  try {
-    const parsed = getValidationEditor().parseEditorState(json)
-    if (parsed.isEmpty()) return undefined
-  } catch {
-    return undefined
-  }
-  return json
+  return JSON.stringify(state)
 }

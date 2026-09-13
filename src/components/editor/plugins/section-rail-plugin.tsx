@@ -135,6 +135,12 @@ export function SectionRailPlugin({
   // Track which heading is at the top of the viewport as the user scrolls.
   // Uses a capture-phase document listener (rather than an element-bound one)
   // to match the scroll-retention convention in lexical-editor.tsx.
+  //
+  // Performance: heading positions are cached as offsets within the scroll
+  // content and re-measured only when the layout can change (heading mutations,
+  // editor updates, resize) — never on the scroll hot path. Reading
+  // `getBoundingClientRect` for every heading on every scroll frame forced a
+  // synchronous layout each frame and was a source of scroll hitching.
   useEffect(() => {
     if (!isActive || headings.length < 2) return
     const root = editor.getRootElement()
@@ -142,27 +148,33 @@ export function SectionRailPlugin({
     if (!scrollEl) return
 
     let frame = 0
+    let offsets: number[] = []
+
+    const measure = () => {
+      const containerTop = scrollEl.getBoundingClientRect().top
+      offsets = headings.map((heading) => {
+        const el = editor.getElementByKey(heading.key)
+        if (!el) return Number.POSITIVE_INFINITY
+        return el.getBoundingClientRect().top - containerTop + scrollEl.scrollTop
+      })
+    }
+
     const compute = () => {
       frame = 0
-      const containerTop = scrollEl.getBoundingClientRect().top
       const scrollable = scrollEl.scrollHeight > scrollEl.clientHeight + 4
       const atBottom =
         scrollable &&
         scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2
-      let next: number
+      const line = scrollEl.scrollTop + ACTIVE_HEADING_OFFSET
+      let next = 0
       // A short final section may never scroll up to the activation line, so
       // treat the true bottom of the note as being "in" the last section.
       if (atBottom) {
         next = headings.length - 1
       } else {
-        next = 0
-        headings.forEach((heading, index) => {
-          const el = editor.getElementByKey(heading.key)
-          if (!el) return
-          if (el.getBoundingClientRect().top - containerTop <= ACTIVE_HEADING_OFFSET) {
-            next = index
-          }
-        })
+        for (let i = 0; i < offsets.length; i += 1) {
+          if (offsets[i] <= line) next = i
+        }
       }
       activeIndexRef.current = next
       setActiveIndex((prev) => (prev === next ? prev : next))
@@ -182,6 +194,10 @@ export function SectionRailPlugin({
       if (frame) return
       frame = requestAnimationFrame(compute)
     }
+    const remeasure = () => {
+      measure()
+      schedule()
+    }
     const onScroll = (event: Event) => {
       if (event.target !== scrollEl) return
       schedule()
@@ -195,18 +211,24 @@ export function SectionRailPlugin({
     }
     const onScrollEnd = () => cancelJump()
 
+    const observer = new ResizeObserver(remeasure)
+    observer.observe(root)
+    const unregisterUpdate = editor.registerUpdateListener(remeasure)
+
     document.addEventListener("scroll", onScroll, true)
     scrollEl.addEventListener("scrollend", onScrollEnd)
     scrollEl.addEventListener("wheel", cancelJump, { passive: true })
     scrollEl.addEventListener("touchstart", cancelJump, { passive: true })
-    window.addEventListener("resize", schedule)
-    schedule()
+    window.addEventListener("resize", remeasure)
+    remeasure()
     return () => {
+      observer.disconnect()
+      unregisterUpdate()
       document.removeEventListener("scroll", onScroll, true)
       scrollEl.removeEventListener("scrollend", onScrollEnd)
       scrollEl.removeEventListener("wheel", cancelJump)
       scrollEl.removeEventListener("touchstart", cancelJump)
-      window.removeEventListener("resize", schedule)
+      window.removeEventListener("resize", remeasure)
       if (frame) cancelAnimationFrame(frame)
     }
   }, [editor, headings, isActive])

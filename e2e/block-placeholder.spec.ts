@@ -1047,35 +1047,35 @@ test.describe('Block placeholder — title interplay', () => {
     await window.waitForTimeout(200);
     await expect(paragraphPlaceholders(window)).toHaveCount(1);
 
-    // ArrowUp into the title — selection moves WITHIN the editor (no blur):
-    // this exercises the update-listener path, not the BLUR handler
-    await window.keyboard.press('ArrowUp');
+    // Move focus into the separate title field — the body placeholder vanishes
+    // and the title ghost persists (the title is no longer part of the body
+    // editor's selection, so this is a focus change rather than a caret move).
+    await visibleMain(window).locator('h1.editor-title').click();
     await window.waitForTimeout(200);
     await expect(paragraphPlaceholders(window)).toHaveCount(0);
     await expect(titleGhost(window)).toHaveCount(1);
     await expectPlaceholderMatchesCaret(window);
 
     // And back down into the body
-    await window.keyboard.press('ArrowDown');
+    await visibleMain(window).locator('.ContentEditable__root p').first().click();
     await window.waitForTimeout(200);
     await expect(paragraphPlaceholders(window)).toHaveCount(1);
     await expectPlaceholderMatchesCaret(window);
     await expectInvariants(window);
   });
 
-  test('undo teleporting the caret from body into title clears the body placeholder', async ({ window }) => {
+  test('undo and redo keep the body placeholder in sync with the caret', async ({ window }) => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
-    await visibleMain(window).locator('h1.editor-title').click();
+    await visibleMain(window).locator('.ContentEditable__root p').first().click();
     await window.keyboard.type('Doc');
     await window.waitForTimeout(HISTORY_PAUSE);
     await window.keyboard.press('Enter'); // insertNewAfter → caret in fresh empty paragraph
     await window.waitForTimeout(HISTORY_PAUSE);
     await expect(paragraphPlaceholders(window)).toHaveCount(1);
 
-    // Undo the paragraph insertion: the caret jumps BACK into the title.
-    // The placeholder must vanish with it — this is the exact cross-boundary
-    // selection restore the plugin has to track.
+    // Undo the paragraph insertion: the caret lands back at the end of "Doc",
+    // so the empty-paragraph placeholder must disappear with it.
     await window.keyboard.press(`${mod}+z`);
     await window.waitForTimeout(250);
     await expect(paragraphPlaceholders(window)).toHaveCount(0);

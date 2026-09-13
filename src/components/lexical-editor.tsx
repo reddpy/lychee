@@ -797,7 +797,7 @@ export function LexicalEditor({
         <div className="pointer-events-none sticky bottom-3 z-30 flex justify-end px-6 pt-2">
           <div
             data-testid="word-count"
-            className="flex flex-col items-end gap-0.5 rounded-lg bg-[hsl(var(--muted))]/70 px-2.5 py-1.5 text-[11px] leading-tight text-[hsl(var(--muted-foreground))] backdrop-blur-sm"
+            className="flex flex-col items-end gap-0.5 rounded-lg bg-[hsl(var(--muted))]/90 px-2.5 py-1.5 text-[11px] leading-tight text-[hsl(var(--muted-foreground))]"
           >
             <span>{editorStats.words.toLocaleString()} words</span>
             <span>{editorStats.characters.toLocaleString()} characters</span>
