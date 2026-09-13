@@ -19,3 +19,25 @@ export function displayNoteTitle(title: string | null | undefined): string {
   const trimmed = (title ?? "").trim();
   return hasNoteTitle(trimmed) ? trimmed : NEW_NOTE_TITLE;
 }
+
+/**
+ * Characters allowed in a note title: letters (any script), numbers, spaces,
+ * and light punctuation. Everything else — symbols, emoji, and filesystem-
+ * hostile punctuation like `/ \ : * ? " < > |` — is dropped. Spaces are always
+ * allowed; runs of whitespace are kept as typed (commit trims the ends).
+ */
+const TITLE_INPUT_DISALLOWED = /[^\p{L}\p{N}\s\-_',.&()!]/gu;
+
+/**
+ * Drop disallowed characters while preserving whitespace exactly as typed.
+ * Use this when cleaning the live DOM so contentEditable's `&nbsp;` for
+ * trailing spaces survives.
+ */
+export function stripDisallowedTitleChars(raw: string): string {
+  return raw.replace(TITLE_INPUT_DISALLOWED, "");
+}
+
+/** Sanitize free-typed title text: drop disallowed chars, normalize whitespace. */
+export function sanitizeTitleInput(raw: string): string {
+  return stripDisallowedTitleChars(raw).replace(/\s/g, " ");
+}

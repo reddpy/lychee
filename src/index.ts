@@ -13,6 +13,8 @@ import {
   session,
 } from 'electron';
 import { closeDatabase, initDatabase } from './main/db';
+import { getVaultSync } from './main/vault-sync';
+import { cleanupImportedArtifacts } from './main/cleanup';
 import { resolveImagePath } from './main/image-protocol';
 import { registerClipboardIpcHandler, registerIpcHandlers } from './main/ipc';
 import { installEditorContextMenu } from './main/editor-context-menu';
@@ -402,6 +404,9 @@ app.whenReady().then(() => {
   const { dbPath } = initDatabase();
   console.log(`[db] sqlite: ${dbPath}`);
 
+  // One-time self-heal for notes a buggy watcher imported from arbitrary files.
+  cleanupImportedArtifacts();
+
   applySpellCheckPreferences();
   applyGeneralPreferencesOnStartup();
   Menu.setApplicationMenu(buildAppMenu());
@@ -414,6 +419,10 @@ app.whenReady().then(() => {
   });
   registerClipboardIpcHandler();
   createWindow();
+
+  // Resume vault watching after the window exists so change events have a
+  // renderer to convert markdown → editor content.
+  getVaultSync().startIfEnabled();
 
   // Start the auto-updater after the window exists so early status broadcasts
   // reach a live renderer (late joiners pull current state via update.getStatus).
@@ -439,6 +448,7 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  getVaultSync().stop();
 });
 
 // Close the DB only after all windows are gone: the main window persists its

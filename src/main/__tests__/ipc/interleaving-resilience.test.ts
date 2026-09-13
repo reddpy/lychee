@@ -15,6 +15,7 @@ vi.mock('electron', () => ({
 
 vi.mock('../../repos/documents', () => ({
   listDocuments: vi.fn().mockReturnValue([]),
+  findDocumentByTitle: vi.fn().mockReturnValue(null),
   getDocumentById: vi.fn().mockReturnValue(null),
   createDocument: vi.fn().mockReturnValue({ id: 'doc-1', title: '' }),
   updateDocument: vi.fn().mockImplementation((id: string, patch: Record<string, unknown>) => ({
@@ -53,14 +54,6 @@ vi.mock('../../repos/settings', () => ({
 
 import { registerIpcHandlers, docs } from './setup';
 
-function validEditorContent(text: string) {
-  return JSON.stringify({
-    root: {
-      children: [{ type: 'text', text }],
-    },
-  });
-}
-
 describe('IPC — Interleaving Resilience', () => {
   beforeEach(() => {
     handlers.clear();
@@ -68,39 +61,32 @@ describe('IPC — Interleaving Resilience', () => {
     registerIpcHandlers();
   });
 
-  it('invalid update payloads do not poison subsequent valid updates', async () => {
+  it('markdown update payloads all persist and interleave safely', async () => {
     const update = handlers.get('documents.update')!;
 
     const results = await Promise.allSettled([
-      update(null, { id: 'doc-1', content: '{bad-json' }), // invalid JSON
-      update(null, { id: 'doc-1', content: validEditorContent('ok-1') }),
-      update(null, { id: 'doc-1', content: validEditorContent('ok-2') }),
+      update(null, { id: 'doc-1', content: '# one' }),
+      update(null, { id: 'doc-1', content: 'two' }),
+      update(null, { id: 'doc-1', content: 'three' }),
     ]);
 
-    expect(results[0].status).toBe('rejected');
-    expect((results[0] as PromiseRejectedResult).reason.message).toContain('content is not valid JSON');
-
-    expect(results[1].status).toBe('fulfilled');
-    expect(results[2].status).toBe('fulfilled');
-    expect(docs.updateDocument).toHaveBeenCalledTimes(2);
+    expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+    expect(docs.updateDocument).toHaveBeenCalledTimes(3);
   });
 
-  it('mixed invalid/valid create payloads remain isolated under burst', async () => {
+  it('mixed create payloads remain isolated under burst', async () => {
     const create = handlers.get('documents.create')!;
     const payloads = [
-      { content: '{oops' },
-      { content: validEditorContent('a') },
-      { content: '{oops-again' },
-      { content: validEditorContent('b') },
-      { content: validEditorContent('c') },
+      { content: '# a' },
+      { content: 'b' },
+      { content: 'c' },
+      { content: 'd' },
+      { content: 'e' },
     ];
 
     const results = await Promise.allSettled(payloads.map((p) => create(null, p)));
-    const rejected = results.filter((r) => r.status === 'rejected');
-    const fulfilled = results.filter((r) => r.status === 'fulfilled');
-    expect(rejected).toHaveLength(2);
-    expect(fulfilled).toHaveLength(3);
-    expect(docs.createDocument).toHaveBeenCalledTimes(3);
+    expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+    expect(docs.createDocument).toHaveBeenCalledTimes(5);
   });
 
   it('settings get/set burst remains stable while document handlers are active', async () => {
@@ -112,7 +98,7 @@ describe('IPC — Interleaving Resilience', () => {
     for (let i = 0; i < 40; i += 1) {
       ops.push(settingsSet(null, { key: 'searchPalettePreviewOpen', value: i % 2 === 0 ? 'true' : 'false' }));
       ops.push(settingsGet(null, { key: 'searchPalettePreviewOpen' }));
-      ops.push(update(null, { id: 'doc-1', content: validEditorContent(`v-${i}`) }));
+      ops.push(update(null, { id: 'doc-1', content: `v-${i}` }));
     }
     const results = await Promise.allSettled(ops);
     expect(results.every((r) => r.status === 'fulfilled')).toBe(true);

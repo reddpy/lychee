@@ -26,28 +26,48 @@ function exportAsMarkdown(params: ReferenceNodeParams): string {
   return markdown
 }
 
+/** The visible, pure-link line — the first line of the export. */
+function visibleLine(markdown: string): string {
+  return markdown.split('\n')[0]
+}
+
 describe('reference markdown export — the URL is always a pure link', () => {
   it('exports a card as a plain markdown link', () => {
     expect(
-      exportAsMarkdown({ displayMode: 'card', url: 'https://example.com', title: 'Example' }),
+      visibleLine(exportAsMarkdown({ displayMode: 'card', url: 'https://example.com', title: 'Example' })),
     ).toBe('[Example](https://example.com)')
   })
 
   it('falls back to the URL as link text when a card has no title', () => {
-    expect(exportAsMarkdown({ displayMode: 'card', url: 'https://example.com' })).toBe(
-      '[https://example.com](https://example.com)',
-    )
+    expect(
+      visibleLine(exportAsMarkdown({ displayMode: 'card', url: 'https://example.com' })),
+    ).toBe('[https://example.com](https://example.com)')
   })
 
   it('exports an image as a standard markdown image pointing at the canonical URL', () => {
     expect(
-      exportAsMarkdown({ displayMode: 'image', url: 'https://example.com/pic.png', altText: 'Pic' }),
+      visibleLine(
+        exportAsMarkdown({ displayMode: 'image', url: 'https://example.com/pic.png', altText: 'Pic' }),
+      ),
     ).toBe('![Pic](https://example.com/pic.png)')
   })
 
   it('falls back to the local src for an image with no canonical URL', () => {
     expect(
-      exportAsMarkdown({ displayMode: 'image', src: 'local.png', altText: 'Local' }),
+      visibleLine(exportAsMarkdown({ displayMode: 'image', src: 'local.png', altText: 'Local' })),
     ).toBe('![Local](local.png)')
+  })
+
+  it('carries non-markdown fields in a lychee-reference fence', () => {
+    const markdown = exportAsMarkdown({
+      displayMode: 'card',
+      url: 'https://example.com',
+      title: 'Example',
+      description: 'A description',
+    })
+    expect(markdown).toContain('```lychee-reference')
+    expect(markdown).toContain('"description":"A description"')
+    // url/title live on the visible line, not duplicated in the fence.
+    expect(markdown.split('```lychee-reference')[1]).not.toContain('https://example.com')
   })
 })

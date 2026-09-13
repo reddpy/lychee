@@ -14,7 +14,7 @@ import {
   type ReferenceDisplayMode,
 } from "./reference-node"
 import { $convertReferenceToLink } from "@/components/editor/utils/reference-link"
-import { LYCHEE_SAVE_TAG } from "@/components/editor/editor"
+import { LYCHEE_SAVE_TAG } from "@/components/editor/editor-tags"
 import {
   ContextMenu,
   ContextMenuContent,

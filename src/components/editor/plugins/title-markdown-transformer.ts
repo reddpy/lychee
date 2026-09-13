@@ -3,6 +3,7 @@ import {
   $isTitleNode,
   TitleNode,
 } from "@/components/editor/nodes/title-node"
+import { NEVER_MATCH } from "@/components/editor/plugins/markdown-export-only"
 
 /**
  * Export the canonical note title as a level-one Markdown heading.
@@ -19,7 +20,7 @@ export const TITLE_EXPORT: ElementTransformer = {
     const title = exportChildren(node).trim()
     return title ? `# ${title}` : ""
   },
-  regExp: /(?:)/, // never used for import; required by ElementTransformer
+  regExp: NEVER_MATCH, // never used for import; required by ElementTransformer
   replace: () => {},
   type: "element",
 }

@@ -1,6 +1,10 @@
 import type { DocumentRow, NoteMetadata } from './documents';
 import type { GeneralPreferences } from './general-preferences';
 import type { KeybindingMap, ShortcutId } from './keybindings';
+import type { VaultWriteEntry } from './vault-path';
+import type { ScannedVaultEntry, VaultImportRequest } from './vault-import';
+import type { VaultFileChangedEvent, VaultResolveRequest } from './vault-watch';
+import type { McpSetupFields } from './mcp';
 
 // ── URL resolution types ─────────────────────────────────────────────
 
@@ -89,6 +93,13 @@ export type IpcContract = {
       parentId?: string | null;
       emoji?: string | null;
       metadata?: Partial<NoteMetadata>;
+      /** Force a durable (fsync) write-through. Debounced autosaves omit this. */
+      flush?: boolean;
+      /**
+       * Whether the write-through may move the file to its canonical path.
+       * Autosaves pass false so a file is only renamed on commit (blur/tab/quit).
+       */
+      rename?: boolean;
     };
     res: { document: DocumentRow };
   };
@@ -137,6 +148,78 @@ export type IpcContract = {
     res:
       | { canceled: true }
       | { canceled: false; filePath: string };
+  };
+  'vault.chooseDirectory': {
+    req: { purpose?: 'export' | 'import' | 'watch' };
+    res:
+      | { canceled: true }
+      | { canceled: false; directory: string };
+  };
+  'vault.writeEntries': {
+    req: { directory: string; entries: VaultWriteEntry[] };
+    res: { written: number };
+  };
+  'vault.scanDirectory': {
+    req: { directory: string };
+    res: {
+      entries: ScannedVaultEntry[];
+      skipped: Array<{ relativePath: string; reason: string }>;
+    };
+  };
+  'vault.importDocuments': {
+    req: { directory?: string; documents: VaultImportRequest[] };
+    res: { created: number; skipped: number };
+  };
+  'vault.watchStart': {
+    req: { directory: string };
+    res: { ok: true };
+  };
+  'vault.watchStop': {
+    req: Record<string, never>;
+    res: { ok: true };
+  };
+  'vault.watchStatus': {
+    req: Record<string, never>;
+    res: { running: boolean; directory: string | null };
+  };
+  'vault.resolveExternalChange': {
+    req: VaultResolveRequest;
+    res: { ok: true };
+  };
+  'vault.mcpConfig': {
+    req: Record<string, never>;
+    res: {
+      serverPath: string;
+      vaultPath: string;
+      defaultVaultPath: string;
+      command: string;
+      args: string[];
+      env: Record<string, string>;
+      config: string;
+      setup: McpSetupFields;
+      /** Notes that look like mistakenly imported non-markdown files. */
+      importedCount: number;
+    };
+  };
+  'vault.cleanupImportedNotes': {
+    req: Record<string, never>;
+    res: { removed: number };
+  };
+  'vault.bootstrap': {
+    req: Record<string, never>;
+    res: { directory: string; needsExport: boolean; needsRefresh: boolean; watchEnabled: boolean };
+  };
+  'vault.location': {
+    req: Record<string, never>;
+    res: { directory: string };
+  };
+  'vault.openFolder': {
+    req: Record<string, never>;
+    res: { ok: true };
+  };
+  'clipboard.writeText': {
+    req: { text: string };
+    res: { ok: true };
   };
   'images.save': {
     req: { data: string; mimeType: string };
@@ -293,6 +376,7 @@ export type IpcEvents = {
   'update:status': UpdateStatus;
   'keybindings:changed': KeybindingMap;
   'preferences:changed': GeneralPreferences;
+  'vault:file-changed': VaultFileChangedEvent;
 };
 
 export type IpcEventChannel = keyof IpcEvents;

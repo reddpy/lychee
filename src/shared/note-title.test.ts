@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { NEW_NOTE_TITLE, displayNoteTitle, hasNoteTitle } from "./note-title";
+import {
+  NEW_NOTE_TITLE,
+  displayNoteTitle,
+  hasNoteTitle,
+  sanitizeTitleInput,
+  stripDisallowedTitleChars,
+} from "./note-title";
 
 describe("displayNoteTitle", () => {
   it("returns the trimmed title when present", () => {
@@ -52,5 +58,49 @@ describe("hasNoteTitle", () => {
   it("is the inverse of showing the placeholder", () => {
     expect(hasNoteTitle("Real")).toBe(displayNoteTitle("Real") !== NEW_NOTE_TITLE);
     expect(hasNoteTitle("")).toBe(displayNoteTitle("") !== NEW_NOTE_TITLE);
+  });
+});
+
+describe("sanitizeTitleInput", () => {
+  it("keeps letters, numbers, spaces, and light punctuation", () => {
+    expect(sanitizeTitleInput("Q3 Report - It's (draft), v2!")).toBe(
+      "Q3 Report - It's (draft), v2!",
+    );
+  });
+
+  it("keeps non-Latin scripts and accented letters", () => {
+    expect(sanitizeTitleInput("Café 東京 Привет")).toBe("Café 東京 Привет");
+  });
+
+  it("removes symbols and filesystem-hostile punctuation", () => {
+    expect(sanitizeTitleInput("a@b#c$d%e^f+g=h")).toBe("abcdefgh");
+    expect(sanitizeTitleInput("a/b\\c:d*e?f\"g<h>i|j")).toBe("abcdefghij");
+    expect(sanitizeTitleInput("{a}[b]")).toBe("ab");
+  });
+
+  it("preserves spaces as typed (including runs)", () => {
+    expect(sanitizeTitleInput("hello   world")).toBe("hello   world");
+    expect(sanitizeTitleInput("  padded  ")).toBe("  padded  ");
+  });
+
+  it("converts newlines and tabs to spaces", () => {
+    expect(sanitizeTitleInput("a\nb\tc")).toBe("a b c");
+  });
+
+  it("removes emoji (notes have a dedicated icon field)", () => {
+    expect(sanitizeTitleInput("Party 🎉 time")).toBe("Party  time");
+  });
+
+  it("is a no-op for a single disallowed key so callers can block it", () => {
+    expect(sanitizeTitleInput("@")).toBe("");
+    expect(sanitizeTitleInput(" ")).toBe(" ");
+  });
+});
+
+describe("stripDisallowedTitleChars", () => {
+  it("drops disallowed chars but keeps whitespace bytes untouched", () => {
+    const nbsp = "\u00A0";
+    expect(stripDisallowedTitleChars(`My${nbsp}Note`)).toBe(`My${nbsp}Note`);
+    expect(stripDisallowedTitleChars("a@b c")).toBe("ab c");
   });
 });

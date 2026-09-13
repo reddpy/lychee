@@ -16,6 +16,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "../components/ui/sidebar";
+import { Toaster } from "../components/ui/toast";
 import { useDocumentStore } from "../renderer/document-store";
 import { useSettingsStore } from "../renderer/settings-store";
 import type { SidebarPreferences } from "../renderer/sidebar-preferences";
@@ -23,6 +24,8 @@ import { useKeybindingsStore } from "../renderer/keybindings-store";
 import { useGeneralPreferencesStore } from "../renderer/general-preferences-store";
 import { useEditorPreferencesStore } from "../renderer/editor-preferences-store";
 import { startWorkspaceSessionPersistence } from "../renderer/workspace-session-runtime";
+import { registerVaultWatcherBridge } from "../renderer/vault-watch";
+import { bootstrapVault } from "../renderer/vault-bootstrap";
 
 // Pulls inset-centered content left by half the sidebar width to land at the
 // viewport center, clamped so the ~320px horizontal logo never crosses the
@@ -312,13 +315,19 @@ export function App({
     const offPreferences = window.lychee.on('preferences:changed', (preferences) => {
       useGeneralPreferencesStore.getState().applyPreferences(preferences);
     });
+    const offVault = registerVaultWatcherBridge();
     return () => {
       offKeybindings();
       offPreferences();
+      offVault();
     };
   }, []);
   // Persist open tabs so `restoreLastSession` can reopen them next launch.
   React.useEffect(() => startWorkspaceSessionPersistence(), []);
+  // Ensure notes exist as physical files (default vault) with no setup step.
+  React.useEffect(() => {
+    void bootstrapVault();
+  }, []);
   // Reset the editor boundary when the active tab changes, so a crash isolated
   // to one document recovers as soon as the user navigates away from it,
   // instead of staying stuck on the fallback until a full reload.
@@ -335,13 +344,14 @@ export function App({
           <TopBar />
           <div className="relative flex min-h-0 flex-1">
             <AppSidebar />
-            <SidebarInset>
+            <SidebarInset className="relative">
               <div className="relative flex min-h-0 flex-1 flex-col">
                 <ErrorBoundary scope="editor" resetKeys={[selectedId]}>
                   {e2eCrashProbe("editor")}
                   <EditorArea />
                 </ErrorBoundary>
               </div>
+              <Toaster />
             </SidebarInset>
             <CollapsedSidebarWidget />
           </div>

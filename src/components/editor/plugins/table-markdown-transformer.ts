@@ -15,6 +15,7 @@ import {
   $isTableCellNode,
   TableCellHeaderStates,
 } from "@lexical/table"
+import { NEVER_MATCH } from "@/components/editor/plugins/markdown-export-only"
 
 const TABLE_ROW_REG_EXP = /^\|(.+)\|\s?$/
 const TABLE_ROW_DIVIDER_REG_EXP = /^(\| ?:?-+:? ?)+\|\s?$/
@@ -68,7 +69,7 @@ export const TABLE_EXPORT: MultilineElementTransformer = {
 
     return lines.join("\n")
   },
-  regExpStart: /(?:)/, // never matches (export-only)
+  regExpStart: NEVER_MATCH, // never matches (export-only)
   replace: () => {},
   type: "multiline-element",
 }

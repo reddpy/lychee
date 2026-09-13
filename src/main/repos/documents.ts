@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { DocumentRow, NoteMetadata } from '../../shared/documents';
+import { CONTENT_SCHEMA_VERSION } from '../../shared/documents';
 import { getDb } from '../db';
 
 function nowIso() {
@@ -31,7 +32,8 @@ export function listDocuments(params: {
   return hydrateRows(
     db
       .prepare(
-        `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata
+        `SELECT id, title, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata,
+                CASE WHEN length(content) > 262144 THEN substr(content, 1, 262144) ELSE content END AS content
          FROM documents
          WHERE deletedAt IS NULL
          ORDER BY sortOrder ASC, updatedAt DESC
@@ -52,7 +54,8 @@ export function listTrashedDocuments(params: {
   return hydrateRows(
     db
       .prepare(
-        `SELECT id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata
+        `SELECT id, title, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata,
+                CASE WHEN length(content) > 262144 THEN substr(content, 1, 262144) ELSE content END AS content
          FROM documents
          WHERE deletedAt IS NOT NULL
          ORDER BY deletedAt DESC
@@ -72,6 +75,102 @@ export function getDocumentById(id: string): DocumentRow | null {
     )
     .get(id) as RawDocumentRow | undefined;
   return row ? hydrateRow(row) : null;
+}
+
+/**
+ * Find a non-trashed note whose last-known vault path matches. Used to attribute
+ * an external file deletion to its note.
+ */
+export function findDocumentByVaultPath(relativePath: string): DocumentRow | null {
+  const rows = getDb()
+    .prepare(`SELECT id, metadata FROM documents WHERE deletedAt IS NULL`)
+    .all() as Array<{ id: string; metadata: string | null }>;
+  for (const row of rows) {
+    let path: string | undefined;
+    try {
+      path = (JSON.parse(row.metadata ?? "{}") as { vaultRelativePath?: string })
+        .vaultRelativePath;
+    } catch {
+      path = undefined;
+    }
+    if (path === relativePath) return getDocumentById(row.id);
+  }
+  return null;
+}
+
+/**
+ * Non-trashed notes that have been written to the vault at least once (i.e. have
+ * a stored `vaultRelativePath`). Used to detect externally deleted files at boot.
+ */
+export function listVaultBackedDocuments(): Array<{ id: string; vaultRelativePath: string }> {
+  const rows = getDb()
+    .prepare(`SELECT id, metadata FROM documents WHERE deletedAt IS NULL`)
+    .all() as Array<{ id: string; metadata: string | null }>;
+  const out: Array<{ id: string; vaultRelativePath: string }> = [];
+  for (const row of rows) {
+    try {
+      const path = (JSON.parse(row.metadata ?? "{}") as { vaultRelativePath?: string })
+        .vaultRelativePath;
+      if (typeof path === "string" && path) out.push({ id: row.id, vaultRelativePath: path });
+    } catch {
+      // Ignore malformed metadata.
+    }
+  }
+  return out;
+}
+
+/**
+ * Lightweight id/title/parent/sort rows for every non-trashed document. Unlike
+ * `listDocuments` it is not paginated — callers that must reason about the whole
+ * tree (vault path planning) need every node.
+ */
+export function listDocumentTree(): Array<{
+  id: string;
+  title: string;
+  parentId: string | null;
+  sortOrder: number;
+}> {
+  return getDb()
+    .prepare(`SELECT id, title, parentId, sortOrder FROM documents WHERE deletedAt IS NULL`)
+    .all() as Array<{ id: string; title: string; parentId: string | null; sortOrder: number }>;
+}
+
+/** Every non-trashed note's id and title (for cleanup / duplicate scans). */
+export function listAllDocumentTitles(): Array<{ id: string; title: string }> {
+  return getDb()
+    .prepare(`SELECT id, title FROM documents WHERE deletedAt IS NULL`)
+    .all() as Array<{ id: string; title: string }>;
+}
+
+/**
+ * Find a non-trashed note with the same (trimmed, case-insensitive) title.
+ * Empty titles are not considered duplicates — untitled notes are allowed.
+ */
+export function findDocumentByTitle(
+  title: string,
+  excludeId?: string,
+): { id: string } | null {
+  const trimmed = title.trim();
+  if (!trimmed) return null;
+  const db = getDb();
+  const row = (
+    excludeId
+      ? db
+          .prepare(
+            `SELECT id FROM documents
+             WHERE deletedAt IS NULL AND id != ? AND lower(trim(title)) = lower(?)
+             LIMIT 1`,
+          )
+          .get(excludeId, trimmed)
+      : db
+          .prepare(
+            `SELECT id FROM documents
+             WHERE deletedAt IS NULL AND lower(trim(title)) = lower(?)
+             LIMIT 1`,
+          )
+          .get(trimmed)
+  ) as { id: string } | undefined;
+  return row ?? null;
 }
 
 export function createDocument(input: {
@@ -134,12 +233,29 @@ export function updateDocument(
     parentId?: string | null;
     emoji?: string | null;
     metadata?: Partial<NoteMetadata>;
+    /**
+     * Preserve an external timestamp (vault apply) instead of stamping "now".
+     * Omit for user-driven edits so `updatedAt` reflects the moment of change.
+     */
+    updatedAt?: string;
   },
 ): DocumentRow {
   const db = getDb();
   const existing = getDocumentById(id);
   if (!existing) {
     throw new Error(`Document not found: ${id}`);
+  }
+
+  // Downgrade guard: never overwrite content written by a newer content schema.
+  // The renderer already blocks editing in this case; this is defense in depth
+  // for IPC callers (agents, future MCP, scripts).
+  if (patch.content !== undefined) {
+    const existingVersion = existing.metadata.contentSchemaVersion ?? 0;
+    if (existingVersion > CONTENT_SCHEMA_VERSION) {
+      throw new Error(
+        `Refusing to overwrite content written by a newer content schema (v${existingVersion} > v${CONTENT_SCHEMA_VERSION}).`,
+      );
+    }
   }
 
   const next: DocumentRow = {
@@ -152,7 +268,7 @@ export function updateDocument(
     emoji: patch.emoji === undefined ? existing.emoji : patch.emoji ?? null,
     metadata: patch.metadata ? { ...existing.metadata, ...patch.metadata } : existing.metadata,
     deletedAt: existing.deletedAt,
-    updatedAt: nowIso(),
+    updatedAt: patch.updatedAt ?? nowIso(),
   };
 
   db.prepare(
@@ -175,6 +291,104 @@ export function updateDocument(
 export function deleteDocument(id: string): void {
   const db = getDb();
   db.prepare(`DELETE FROM documents WHERE id = ?`).run(id);
+}
+
+/**
+ * Update only the metadata JSON, without touching `content` or `updatedAt`.
+ * Used for internal bookkeeping (e.g. vault revision baselines) that must not
+ * appear as a user-visible edit.
+ */
+export function setDocumentMetadata(id: string, patch: Partial<NoteMetadata>): void {
+  const db = getDb();
+  const existing = getDocumentById(id);
+  if (!existing) return;
+  const metadata: NoteMetadata = { ...existing.metadata, ...patch };
+  db.prepare(`UPDATE documents SET metadata = ? WHERE id = ?`).run(
+    JSON.stringify(metadata),
+    id,
+  );
+}
+
+/**
+ * Update index columns from a vault file (files are authoritative for metadata
+ * and hierarchy). Does not touch `content`.
+ */
+export function applyIndexFields(
+  id: string,
+  fields: {
+    title?: string;
+    content?: string;
+    emoji?: string | null;
+    sortOrder?: number;
+    parentId?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+    metadata?: NoteMetadata;
+  },
+): void {
+  const db = getDb();
+  const existing = getDocumentById(id);
+  if (!existing) return;
+
+  db.prepare(
+    `UPDATE documents
+     SET title = ?, content = ?, emoji = ?, sortOrder = ?, parentId = ?, createdAt = ?, updatedAt = ?, metadata = ?
+     WHERE id = ?`,
+  ).run(
+    fields.title ?? existing.title,
+    fields.content ?? existing.content,
+    fields.emoji === undefined ? existing.emoji : fields.emoji,
+    fields.sortOrder ?? existing.sortOrder,
+    fields.parentId === undefined ? existing.parentId : fields.parentId,
+    fields.createdAt ?? existing.createdAt,
+    fields.updatedAt ?? existing.updatedAt,
+    JSON.stringify(fields.metadata ?? existing.metadata),
+    id,
+  );
+}
+
+/**
+ * Additively import a document under an explicit id. If the id already exists
+ * the import is skipped (`created: false`) — import never overwrites or deletes.
+ * A `parentId` that does not exist falls back to the root.
+ */
+export function importDocument(input: {
+  id: string;
+  title: string;
+  content: string;
+  parentId?: string | null;
+  emoji?: string | null;
+  sortOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  metadata?: NoteMetadata;
+}): { created: boolean } {
+  const db = getDb();
+  const existing = db.prepare(`SELECT id FROM documents WHERE id = ?`).get(input.id);
+  if (existing) return { created: false };
+
+  const createdAt = input.createdAt ?? nowIso();
+  const updatedAt = input.updatedAt ?? createdAt;
+  const parentExists =
+    input.parentId != null &&
+    db.prepare(`SELECT id FROM documents WHERE id = ?`).get(input.parentId) !== undefined;
+
+  db.prepare(
+    `INSERT INTO documents (id, title, content, createdAt, updatedAt, parentId, emoji, deletedAt, sortOrder, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+  ).run(
+    input.id,
+    input.title.trim(),
+    input.content,
+    createdAt,
+    updatedAt,
+    parentExists ? input.parentId : null,
+    input.emoji ?? null,
+    Math.max(0, Math.floor(input.sortOrder ?? 0)),
+    JSON.stringify(input.metadata ?? {}),
+  );
+
+  return { created: true };
 }
 
 /** Trash a document and all its nested descendants (cascade to trash). Returns doc + list of all trashed ids for UI. */
@@ -283,7 +497,10 @@ export function restoreDocument(id: string): { document: DocumentRow; restoredId
 }
 
 /** Permanently delete a document and all its descendants from the database. */
-export function permanentDeleteDocument(id: string): { deletedIds: string[] } {
+export function permanentDeleteDocument(id: string): {
+  deletedIds: string[];
+  deletedPaths: string[];
+} {
   const db = getDb();
   const existing = getDocumentById(id);
   if (!existing) {
@@ -301,8 +518,22 @@ export function permanentDeleteDocument(id: string): { deletedIds: string[] } {
     .all(id) as { id: string }[];
   const deletedIds = tree.map((r) => r.id);
   const placeholders = deletedIds.map(() => '?').join(',');
+  // Capture file paths before the rows disappear so the caller can purge them.
+  const deletedPaths = (
+    db
+      .prepare(`SELECT metadata FROM documents WHERE id IN (${placeholders})`)
+      .all(...deletedIds) as { metadata: string }[]
+  )
+    .map((row) => {
+      try {
+        return (JSON.parse(row.metadata) as { vaultRelativePath?: string }).vaultRelativePath;
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
   db.prepare(`DELETE FROM documents WHERE id IN (${placeholders})`).run(...deletedIds);
-  return { deletedIds };
+  return { deletedIds, deletedPaths };
 }
 
 /** Get all descendant IDs of a document (for circular reference check). */

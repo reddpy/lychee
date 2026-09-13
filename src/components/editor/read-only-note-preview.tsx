@@ -9,7 +9,7 @@ import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { ContentEditable as LexicalContentEditable } from '@lexical/react/LexicalContentEditable';
 import type { SerializedEditorState } from 'lexical';
 
-import { sanitizeSerializedState } from './editor';
+import { parseDocumentContent, toSafeEditorStateString } from './content-load';
 import { nodes } from './nodes';
 import { editorTheme } from './themes/editor-theme';
 import { buildHighlightedPreviewStateFromParsed } from '../../shared/search-preview-state';
@@ -26,14 +26,8 @@ const previewConfigBase: InitialConfigType = {
 
 function parseSerializedState(content: string): SerializedEditorState | undefined {
   if (!content || content.trim() === '') return undefined;
-  try {
-    const parsed = JSON.parse(content) as SerializedEditorState;
-    const sanitized = sanitizeSerializedState(parsed);
-    if (!sanitized) return undefined;
-    return sanitized;
-  } catch {
-    return undefined;
-  }
+  const result = parseDocumentContent({ content });
+  return result.status === 'ready' ? result.editorState : undefined;
 }
 
 function hashString(value: string) {
@@ -71,6 +65,10 @@ export const ReadOnlyNotePreview = React.forwardRef<
   const [matchCount, setMatchCount] = React.useState(0);
   const [activeMatchIndex, setActiveMatchIndex] = React.useState(0);
   const mountKey = React.useMemo(() => hashString(editorState ?? ''), [editorState]);
+  const composerState = React.useMemo(
+    () => toSafeEditorStateString(editorState),
+    [editorState],
+  );
 
   const clampIndex = React.useCallback((index: number, count: number) => {
     if (count <= 0) return 0;
@@ -184,7 +182,7 @@ export const ReadOnlyNotePreview = React.forwardRef<
         key={mountKey}
         initialConfig={{
           ...previewConfigBase,
-          ...(editorState ? { editorState } : {}),
+          ...(composerState ? { editorState: composerState } : {}),
         }}
       >
         <div

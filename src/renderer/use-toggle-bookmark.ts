@@ -24,6 +24,14 @@ export function useToggleBookmark(docId: string) {
         id: docId,
         metadata: { bookmarkedAt: newBookmarkedAt },
       })
+      .then(({ document: updated }) => {
+        // Re-apply the persisted metadata: a concurrent documents reload (e.g.
+        // from the vault watcher) can otherwise clobber the optimistic update
+        // and leave the bookmark icon stale.
+        if (updated?.metadata) {
+          updateDocumentInStore(updated.id, { metadata: updated.metadata });
+        }
+      })
       .catch(() => {
         updateDocumentInStore(docId, { metadata: oldMetadata });
       });

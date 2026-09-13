@@ -29,6 +29,7 @@ vi.mock('electron', () => ({
 
 vi.mock('../../repos/documents', () => ({
   listDocuments: vi.fn().mockReturnValue([]),
+  findDocumentByTitle: vi.fn().mockReturnValue(null),
   getDocumentById: vi.fn().mockReturnValue(null),
   createDocument: vi.fn().mockReturnValue({ id: '1' }),
   updateDocument: vi.fn().mockReturnValue({ id: '1' }),

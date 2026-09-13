@@ -1,17 +1,23 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell, type IpcMainEvent } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import type { IpcContract, IpcChannel } from '../shared/ipc-types';
 import { applyChromeToAllWindows, setChromeColors, setOverlayDimmed } from './window-chrome';
 import {
   createDocument,
   deleteDocument,
+  findDocumentByTitle,
   getDocumentById,
+  importDocument,
+  listAllDocumentTitles,
   listDocuments,
+  listDocumentTree,
   listTrashedDocuments,
   moveDocument,
   permanentDeleteDocument,
   restoreDocument,
+  setDocumentMetadata,
   trashDocument,
   updateDocument,
 } from './repos/documents';
@@ -38,6 +44,23 @@ import {
   setSpellCheckLanguages,
 } from './spellcheck';
 import { createDatabaseBackup } from './db';
+import { scanVaultDirectory, writeVaultEntries } from './vault';
+import { exportAssetsToVault, importAssetsFromVault } from './assets';
+import { buildServerConfig, defaultVaultPath, manualMcpConfig, mcpSetupFields, resolveVaultRoot } from './mcp-config';
+import { cleanupImportedArtifacts } from './cleanup';
+import { reconcileIndexFromVault } from './vault-index';
+import { restoreMetadataFromBackup } from './restore-metadata';
+import {
+  getVaultSync,
+  VAULT_LOCATION_KEY,
+  VAULT_WATCH_DIRECTORY_KEY,
+  VAULT_WATCH_ENABLED_KEY,
+} from './vault-sync';
+import { revisionOf } from '../shared/hash';
+import { stripLeadingTitle } from '../shared/markdown-title';
+import { isDeletedState, tombstoneSupersedes } from '../shared/tombstone';
+import { isNonMarkdownFileTitle } from '../shared/vault-watch';
+import { readTombstones } from './tombstones';
 
 type Handler<C extends IpcChannel> = (
   payload: IpcContract[C]['req'],
@@ -47,19 +70,12 @@ function handle<C extends IpcChannel>(channel: C, fn: Handler<C>) {
   ipcMain.handle(channel, async (_event, payload: IpcContract[C]['req']) => fn(payload));
 }
 
-function validateContentJson(content: string): void {
-  let parsed: unknown;
+/** Best-effort write-through: a failed file write must not fail the DB save. */
+function writeThrough(id: string, fsync = true, rename = true): void {
   try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error('content is not valid JSON');
-  }
-  if (typeof parsed !== 'object' || parsed === null || !('root' in parsed)) {
-    throw new Error('content must have a root key');
-  }
-  const root = (parsed as Record<string, unknown>).root;
-  if (typeof root !== 'object' || root === null || !Array.isArray((root as Record<string, unknown>).children)) {
-    throw new Error('content root.children must be an array');
+    getVaultSync().writeNoteToVault(id, fsync, rename);
+  } catch (error) {
+    console.error('Vault write-through failed:', error);
   }
 }
 
@@ -73,18 +89,34 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
   }));
 
   handle('documents.create', (payload) => {
-    if (payload && typeof payload.content === 'string' && payload.content !== '') {
-      validateContentJson(payload.content);
+    if (typeof payload?.title === 'string' && payload.title.trim() && findDocumentByTitle(payload.title)) {
+      throw new Error('Duplicate title');
     }
-    return { document: createDocument(payload) };
+    const document = createDocument(payload);
+    writeThrough(document.id);
+    getVaultSync().sweepPaths();
+    return { document };
   });
 
   handle('documents.update', (payload) => {
     if (!payload.id) throw new Error('Missing required field: id');
-    if (typeof payload.content === 'string' && payload.content !== '') {
-      validateContentJson(payload.content);
+    if (typeof payload.title === 'string' && payload.title.trim()) {
+      if (findDocumentByTitle(payload.title, payload.id)) throw new Error('Duplicate title');
     }
-    return { document: updateDocument(payload.id, payload) };
+    const hasFieldChanges =
+      payload.title !== undefined ||
+      payload.content !== undefined ||
+      payload.emoji !== undefined ||
+      payload.parentId !== undefined ||
+      payload.metadata !== undefined;
+    if (!hasFieldChanges) {
+      // Rename-only commit from a flush: move the file, don't rewrite it.
+      getVaultSync().commitNote(payload.id);
+      return { document: getDocumentById(payload.id) };
+    }
+    const document = updateDocument(payload.id, payload);
+    if (document) writeThrough(document.id, payload.flush !== false, payload.rename !== false);
+    return { document };
   });
 
   handle('documents.delete', (payload) => {
@@ -92,22 +124,60 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     return { ok: true };
   });
 
-  handle('documents.trash', (payload) => trashDocument(payload.id));
+  handle('documents.trash', (payload) => {
+    const result = trashDocument(payload.id);
+    getVaultSync().trashNoteFiles(result.trashedIds);
+    getVaultSync().sweepPaths();
+    getVaultSync().recordTombstones(result.trashedIds, 'trash');
+    return result;
+  });
 
-  handle('documents.restore', (payload) => restoreDocument(payload.id));
+  handle('documents.restore', (payload) => {
+    const result = restoreDocument(payload.id);
+    getVaultSync().restoreNoteFiles(result.restoredIds);
+    // Force-rewrite restored notes: if their file is gone (deleted from .trash,
+    // or lost with the vault), recreate it so a live note always has a file.
+    getVaultSync().sweepPaths(false, result.restoredIds);
+    getVaultSync().recordTombstones(result.restoredIds, 'restore');
+    return result;
+  });
 
   handle('documents.listTrashed', (payload) => ({
     documents: listTrashedDocuments(payload),
   }));
 
-  handle('documents.permanentDelete', (payload) =>
-    permanentDeleteDocument(payload.id),
-  );
+  handle('documents.permanentDelete', (payload) => {
+    const { deletedIds, deletedPaths } = permanentDeleteDocument(payload.id);
+    getVaultSync().purgeNoteFiles(deletedPaths);
+    getVaultSync().sweepPaths();
+    getVaultSync().recordTombstones(deletedIds, 'purge');
+    return { deletedIds };
+  });
 
   handle('documents.move', (payload) => {
     if (payload.sortOrder < 0) throw new Error('sortOrder must be non-negative');
     if (!Number.isInteger(payload.sortOrder)) throw new Error('sortOrder must be an integer');
-    return { document: moveDocument(payload.id, payload.parentId, payload.sortOrder) };
+    const before = getDocumentById(payload.id);
+    const document = moveDocument(payload.id, payload.parentId, payload.sortOrder);
+    const sync = getVaultSync();
+    sync.invalidatePaths();
+    // A move/reorder shifts sibling sort orders (and may change parents), so
+    // rewrite the moved note and every sibling in the old and new parent.
+    const parents = new Set<string | null>([before?.parentId ?? null, document.parentId]);
+    const affected = new Set<string>([document.id]);
+    try {
+      for (const node of listDocumentTree()) {
+        if (parents.has(node.parentId)) affected.add(node.id);
+      }
+    } catch {
+      // Best-effort: sibling rewrite is an optimization, not correctness-critical.
+    }
+    sync.rewriteNotes([...affected]);
+    sync.sweepPaths();
+    // A move/reorder from outside the UI (agent/MCP/script) must refresh the
+    // renderer; the in-app drag path also reloads, which is harmless.
+    sync.notifyChanged();
+    return { document };
   });
 
   handle('shell.openExternal', async (payload) => {
@@ -156,6 +226,259 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
 
     createDatabaseBackup(result.filePath);
     return { canceled: false, filePath: result.filePath };
+  });
+
+  handle('vault.chooseDirectory', async (payload) => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const options = {
+      title:
+        payload?.purpose === 'import'
+          ? 'Import Notes from Markdown'
+          : payload?.purpose === 'watch'
+            ? 'Choose a Folder to Watch'
+            : 'Export Notes as Markdown',
+      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+    return { canceled: false, directory: result.filePaths[0] };
+  });
+
+  handle('vault.writeEntries', (payload) => {
+    if (!payload || typeof payload.directory !== 'string' || payload.directory.length === 0) {
+      throw new Error('Missing required field: directory');
+    }
+    if (!Array.isArray(payload.entries)) {
+      throw new Error('entries must be an array');
+    }
+    for (const entry of payload.entries) {
+      if (
+        !entry ||
+        typeof entry.relativePath !== 'string' ||
+        typeof entry.contents !== 'string'
+      ) {
+        throw new Error('each entry requires string relativePath and contents');
+      }
+    }
+    // Never write into a shared folder's root: use a dedicated `Lychee/`
+    // subfolder unless the chosen folder is already one.
+    const root = resolveVaultRoot(payload.directory);
+
+    // Remember where the vault lives so the AI (MCP) config can reference the
+    // explicit path even when watching is not enabled.
+    setSetting(VAULT_LOCATION_KEY, root);
+
+    // Rewrite local image tokens to portable `assets/<hash>.<ext>` paths,
+    // copying the bytes into the vault.
+    const entries = payload.entries.map((entry) => ({
+      ...entry,
+      contents: exportAssetsToVault(root, entry.contents),
+    }));
+    const written = writeVaultEntries(root, entries);
+
+    // Record write baselines so the watcher can tell our writes from external
+    // edits and does not echo them back.
+    const vaultSync = getVaultSync();
+    for (const entry of entries) {
+      if (!entry.noteId) continue;
+      const note = getDocumentById(entry.noteId);
+      const fileRevision = revisionOf(entry.contents);
+      setDocumentMetadata(entry.noteId, {
+        vaultFileRevision: fileRevision,
+        vaultContentRevision: note ? revisionOf(note.content) : '',
+      });
+      vaultSync.suppress(entry.relativePath, fileRevision);
+    }
+
+    return { written };
+  });
+
+  handle('vault.watchStart', (payload) => {
+    if (!payload || typeof payload.directory !== 'string' || payload.directory.length === 0) {
+      throw new Error('Missing required field: directory');
+    }
+    const root = resolveVaultRoot(payload.directory);
+    getVaultSync().start(root);
+    setSetting(VAULT_WATCH_DIRECTORY_KEY, root);
+    setSetting(VAULT_LOCATION_KEY, root);
+    setSetting(VAULT_WATCH_ENABLED_KEY, 'true');
+    return { ok: true };
+  });
+
+  handle('vault.watchStop', () => {
+    getVaultSync().stop();
+    setSetting(VAULT_WATCH_ENABLED_KEY, 'false');
+    return { ok: true };
+  });
+
+  handle('vault.watchStatus', () => getVaultSync().status());
+
+  handle('vault.resolveExternalChange', (payload) => {
+    getVaultSync().resolve(payload);
+    return { ok: true };
+  });
+
+  handle('vault.mcpConfig', () => {
+    const storedRaw =
+      getSetting(VAULT_LOCATION_KEY) ?? getSetting(VAULT_WATCH_DIRECTORY_KEY) ?? '';
+    // Normalize a previously-stored shared folder (e.g. ~/Downloads) to the
+    // dedicated Lychee subfolder, and treat "not created yet" as unset so the UI
+    // offers setup instead of pointing the MCP server at a missing folder.
+    const configured = storedRaw ? resolveVaultRoot(storedRaw) : '';
+    const vaultPath = configured && fs.existsSync(configured) ? configured : '';
+    const fallback = defaultVaultPath();
+    const effectiveVault = vaultPath || fallback;
+    const config = buildServerConfig(effectiveVault);
+    const importedCount = listAllDocumentTitles().filter((row) =>
+      isNonMarkdownFileTitle(row.title),
+    ).length;
+    return {
+      serverPath: config.args[0],
+      vaultPath,
+      defaultVaultPath: fallback,
+      command: config.command,
+      args: config.args,
+      env: config.env ?? {},
+      config: manualMcpConfig(effectiveVault),
+      setup: mcpSetupFields(effectiveVault),
+      importedCount,
+    };
+  });
+
+  handle('vault.cleanupImportedNotes', () => {
+    let removed = 0;
+    for (const { id, title } of listAllDocumentTitles()) {
+      if (!isNonMarkdownFileTitle(title)) continue;
+      try {
+        trashDocument(id);
+        removed += 1;
+      } catch {
+        // A concurrent structural change must not abort the cleanup.
+      }
+    }
+    return { removed };
+  });
+
+  handle('vault.bootstrap', () => {
+    cleanupImportedArtifacts();
+    const metadataRestored = restoreMetadataFromBackup();
+    const stored =
+      getSetting(VAULT_LOCATION_KEY) ?? getSetting(VAULT_WATCH_DIRECTORY_KEY) ?? '';
+    const directory = stored ? resolveVaultRoot(stored) : defaultVaultPath();
+    fs.mkdirSync(directory, { recursive: true });
+    setSetting(VAULT_LOCATION_KEY, directory);
+    // Files are authoritative for metadata/hierarchy; rebuild the index from them.
+    reconcileIndexFromVault(directory);
+    const hasFiles = scanVaultDirectory(directory).entries.length > 0;
+    const hasDbNotes = listAllDocumentTitles().length > 0;
+    // Watching is the default; only an explicit opt-out disables it.
+    const watchEnabled = getSetting(VAULT_WATCH_ENABLED_KEY) !== 'false';
+    return {
+      directory,
+      needsExport: !hasFiles && hasDbNotes,
+      needsRefresh: metadataRestored,
+      watchEnabled,
+    };
+  });
+
+  handle('vault.location', () => {
+    const stored =
+      getSetting(VAULT_LOCATION_KEY) ?? getSetting(VAULT_WATCH_DIRECTORY_KEY) ?? '';
+    const directory = stored ? resolveVaultRoot(stored) : defaultVaultPath();
+    fs.mkdirSync(directory, { recursive: true });
+    setSetting(VAULT_LOCATION_KEY, directory);
+    return { directory };
+  });
+
+  handle('vault.openFolder', async () => {
+    const stored =
+      getSetting(VAULT_LOCATION_KEY) ?? getSetting(VAULT_WATCH_DIRECTORY_KEY) ?? '';
+    const directory = stored ? resolveVaultRoot(stored) : defaultVaultPath();
+    fs.mkdirSync(directory, { recursive: true });
+    const error = await shell.openPath(directory);
+    if (error) throw new Error(error);
+    return { ok: true };
+  });
+
+  handle('clipboard.writeText', (payload) => {
+    if (typeof payload.text !== 'string') throw new Error('text must be a string');
+    clipboard.writeText(payload.text);
+    return { ok: true };
+  });
+
+  handle('vault.scanDirectory', (payload) => {
+    if (!payload || typeof payload.directory !== 'string' || payload.directory.length === 0) {
+      throw new Error('Missing required field: directory');
+    }
+    const root = resolveVaultRoot(payload.directory);
+    const result = scanVaultDirectory(root);
+    // Resolve `assets/<hash>` links to local images before the renderer converts
+    // the markdown into editor content.
+    return {
+      ...result,
+      entries: result.entries.map((entry) => ({
+        ...entry,
+        body: importAssetsFromVault(root, entry.body),
+      })),
+    };
+  });
+
+  handle('vault.importDocuments', (payload) => {
+    if (!payload || !Array.isArray(payload.documents)) {
+      throw new Error('documents must be an array');
+    }
+    // Respect tombstones: a note deleted on another device must not be
+    // resurrected by importing the folder.
+    const tombstones =
+      typeof payload.directory === 'string' && payload.directory.length > 0
+        ? readTombstones(resolveVaultRoot(payload.directory))
+        : new Map();
+    let created = 0;
+    let skipped = 0;
+    for (const document of payload.documents) {
+      if (
+        !document ||
+        typeof document.title !== 'string' ||
+        typeof document.content !== 'string'
+      ) {
+        throw new Error('each document requires string title and content');
+      }
+      if (document.id) {
+        const state = tombstones.get(document.id);
+        if (state && isDeletedState(state) && tombstoneSupersedes(state, document.updatedAt)) {
+          skipped += 1;
+          continue;
+        }
+      }
+      const id = typeof document.id === 'string' && document.id.length > 0 ? document.id : randomUUID();
+      const metadata: {
+        contentSchemaVersion?: number;
+        bookmarkedAt?: string | null;
+      } = {};
+      if (typeof document.contentSchemaVersion === 'number') {
+        metadata.contentSchemaVersion = document.contentSchemaVersion;
+      }
+      if (document.bookmarkedAt) metadata.bookmarkedAt = document.bookmarkedAt;
+      const result = importDocument({
+        id,
+        title: document.title,
+        content: stripLeadingTitle(
+          importAssetsFromVault(payload.directory, document.content),
+          document.title,
+        ),
+        parentId: document.parentId ?? null,
+        emoji: document.emoji ?? null,
+        sortOrder: document.sortOrder ?? 0,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      });
+      if (result.created) created += 1;
+      else skipped += 1;
+    }
+    return { created, skipped };
   });
 
   handle('images.save', (payload) => {

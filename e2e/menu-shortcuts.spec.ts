@@ -68,7 +68,8 @@ async function createNamedNote(
   const visibleTitle = window.locator('main:visible h1.editor-title');
   await visibleTitle.click();
   await window.keyboard.type(name);
-  // Wait for the tab to reflect the typed title before continuing (debounced save).
+  // The tab only reflects the title once the change is committed.
+  await window.keyboard.press('Enter');
   await expect(
     window.locator('[data-tab-id]').filter({ hasText: name }),
   ).toHaveCount(1);

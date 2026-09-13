@@ -61,6 +61,17 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    up: (db) => {
+      // Content-addressed assets: the SHA-256 lets the vault map an image to a
+      // portable `assets/<hash>.<ext>` path and de-duplicate across devices.
+      db.exec(`
+        ALTER TABLE images ADD COLUMN contentHash TEXT;
+        CREATE INDEX IF NOT EXISTS idx_images_contentHash ON images(contentHash);
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

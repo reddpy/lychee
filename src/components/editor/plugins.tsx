@@ -17,11 +17,12 @@ import { LinkMatcher } from "@lexical/react/LexicalAutoLinkPlugin"
 import * as linkify from "linkifyjs"
 
 import { ContentEditable } from "@/components/editor/editor-ui/content-editable"
+import { ChecklistShortcutPlugin } from "@/components/editor/plugins/checklist-shortcut-plugin"
 import { SlashCommandPlugin } from "@/components/editor/plugins/slash-command-plugin"
 import { KeyboardShortcutsPlugin } from "@/components/editor/plugins/keyboard-shortcuts-plugin"
 import { FloatingToolbarPlugin } from "@/components/editor/plugins/floating-toolbar-plugin"
 import { LinkEditorPlugin } from "@/components/editor/plugins/link-editor-plugin"
-import { TitlePlugin } from "@/components/editor/plugins/title-plugin"
+
 import { BlockPlaceholderPlugin } from "@/components/editor/plugins/block-placeholder-plugin"
 import { FocusModePlugin } from "@/components/editor/plugins/focus-mode-plugin"
 import { TypewriterPlugin } from "@/components/editor/plugins/typewriter-plugin"
@@ -63,8 +64,6 @@ interface PluginsProps {
   tabId: string
   activeTabId: string | null
   isActive: boolean
-  initialTitle?: string
-  onTitleChange?: (title: string) => void
 }
 
 export function Plugins({
@@ -72,8 +71,6 @@ export function Plugins({
   tabId,
   activeTabId,
   isActive,
-  initialTitle,
-  onTitleChange,
 }: PluginsProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const autolink = useEditorPreferencesStore((s) => s.autolink)
@@ -88,9 +85,6 @@ export function Plugins({
         ErrorBoundary={LexicalErrorBoundary}
       />
 
-      {/* Title plugin */}
-      <TitlePlugin initialTitle={initialTitle} onTitleChange={onTitleChange} />
-
       {/* Block placeholders */}
       <BlockPlaceholderPlugin />
 
@@ -104,6 +98,7 @@ export function Plugins({
       <MenuHistoryPlugin isActive={isActive} />
       <ListPlugin />
       <CheckListPlugin />
+      <ChecklistShortcutPlugin />
       <TabIndentationPlugin />
       <HorizontalRulePlugin />
       <TablePlugin hasCellMerge={false} hasCellBackgroundColor={false} hasTabHandler={true} hasHorizontalScroll={true} />

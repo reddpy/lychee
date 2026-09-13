@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   Accessibility,
   AlertTriangle,
   Baseline,
   Check,
   ChevronDown,
+  Copy,
   Download,
   Database,
   Focus,
@@ -31,6 +32,7 @@ import {
   Settings,
   Slash,
   SlidersHorizontal,
+  Sparkles,
   Sun,
   TextCursorInput,
   Type,
@@ -53,6 +55,11 @@ import { useThemeStore } from '@/renderer/theme-store';
 import { useAppearanceStore } from '@/renderer/appearance-store';
 import { useGeneralPreferencesStore } from '@/renderer/general-preferences-store';
 import { useEditorPreferencesStore } from '@/renderer/editor-preferences-store';
+import { buildVaultEntriesProgressive, writeVaultEntriesInBatches } from '@/renderer/vault-export';
+import { buildImportRequests } from '@/renderer/vault-import';
+import { useDocumentStore } from '@/renderer/document-store';
+import { planVaultImport } from '@/shared/vault-import';
+import type { IpcContract } from '@/shared/ipc-types';
 import {
   EDITOR_CODE_TAB_SIZES,
   EDITOR_FONT_FAMILIES,
@@ -82,14 +89,16 @@ import {
   type ShortcutId,
 } from '@/shared/keybindings';
 import { useKeybindingsStore } from '@/renderer/keybindings-store';
+import { listAllDocuments } from '@/renderer/document-io';
 
-type SectionKey = 'general' | 'appearance' | 'editor' | 'keyboard' | 'data' | 'about';
+type SectionKey = 'general' | 'appearance' | 'editor' | 'keyboard' | 'ai' | 'data' | 'about';
 
 const sections: { key: SectionKey; label: string; icon: typeof Settings }[] = [
   { key: 'general', label: 'General', icon: SlidersHorizontal },
   { key: 'appearance', label: 'Appearance', icon: Palette },
   { key: 'editor', label: 'Editor', icon: PenLine },
   { key: 'keyboard', label: 'Shortcuts', icon: Keyboard },
+  { key: 'ai', label: 'AI', icon: Sparkles },
   { key: 'data', label: 'Data', icon: Database },
   { key: 'about', label: 'About', icon: Info },
 ];
@@ -665,10 +674,23 @@ function DataSettings() {
         : 'Show in Folder';
   const [locations, setLocations] = useState<DataLocations | null>(null);
   const [activeAction, setActiveAction] = useState<
-    'open-folder' | 'reveal-database' | 'backup' | null
+    | 'open-folder'
+    | 'reveal-database'
+    | 'backup'
+    | 'export-markdown'
+    | 'import-markdown'
+    | 'watch'
+    | null
   >(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [backupPath, setBackupPath] = useState<string | null>(null);
+  const [exported, setExported] = useState<{ directory: string; written: number } | null>(null);
+  const [imported, setImported] = useState<{
+    created: number;
+    skipped: number;
+    skippedFiles: number;
+  } | null>(null);
+  const [watch, setWatch] = useState<{ running: boolean; directory: string | null } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -679,6 +701,21 @@ function DataSettings() {
       })
       .catch(() => {
         if (alive) setActionError('Lychee couldn’t read the data location.');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void window.lychee
+      .invoke('vault.watchStatus', {})
+      .then((status) => {
+        if (alive) setWatch(status);
+      })
+      .catch(() => {
+        // non-fatal; the toggle simply shows as off
       });
     return () => {
       alive = false;
@@ -713,11 +750,93 @@ function DataSettings() {
     setActiveAction('backup');
     setActionError(null);
     setBackupPath(null);
+    setExported(null);
+    setImported(null);
     try {
       const result = await window.lychee.invoke('data.createBackup', {});
       if ('filePath' in result) setBackupPath(result.filePath);
     } catch {
       setActionError('Lychee couldn’t create the backup. Choose another location and try again.');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const exportMarkdown = async (): Promise<void> => {
+    setActiveAction('export-markdown');
+    setActionError(null);
+    setBackupPath(null);
+    setExported(null);
+    setImported(null);
+    try {
+      const chosen = await window.lychee.invoke('vault.chooseDirectory', { purpose: 'export' });
+      if (!('directory' in chosen)) return;
+      const documents = await listAllDocuments();
+      const entries = await buildVaultEntriesProgressive(documents);
+      const written = await writeVaultEntriesInBatches(chosen.directory, entries);
+      setExported({ directory: chosen.directory, written });
+    } catch {
+      setActionError('Lychee couldn’t export your notes. Check the folder is writable and try again.');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const importMarkdown = async (): Promise<void> => {
+    setActiveAction('import-markdown');
+    setActionError(null);
+    setBackupPath(null);
+    setExported(null);
+    setImported(null);
+    try {
+      const chosen = await window.lychee.invoke('vault.chooseDirectory', { purpose: 'import' });
+      if (!('directory' in chosen)) return;
+      const scan = await window.lychee.invoke('vault.scanDirectory', { directory: chosen.directory });
+      const plan = planVaultImport(scan.entries);
+      const documents = buildImportRequests(plan);
+      const result = await window.lychee.invoke('vault.importDocuments', {
+        directory: chosen.directory,
+        documents,
+      });
+      setImported({ created: result.created, skipped: result.skipped, skippedFiles: scan.skipped.length });
+      await useDocumentStore.getState().loadDocuments(true);
+    } catch {
+      setActionError('Lychee couldn’t import those notes. Check the folder and try again.');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const enableWatch = async (): Promise<void> => {
+    setActiveAction('watch');
+    setActionError(null);
+    try {
+      const chosen = await window.lychee.invoke('vault.chooseDirectory', { purpose: 'watch' });
+      if (!('directory' in chosen)) return;
+      // Materialize the vault first so every note gets a write baseline; the
+      // watcher then treats existing files as ours rather than conflicts.
+      const documents = await listAllDocuments();
+      const entries = await buildVaultEntriesProgressive(documents);
+      await writeVaultEntriesInBatches(chosen.directory, entries);
+      await window.lychee.invoke('vault.watchStart', { directory: chosen.directory });
+      const status = await window.lychee.invoke('vault.watchStatus', {});
+      setWatch(status);
+    } catch {
+      setActionError('Lychee couldn’t start watching that folder. Try a different folder.');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const disableWatch = async (): Promise<void> => {
+    setActiveAction('watch');
+    setActionError(null);
+    try {
+      await window.lychee.invoke('vault.watchStop', {});
+      const status = await window.lychee.invoke('vault.watchStatus', {});
+      setWatch(status);
+    } catch {
+      setActionError('Lychee couldn’t stop watching the folder.');
     } finally {
       setActiveAction(null);
     }
@@ -818,11 +937,96 @@ function DataSettings() {
           </Button>
         </div>
 
-        {(actionError || backupPath) && (
+        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Export as Markdown</p>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              Write every note as a Markdown file (with frontmatter) into a folder you choose. Useful
+              for backup, search, and giving an AI agent access to your notes.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={activeAction !== null}
+            onClick={() => void exportMarkdown()}
+          >
+            {activeAction === 'export-markdown' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Export…
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Import from Markdown</p>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              Add notes from a folder exported by Lychee. Existing notes are never overwritten or
+              deleted, so re-importing is safe.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={activeAction !== null}
+            onClick={() => void importMarkdown()}
+          >
+            {activeAction === 'import-markdown' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FolderOpen className="h-3.5 w-3.5" />
+            )}
+            Import…
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Watch folder for changes</p>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              Keep a markdown folder in sync. Edits made outside Lychee are imported, or preserved as
+              a conflict copy when both sides changed. Deleted files are ignored.
+            </p>
+            {watch?.running && watch.directory && (
+              <p
+                title={watch.directory}
+                className="mt-1 truncate font-mono text-[11px] text-[hsl(var(--muted-foreground))]"
+              >
+                {watch.directory}
+              </p>
+            )}
+          </div>
+          <Switch
+            checked={watch?.running ?? false}
+            disabled={activeAction !== null}
+            onCheckedChange={(checked) => void (checked ? enableWatch() : disableWatch())}
+            aria-label="Watch folder for changes"
+          />
+        </div>
+
+        {(actionError || backupPath || exported || imported) && (
           <div className="border-t border-[hsl(var(--border))] px-4 py-3">
             {actionError ? (
               <p role="alert" className="text-xs text-[hsl(var(--destructive))]">
                 {actionError}
+              </p>
+            ) : imported ? (
+              <p role="status" className="text-xs text-[hsl(var(--muted-foreground))]">
+                Imported {imported.created} {imported.created === 1 ? 'note' : 'notes'}
+                {imported.skipped > 0 ? `, skipped ${imported.skipped} already present` : ''}
+                {imported.skippedFiles > 0 ? `, ${imported.skippedFiles} file(s) unreadable` : ''}.
+              </p>
+            ) : exported ? (
+              <p role="status" className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                Exported {exported.written} {exported.written === 1 ? 'note' : 'notes'} to{' '}
+                <span className="font-mono">{exported.directory}</span>
               </p>
             ) : (
               <p role="status" className="truncate text-xs text-[hsl(var(--muted-foreground))]">
@@ -832,6 +1036,205 @@ function DataSettings() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AiSettings() {
+  const [info, setInfo] = useState<IpcContract['vault.mcpConfig']['res'] | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const config = await window.lychee.invoke('vault.mcpConfig', {});
+        if (alive) setInfo(config);
+      } catch {
+        if (alive) setError('Lychee couldn’t read the AI settings.');
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const copy = useCallback(async (key: string, text: string): Promise<void> => {
+    setError(null);
+    try {
+      await window.lychee.invoke('clipboard.writeText', { text });
+      setCopied(key);
+      window.setTimeout(() => setCopied((current) => (current === key ? null : current)), 2000);
+    } catch {
+      setError('Lychee couldn’t copy to the clipboard.');
+    }
+  }, []);
+
+  const cleanupImports = useCallback(async (): Promise<void> => {
+    setError(null);
+    try {
+      const { removed } = await window.lychee.invoke('vault.cleanupImportedNotes', {});
+      const config = await window.lychee.invoke('vault.mcpConfig', {});
+      setInfo(config);
+      await useDocumentStore.getState().loadDocuments(true);
+      if (removed === 0) setError('No imported files were found to remove.');
+    } catch {
+      setError('Lychee couldn’t remove those notes.');
+    }
+  }, []);
+
+  const vaultPath = info?.setup.workingDirectory ?? '';
+
+  const fields = info
+    ? [
+        { key: 'name', label: 'Name', value: info.setup.name },
+        { key: 'type', label: 'Type', value: info.setup.type },
+        { key: 'command', label: 'Command', value: info.setup.command },
+        ...info.setup.args.map((arg, index) => ({
+          key: `arg-${index}`,
+          label:
+            index === 0
+              ? 'Arguments'
+              : index === info.setup.args.length - 1
+                ? 'Vault path'
+                : 'Argument',
+          value: arg,
+        })),
+        ...Object.entries(info.setup.env).map(([key, value]) => ({
+          key: `env-${key}`,
+          label: 'Environment',
+          value: `${key}=${value}`,
+        })),
+        { key: 'cwd', label: 'Working directory', value: info.setup.workingDirectory },
+      ]
+    : [];
+
+  const CopyButton = ({ rowKey, value }: { rowKey: string; value: string }) => (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-7 shrink-0 px-2"
+      disabled={!info}
+      onClick={() => void copy(rowKey, value)}
+      aria-label={`Copy ${value}`}
+    >
+      {copied === rowKey ? (
+        <Check className="h-3.5 w-3.5 text-brand" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" />
+      )}
+    </Button>
+  );
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="AI"
+        description="Connect an AI app so it can read and edit your notes."
+      />
+
+      <div className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 px-4 py-3">
+        <FolderOpen className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+        <p
+          className="min-w-0 flex-1 truncate font-mono text-[11px] text-[hsl(var(--muted-foreground))]"
+          title={vaultPath}
+        >
+          {vaultPath || 'Preparing your notes…'}
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0"
+          onClick={() => void window.lychee.invoke('vault.openFolder', {})}
+        >
+          Reveal
+        </Button>
+      </div>
+
+      {info && info.importedCount > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+            {info.importedCount} note{info.importedCount === 1 ? '' : 's'} look like files imported
+            by mistake (images, PDFs, etc.). Remove them?
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => void cleanupImports()}
+          >
+            Remove
+          </Button>
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="text-xs text-[hsl(var(--destructive))]">
+          {error}
+        </p>
+      )}
+
+      <div className="overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15">
+        <div className="px-4 py-3.5">
+          <p className="text-sm font-medium">Connect a custom MCP server</p>
+          <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+            In your AI app, add a custom MCP server, choose <span className="font-medium">STDIO</span>,
+            and copy each field below into the matching box.
+          </p>
+        </div>
+
+        {fields.map((field) => (
+          <div
+            key={field.key}
+            className="flex items-center gap-3 border-t border-[hsl(var(--border))] px-4 py-2.5"
+          >
+            <span className="w-28 shrink-0 text-xs text-[hsl(var(--muted-foreground))]">
+              {field.label}
+            </span>
+            <code
+              title={field.value}
+              className="min-w-0 flex-1 truncate rounded bg-[hsl(var(--muted))] px-2 py-1 font-mono text-[11px] text-[hsl(var(--foreground))]"
+            >
+              {field.value}
+            </code>
+            <CopyButton rowKey={field.key} value={field.value} />
+          </div>
+        ))}
+
+        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Copy the JSON config</p>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              For apps that read an MCP JSON file (Claude Desktop, Cursor, VS Code…).
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={!info}
+            onClick={() => info && void copy('json', info.config)}
+          >
+            {copied === 'json' ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+            {copied === 'json' ? 'Copied' : 'Copy JSON'}
+          </Button>
+        </div>
+      </div>
+
+      <p className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+        Your notes live as plain markdown files at the path above. AI apps launch Lychee’s MCP server
+        locally, and edits they make are reconciled like any other external change.
+      </p>
     </div>
   );
 }
@@ -1852,6 +2255,7 @@ function KeyboardSettings() {
 function SectionContent({ section }: { section: SectionKey }) {
   if (section === 'general') return <GeneralSettings />;
   if (section === 'appearance') return <AppearanceSettings />;
+  if (section === 'ai') return <AiSettings />;
   if (section === 'data') return <DataSettings />;
   if (section === 'about') return <AboutSettings />;
   if (section === 'editor') return <EditorSettings />;

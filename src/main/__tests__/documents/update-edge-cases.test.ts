@@ -9,6 +9,7 @@ vi.mock('../../db', async () => {
 });
 
 import { setupDb, getDb, insertDoc, getAllDocsForParent, getSortOrders, getDocumentById, createDocument, updateDocument, trashDocument } from './setup';
+import { CONTENT_SCHEMA_VERSION } from '../../../shared/documents';
 
 describe('Document Repository — Update Edge Cases', () => {
   setupDb();
@@ -222,5 +223,30 @@ describe('Document Repository — Update Edge Cases', () => {
 
       const updated = getDocumentById(doc.id)!;
       expect(updated.parentId).toBe(doc.id); // self-reference!
+    });
+
+    // Downgrade guard: content from a newer schema must never be overwritten.
+    it('refuses to overwrite content written by a newer content schema', () => {
+      const doc = createDocument({ title: 'Doc' });
+      updateDocument(doc.id, {
+        content: '{"root":{"type":"root","version":1,"children":[]}}',
+        metadata: { contentSchemaVersion: CONTENT_SCHEMA_VERSION + 1 },
+      });
+
+      expect(() => updateDocument(doc.id, { content: 'new content' })).toThrow(
+        /newer content schema/i,
+      );
+
+      // Non-content updates on the same note remain allowed.
+      expect(() => updateDocument(doc.id, { title: 'Renamed' })).not.toThrow();
+    });
+
+    it('allows content updates at or below the current content schema', () => {
+      const doc = createDocument({ title: 'Doc' });
+      updateDocument(doc.id, {
+        content: 'first',
+        metadata: { contentSchemaVersion: CONTENT_SCHEMA_VERSION },
+      });
+      expect(updateDocument(doc.id, { content: 'second' }).content).toBe('second');
     });
 });

@@ -247,7 +247,9 @@ hr.selected:after {
 /* Title styles */
 .editor-title {
   position: relative;
-  font-size: 3em;
+  font-family: var(--editor-font-family, inherit);
+  /* 3× the editor body size, so the title tracks Settings → Editor. */
+  font-size: calc(var(--editor-font-size, 16px) * 3);
   font-weight: 800;
   letter-spacing: -0.025em;
   line-height: 1.1;

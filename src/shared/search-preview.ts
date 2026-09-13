@@ -64,16 +64,38 @@ function extractTextFromUnknown(node: unknown, out: string[]) {
   }
 }
 
+/** Strip markdown syntax to a plain-text approximation for previews/search. */
+export function markdownToPlainText(markdown: string): string {
+  return markdown
+    .replace(/^---\n[\s\S]*?\n---\n?/, "")
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[^\n]*\n?/g, ""))
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/[*_~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function extractPlainText(content: string) {
   if (!content) return "";
-  try {
-    const parsed = JSON.parse(content) as unknown;
-    const parts: string[] = [];
-    extractTextFromUnknown(parsed, parts);
-    return parts.join(" ").replace(/\s+/g, " ").trim();
-  } catch {
-    return "";
+  const trimmed = content.trim();
+  // Legacy rows stored Lexical JSON; new rows store markdown.
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const parts: string[] = [];
+      extractTextFromUnknown(parsed, parts);
+      return parts.join(" ").replace(/\s+/g, " ").trim();
+    } catch {
+      return "";
+    }
   }
+  return markdownToPlainText(content);
 }
 
 export function buildHighlightedSnippet(

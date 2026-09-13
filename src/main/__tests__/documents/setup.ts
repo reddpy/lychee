@@ -40,6 +40,8 @@ import {
   restoreDocument,
   permanentDeleteDocument,
   moveDocument,
+  importDocument,
+  setDocumentMetadata,
 } from '../../repos/documents';
 
 // Mutable ref that each beforeEach updates
@@ -76,4 +78,6 @@ export {
   restoreDocument,
   permanentDeleteDocument,
   moveDocument,
+  importDocument,
+  setDocumentMetadata,
 };

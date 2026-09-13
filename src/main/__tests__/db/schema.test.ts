@@ -42,7 +42,7 @@ describe('Database Schema — Fresh Migration', () => {
     expect(colNames).toHaveLength(10);
   });
 
-  it('creates images table with all 6 columns', () => {
+  it('creates images table with all 7 columns', () => {
     const columns = db
       .prepare(`PRAGMA table_info(images)`)
       .all() as { name: string }[];
@@ -53,14 +53,15 @@ describe('Database Schema — Fresh Migration', () => {
     expect(colNames).toContain('width');
     expect(colNames).toContain('height');
     expect(colNames).toContain('createdAt');
-    expect(colNames).toHaveLength(6);
+    expect(colNames).toContain('contentHash');
+    expect(colNames).toHaveLength(7);
   });
 
-  it('sets schema_version to 1 in meta table', () => {
+  it('sets schema_version to 2 in meta table', () => {
     const row = db
       .prepare(`SELECT value FROM meta WHERE key = 'schema_version'`)
       .get() as { value: string };
-    expect(row.value).toBe('1');
+    expect(row.value).toBe('2');
   });
 
   it('creates all expected indexes', () => {

@@ -10,25 +10,17 @@ import {
   useSearchHighlightStore,
 } from "@/renderer/search-highlight-store";
 import type { DocumentRow } from "@/shared/documents";
-import type { EditorState, SerializedEditorState } from "lexical";
+import { CONTENT_SCHEMA_VERSION } from "@/shared/documents";
+import type { LexicalEditor as LexicalEditorInstance } from "lexical";
 
 import { Editor } from "@/components/editor/editor";
+import { parseDocumentContent, safeComposerState } from "@/components/editor/content-load";
+import { exportDocumentMarkdown } from "@/components/editor/markdown-io";
+import { NoteTitle, type NoteTitleHandle } from "@/components/editor/note-title";
+import { toast } from "@/components/ui/toast";
 import { NoteEmojiPicker } from "@/components/sidebar/note-emoji-picker";
 import { BreadcrumbBar } from "@/components/breadcrumb-bar";
 import { BookmarkButton } from "@/components/editor/plugins/bookmark-button-plugin";
-
-function getSerializedState(
-  content: string | undefined,
-): SerializedEditorState | undefined {
-  if (!content || content.trim() === "") return undefined;
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed && typeof parsed === "object" && parsed.root) return parsed;
-  } catch {
-    // ignore invalid JSON
-  }
-  return undefined;
-}
 
 const LEGACY_UNTITLED = "Untitled";
 
@@ -284,10 +276,47 @@ export function LexicalEditor({
   const showWordCount = useEditorPreferencesStore((s) => s.showWordCount);
   const editorStats = useEditorStatsStore((s) => s.byDoc[documentId]);
 
-  const editorSerializedState = React.useMemo(
-    () => getSerializedState(document.content),
-    [documentId, document.content],
+  // The sidebar list intentionally omits large `content` blobs (the IPC payload
+  // would be enormous). Load the open note's full content here before mounting
+  // the editor, so large notes still open correctly.
+  const [fullContent, setFullContent] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let alive = true;
+    setFullContent(null);
+    window.lychee
+      .invoke("documents.get", { id: documentId })
+      .then(({ document: doc }) => {
+        if (alive) setFullContent(doc?.content ?? "");
+      })
+      .catch(() => {
+        if (alive) setFullContent("");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [documentId]);
+
+  const contentForLoad = fullContent ?? "";
+
+  const loadResult = React.useMemo(
+    () =>
+      parseDocumentContent({
+        content: contentForLoad,
+        contentSchemaVersion: document.metadata?.contentSchemaVersion,
+      }),
+    [documentId, contentForLoad, document.metadata?.contentSchemaVersion],
   );
+
+  const composerState =
+    loadResult.status === "ready" ? safeComposerState(loadResult.editorState) : undefined;
+
+  /** Never mount the editor — and therefore never autosave — when the stored
+   *  content could not be parsed/validated, or was written by a newer content
+   *  schema. Mounting with partial/empty state is what caused #286 truncation. */
+  const contentBlocked =
+    loadResult.status === "error" ||
+    (loadResult.status === "ready" &&
+      (loadResult.schemaAhead || composerState === undefined));
 
   const initialTitle = React.useMemo(() => {
     const title = document.title;
@@ -296,6 +325,39 @@ export function LexicalEditor({
     }
     return title;
   }, [document.title]);
+
+  const [titleConflict, setTitleConflict] = React.useState(false);
+  /** Mirror of `titleConflict` so we only setState when the value actually
+   *  flips (React re-renders once even when a setter is called with the same
+   *  value, which would otherwise re-render the whole editor). */
+  const titleConflictRef = React.useRef(false);
+  const applyTitleConflict = React.useCallback((next: boolean) => {
+    if (titleConflictRef.current === next) return;
+    titleConflictRef.current = next;
+    setTitleConflict(next);
+  }, []);
+
+  /**
+   * Titles are unique (trimmed, case-insensitive). Checked only on commit — not
+   * per keystroke — so typing stays cheap and the title is written once.
+   */
+  const hasTitleConflict = React.useCallback(
+    (title: string) => {
+      const normalized = title.trim().toLowerCase();
+      if (!normalized) return false;
+      return useDocumentStore
+        .getState()
+        .documents.some(
+          (d) => d.id !== documentId && d.title.trim().toLowerCase() === normalized,
+        );
+    },
+    [documentId],
+  );
+
+  // Clear a stale duplicate error when navigating to another note.
+  React.useEffect(() => {
+    applyTitleConflict(false);
+  }, [documentId, applyTitleConflict]);
 
   const handleEmojiSelect = React.useCallback(
     async (native: string) => {
@@ -332,61 +394,178 @@ export function LexicalEditor({
     [removeEmoji],
   );
 
+  const unsavedRef = React.useRef(false);
+  const isRestoringScroll = React.useRef(false);
+  const titleRef = React.useRef<NoteTitleHandle | null>(null);
+  /** Set just before a forced flush so the next write is durable (fsync). */
+  const fsyncNextRef = React.useRef(false);
+  /** Last title the server rejected as a duplicate, to avoid repeat toasts. */
+  const rejectedTitleRef = React.useRef<string | null>(null);
+
   const saveContent = React.useMemo(
     () =>
-      debounce(
-        (
-          id: string,
-          editorState: EditorState,
-          onSaved?: (doc: DocumentRow) => void,
-        ) => {
-          const content = JSON.stringify(editorState.toJSON());
-          window.lychee
-            .invoke("documents.update", { id, content })
-            .then(({ document: doc }) => {
-              updateDocumentInStore(doc.id, {
-                content: doc.content,
-                updatedAt: doc.updatedAt,
-              });
-              onSaved?.(doc);
-            })
-            .catch((err) => console.error("Save failed:", err));
-        },
-        600,
-      ),
-    [updateDocumentInStore],
-  );
-
-  const saveTitle = React.useMemo(
-    () =>
-      debounce((id: string, newTitle: string) => {
+      debounce((id: string, editor: LexicalEditorInstance) => {
+        const content = exportDocumentMarkdown(editor);
+        const flush = fsyncNextRef.current;
+        fsyncNextRef.current = false;
         window.lychee
-          .invoke("documents.update", { id, title: newTitle })
-          .then(({ document: doc }) => {
-            updateDocumentInStore(doc.id, { title: doc.title });
+          .invoke("documents.update", {
+            id,
+            content,
+            metadata: { contentSchemaVersion: CONTENT_SCHEMA_VERSION },
+            flush,
+            rename: false,
           })
-          .catch((err) => console.error("Title save failed:", err));
-      }, 500),
+          .then(({ document: doc }) => {
+            unsavedRef.current = false;
+            updateDocumentInStore(doc.id, {
+              content: doc.content,
+              updatedAt: doc.updatedAt,
+              metadata: doc.metadata,
+            });
+          })
+          .catch((err) => console.error("Save failed:", err));
+      }, 200),
     [updateDocumentInStore],
   );
 
-  const debouncedStoreUpdate = React.useMemo(
-    () =>
-      debounce((id: string, title: string) => {
-        updateDocumentInStore(id, { title });
-      }, 300),
-    [updateDocumentInStore],
+  const handleTitleWriteError = React.useCallback(
+    (id: string, title: string, err: unknown) => {
+      const message = String((err as Error)?.message ?? err);
+      if (message.includes("Duplicate title")) {
+        // A collision the local list missed (e.g. a note beyond the loaded
+        // window). Surface it once, then reconcile the field with the stored value.
+        const normalized = title.trim().toLowerCase();
+        if (rejectedTitleRef.current !== normalized) {
+          rejectedTitleRef.current = normalized;
+          toast.add({
+            title: "Title already in use",
+            description: "Every note needs a unique title.",
+          });
+        }
+        window.lychee
+          .invoke("documents.get", { id })
+          .then(({ document: doc }) => {
+            if (!doc) return;
+            updateDocumentInStore(doc.id, { title: doc.title });
+            titleRef.current?.setText(doc.title);
+            applyTitleConflict(false);
+          })
+          .catch(() => {});
+      } else {
+        console.error("Title save failed:", err);
+      }
+    },
+    [updateDocumentInStore, applyTitleConflict],
   );
+
+  /**
+   * Live input: nothing is persisted or shown until commit. This keeps the
+   * field, the tab/sidebar, and storage in agreement — an unconfirmed edit can
+   * never leak out through a reload. Just clear any stale duplicate error.
+   */
+  const handleTitleChange = React.useCallback(
+    () => {
+      applyTitleConflict(false);
+    },
+    [applyTitleConflict],
+  );
+
+  /**
+   * Explicit commit (✓ / Enter / blur): validate uniqueness, persist, and rename
+   * the file. Returns false when blocked so the field can keep the draft.
+   */
+  const handleTitleCommit = React.useCallback(
+    (title: string): boolean => {
+      if (hasTitleConflict(title)) {
+        applyTitleConflict(true);
+        return false;
+      }
+      applyTitleConflict(false);
+      updateDocumentInStore(documentId, { title });
+      window.lychee
+        .invoke("documents.update", { id: documentId, title, flush: true, rename: true })
+        .then(({ document: doc }) => {
+          updateDocumentInStore(doc.id, { title: doc.title });
+        })
+        .catch((err) => handleTitleWriteError(documentId, title, err));
+      return true;
+    },
+    [
+      documentId,
+      updateDocumentInStore,
+      handleTitleWriteError,
+      hasTitleConflict,
+      applyTitleConflict,
+    ],
+  );
+
+  /** Save now, make it durable, and commit any pending file rename. */
+  const flushSaves = React.useCallback(() => {
+    if (unsavedRef.current) fsyncNextRef.current = true;
+    saveContent.flush();
+    titleRef.current?.commit();
+  }, [saveContent]);
+
+  /** Move focus from the title field into the body. */
+  const focusEditor = React.useCallback(() => {
+    mainRef.current?.querySelector<HTMLElement>(".ContentEditable__root")?.focus();
+  }, []);
 
   React.useEffect(() => {
-    return () => {
-      saveContent.flush();
-      saveTitle.flush();
-      debouncedStoreUpdate.flush();
-    };
-  }, [saveContent, saveTitle, debouncedStoreUpdate]);
+    return () => flushSaves();
+  }, [flushSaves]);
 
-  const isRestoringScroll = React.useRef(false);
+  // Save immediately (and durably) when the window loses focus or is closing,
+  // so an edit is never stuck inside the debounce window. Only the visible note
+  // flushes: hidden tabs were already flushed on tab switch, and letting every
+  // mounted editor commit a rename on blur races concurrent renames.
+  React.useEffect(() => {
+    if (hidden) return;
+    const onBlur = () => flushSaves();
+    const onBeforeUnload = () => flushSaves();
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [flushSaves, hidden]);
+
+  const [reloadNonce, setReloadNonce] = React.useState(0);
+
+  // Bidirectional edits: when the vault watcher applies an external change to
+  // this note, refresh the open editor. Skip while a save is pending so an
+  // in-flight edit is never silently discarded, and preserve scroll position.
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string }>).detail;
+      if (!detail || detail.id !== documentId) return;
+      if (unsavedRef.current) return;
+      const scrollTop = mainRef.current?.scrollTop ?? 0;
+      window.lychee
+        .invoke("documents.get", { id: documentId })
+        .then(({ document: doc }) => {
+          setFullContent(doc?.content ?? "");
+          setReloadNonce((nonce) => nonce + 1);
+          isRestoringScroll.current = true;
+          const restore = () => {
+            if (mainRef.current) mainRef.current.scrollTop = scrollTop;
+          };
+          requestAnimationFrame(() => {
+            restore();
+            requestAnimationFrame(() => {
+              restore();
+              isRestoringScroll.current = false;
+            });
+          });
+          toast.add({ title: "Updated", description: "Changed on disk" });
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("lychee-vault-applied", handler);
+    return () => window.removeEventListener("lychee-vault-applied", handler);
+  }, [documentId]);
 
   // Per-tab scroll preservation.
   //
@@ -433,6 +612,7 @@ export function LexicalEditor({
     if (prev === curr) return;
 
     prevActiveTabId.current = curr;
+    flushSaves();
     emitToolbarExclusive("__tab-switch__");
     setEmojiPickerOpen(false);
     setAddIconPickerOpen(false);
@@ -471,21 +651,14 @@ export function LexicalEditor({
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [activeTabId]);
+  }, [activeTabId, flushSaves]);
 
-  const handleEditorStateChange = React.useCallback(
-    (editorState: EditorState) => {
-      saveContent(documentId, editorState);
+  const handleEditorChange = React.useCallback(
+    (editor: LexicalEditorInstance) => {
+      unsavedRef.current = true;
+      saveContent(documentId, editor);
     },
     [documentId, saveContent],
-  );
-
-  const handleTitleChange = React.useCallback(
-    (title: string) => {
-      debouncedStoreUpdate(documentId, title);
-      saveTitle(documentId, title);
-    },
-    [documentId, debouncedStoreUpdate, saveTitle],
   );
 
   return (
@@ -580,16 +753,44 @@ export function LexicalEditor({
         )}
 
         {/* Editor with title as first block */}
-        <Editor
-          documentId={documentId}
-          tabId={activeTabId ?? documentId}
-          activeTabId={activeTabId}
-          isActive={!hidden}
-          editorSerializedState={editorSerializedState}
-          onEditorStateChange={handleEditorStateChange}
-          initialTitle={initialTitle}
-          onTitleChange={handleTitleChange}
-        />
+        {fullContent === null ? null : contentBlocked ? (
+          <div
+            data-testid="content-load-blocked"
+            role="alert"
+            className="mx-auto my-6 max-w-xl rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-4 text-sm text-[hsl(var(--foreground))]"
+          >
+            <p className="font-medium">
+              {loadResult.status === "ready" && loadResult.schemaAhead
+                ? "This note was created by a newer version of Lychee."
+                : "This note couldn't be opened safely."}
+            </p>
+            <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+              {loadResult.status === "ready" && loadResult.schemaAhead
+                ? "Editing is disabled to prevent newer content from being overwritten. Update Lychee, or open this note on the device that created it."
+                : `${loadResult.status === "error" ? loadResult.reason + " " : ""}Editing is disabled so the stored content isn't overwritten.`}
+            </p>
+          </div>
+        ) : (
+          <>
+            <NoteTitle
+              ref={titleRef}
+              value={initialTitle}
+              conflict={titleConflict}
+              onChange={handleTitleChange}
+              onCommit={handleTitleCommit}
+              onEnter={focusEditor}
+            />
+            <Editor
+              key={`${documentId}-${reloadNonce}`}
+              documentId={documentId}
+              tabId={activeTabId ?? documentId}
+              activeTabId={activeTabId}
+              isActive={!hidden}
+              editorState={composerState}
+              onEditorChange={handleEditorChange}
+            />
+          </>
+        )}
       </div>
 
       {showWordCount && editorStats && (

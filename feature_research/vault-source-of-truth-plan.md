@@ -69,13 +69,20 @@ re-parenting in Finder is a legitimate edit the watcher reconciles.
 ---
 id: 6f1c...              # stable UUID — the only identity
 title: Parent Note
-emoji: "📄"
+emoji: "📄"              # app metadata, kept in frontmatter (not body prose)
+bookmarked: 2026-09-12T...  # optional note-level bookmark
 created: 2026-09-12T...
 updated: 2026-09-12T...
 content_schema_version: 1
 order: 1.5               # fractional index within siblings
 ---
 ```
+
+All durable per-note metadata lives in **frontmatter** (identity, title, emoji,
+bookmark, dates, order, schema version); hierarchy is the folder layout. This
+keeps each note self-contained and makes the SQLite index fully rebuildable. The
+alternative — app metadata in per-note sidecars — is sync-safe but doubles file
+count and makes a lone `.md` incomplete, so frontmatter is the default.
 
 Filenames are display-only: sanitized, NFC-normalized, de-duplicated
 (`Meeting Notes (2)`), length-capped. Links and backlinks resolve by `id`, so
@@ -129,11 +136,15 @@ non-event: the durable copy is plain files, and the DB can always be regenerated
 ## 4. LLM access
 
 - Filesystem reads work day one with any agent; no MCP required.
-- Add an MCP/tool server over the vault later for retrieval (FTS, semantic,
-  backlinks) and safe writes.
+- A standalone **MCP server** now ships over the vault (list/search/get/backlinks,
+  plus frontmatter-preserving, revision-guarded writes). See
+  [mcp-agent-access.md](./mcp-agent-access.md). It runs without Electron/DB, so it
+  works whether or not the app is open; when the app is running the watcher
+  reconciles agent edits through the conflict-safe path.
 - Agent writes must pass the same schema / unknown-node validation as app writes;
   otherwise the model becomes the "newer build" that corrupts a note. Treat note
-  bodies as untrusted input when agents auto-process them.
+  bodies as untrusted input when agents auto-process them. (Structured node edits
+  remain the next step for fully safe agent writes.)
 
 ## 5. Safety rails
 
@@ -149,13 +160,68 @@ Required before any of this ships:
 ## 6. Phasing
 
 - **Phase 0:** autosave gate + unknown-node preservation + content schema version.
-  Independent of storage; fixes the truncation class of bug outright.
+  Independent of storage; fixes the truncation class of bug outright. **Done.**
 - **Phase 1:** SQLite stays truth; add lossless markdown import/export. Ships LLM
-  access immediately and proves the round-trip.
+  access immediately and proves the round-trip. **Export shipped** — see below.
 - **Phase 2:** vault mode + watcher; export the vault on upgrade; SQLite becomes
   the index, DB lingers as a safety copy.
 - **Phase 3:** files become truth; DB rebuildable at will.
 - **Phase 4:** CRDT merge layer and/or MCP server as requirements appear.
+
+### Phase 1 status (shipped)
+
+- `shared/frontmatter.ts` — dependency-free frontmatter serialize/parse.
+- `shared/vault-path.ts` — filename sanitizer + folder-per-note path planner
+  (sibling dedupe, reserved names, NFC, orphan/cycle safety).
+- `main/vault.ts` — atomic per-file writes (temp → fsync → rename → fsync dir),
+  path-escape guard, reader.
+- `renderer/vault-export.ts` — builds `frontmatter + body` for every note via the
+  markdown encoders in [markdown-encoding-spec.md](./markdown-encoding-spec.md).
+- IPC `vault.chooseDirectory` / `vault.writeEntries`; Settings → Data →
+  **Export as Markdown…**.
+
+Still to do for Phase 2: the **reader/watcher** (file → DB), frontmatter `id`
+reconciliation (duplicate-ID policy), and the single-writer arbiter. Import is
+deliberately not wired yet — the vault plan's open items (duplicate IDs, watcher
+vs editor races) must be resolved first so import cannot lose data.
+
+### Phase 2 status (partial)
+
+The arbiter/import gate above is closed and the watcher is shipped:
+
+- **Import** (`Settings → Data → Import from Markdown…`) is additive and safe:
+  duplicate IDs resolve per policy, existing notes are never overwritten, and
+  missing parents fall back to the root.
+- **Watch folder** (`Settings → Data → Watch folder for changes`) uses chokidar
+  with `awaitWriteFinish`/`atomic`, per-path debounce, a serialized queue, a
+  per-path in-flight guard, and write baselines. External edits apply when the DB
+  is unchanged since export, otherwise they become conflict copies; deletes are
+  ignored. See `vault-write-arbiter-and-import.md#4b-watcher-shipped`.
+- **Cross-device delete** uses append-only, per-device tombstone logs
+  (`<vault>/.lychee/tombstones/<deviceId>.jsonl`) union-merged by `(at, device)`;
+  trash/restore/purge propagate, and a newer edit beats an unseen delete.
+
+### Phase 3 status (in progress)
+
+- **Vault by default**: `~/Documents/Lychee`, auto-created; no setup step. Existing
+  notes are exported progressively on first run.
+- **Frontmatter carries all durable per-note metadata** (`id`, `title`, `emoji`,
+  `bookmarked`, `created`, `updated`, `content_schema_version`, `order`).
+- **Write-through**: a note's `.md` is rewritten on every content/title/emoji/
+  bookmark change, so files stay current.
+- **Index rebuilt from files** (`main/vault-index.ts`): at bootstrap, frontmatter
+  supplies metadata and the folder layout supplies hierarchy; content is left to
+  the watcher/content path. The index self-heals from the vault.
+
+Still to do: content as markdown in the index (renderer conversion on load/save +
+previews/search), create/delete/move/reorder as file operations, and dropping
+SQLite as the working truth.
+
+Still open: physically pruning stale note files after a delete, video/file
+assets, and making the files the source of truth (Phase 3). The app-write path
+still needs its own optimistic check wired to `writeVaultEntryGuarded` for the
+future MCP writer.
+
 
 ## Known gaps / unresolved
 
@@ -169,11 +235,15 @@ source of truth.
   merges cleanly *across* notes, but two devices editing the *same* note offline
   produce a conflict copy. Undefined: who detects it, how the app surfaces it, and
   how a user merges. LWW hides the loss rather than resolving it.
-- **Assets are absent.** Bodies reference `![alt](asset)` but there is no defined
-  location, naming, or sync strategy for images/binaries (the `images` table
-  today). Binaries are the part git handles worst and are a first-class feature.
-- **Delete/tombstones are local-only.** `.trash/` does not sync; cross-device
-  delete semantics (deleted on A, still present on B) are undefined.
+- **Assets — resolved for images.** Binaries are content-addressed under
+  `<vault>/assets/<sha256>.<ext>` and referenced by relative path; the editor's
+  `lychee-asset://<id>` token is rewritten at the vault boundary. Video/arbitrary
+  files reuse the same layer once they have nodes. See
+  `markdown-encoding-spec.md#asset-references`.
+- **Delete/tombstones — resolved.** Append-only per-device logs under
+  `.lychee/tombstones/` union-merge by `(at, device)`; trash/restore/purge
+  propagate and a newer edit beats an unseen delete. Remaining: physically
+  pruning the stale note file after a delete.
 - **Cloud-folder realities are ignored.** iCloud "optimize storage" evicts files
   to placeholders that break reads/watchers; temp files must be kept outside the
   vault so agents and watchers never ingest them.

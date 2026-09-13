@@ -43,6 +43,7 @@ vi.mock('electron', () => ({
 
 vi.mock('../../repos/documents', () => ({
   listDocuments: vi.fn().mockReturnValue([]),
+  findDocumentByTitle: vi.fn().mockReturnValue(null),
   getDocumentById: vi.fn().mockReturnValue(null),
   createDocument: vi.fn().mockReturnValue({ id: '1', title: '', content: '' }),
   updateDocument: vi.fn().mockReturnValue({ id: '1', title: '' }),
@@ -1607,29 +1608,27 @@ describe('Complex JSON Payload Edge Cases', () => {
     expect(received).toBe(content);
   });
 
-  // Content that is valid JSON but not a valid Lexical editor state.
-  // Missing the `root` key, or root has no `children`, or children
-  // contains non-node objects. The handler currently passes it through
-  // — the editor validates on load. But the IPC layer SHOULD validate
-  // that content has the basic structure.
-  it('should reject content without root key (invalid editor state)', async () => {
+  // Content is opaque markdown since Stage 3 — the IPC layer stores it
+  // verbatim and no longer validates it as a Lexical JSON document.
+  it('accepts markdown content without a root key', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = JSON.stringify({ nodes: [], version: 1 });
-    await expect(handler(null, { id: 'no-root', content })).rejects.toThrow('content must have a root key');
-    expect(docs.updateDocument).not.toHaveBeenCalled();
+    const content = '# Heading\n\nSome body text.\n';
+    await handler(null, { id: 'no-root', content });
+    expect((docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content).toBe(content);
   });
 
-  it('should reject content where root.children is not an array', async () => {
+  it('accepts markdown content that is not JSON', async () => {
     const handler = handlers.get('documents.update')!;
-    const content = JSON.stringify({ root: { children: 'not-an-array', type: 'root' } });
-    await expect(handler(null, { id: 'bad-children', content })).rejects.toThrow('content root.children must be an array');
-    expect(docs.updateDocument).not.toHaveBeenCalled();
+    const content = 'plain text, not JSON at all';
+    await handler(null, { id: 'bad-json', content });
+    expect((docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content).toBe(content);
   });
 
-  it('should reject content that is not valid JSON at all', async () => {
+  it('accepts legacy Lexical JSON content during migration', async () => {
     const handler = handlers.get('documents.update')!;
-    await expect(handler(null, { id: 'bad-json', content: '{not valid json}' })).rejects.toThrow('content is not valid JSON');
-    expect(docs.updateDocument).not.toHaveBeenCalled();
+    const content = JSON.stringify({ root: { children: [], type: 'root', version: 1 } });
+    await handler(null, { id: 'legacy', content });
+    expect((docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content).toBe(content);
   });
 
   // A code-block with executable shell commands — a local note-taking app
@@ -1843,11 +1842,12 @@ describe('Complex JSON Payload Edge Cases', () => {
     expect(docs.updateDocument).not.toHaveBeenCalled();
   });
 
-  // Content validation rejects non-JSON strings in the update handler.
-  it('should reject documents.update with content that is not valid JSON', async () => {
+  // Content is opaque markdown — the update handler stores it verbatim.
+  it('should accept markdown content in documents.update', async () => {
     const handler = handlers.get('documents.update')!;
-    await expect(handler(null, { id: 'bad-json', content: 'this is not JSON' })).rejects.toThrow('content is not valid JSON');
-    expect(docs.updateDocument).not.toHaveBeenCalled();
+    const content = 'this is markdown, not JSON';
+    await handler(null, { id: 'md-doc', content });
+    expect((docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content).toBe(content);
   });
 
   // The handler validates image MIME types before passing to saveImage.
@@ -1917,19 +1917,19 @@ describe('Complex JSON Payload Edge Cases', () => {
     expect(received).toBe(content);
   });
 
-  // Empty object as content — valid JSON but missing root key, now rejected.
-  it('empty JSON object {} is rejected (no root key)', async () => {
+  // Empty object as content — markdown is opaque, so this is stored verbatim.
+  it('empty JSON object {} is stored verbatim', async () => {
     const handler = handlers.get('documents.update')!;
-    await expect(handler(null, { id: '1', content: '{}' })).rejects.toThrow('content must have a root key');
-    expect(docs.updateDocument).not.toHaveBeenCalled();
+    await handler(null, { id: '1', content: '{}' });
+    expect((docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content).toBe('{}');
   });
 
-  // Non-JSON string as content — rejected by validation.
-  it('non-JSON string is rejected by content validation', async () => {
+  // Non-JSON string as content — markdown is opaque, so this is stored verbatim.
+  it('plain text content is stored verbatim', async () => {
     const handler = handlers.get('documents.update')!;
-    await expect(handler(null, { id: '1', content: 'This is just plain text, not JSON at all' }))
-      .rejects.toThrow('content is not valid JSON');
-    expect(docs.updateDocument).not.toHaveBeenCalled();
+    const content = 'This is just plain text, not JSON at all';
+    await handler(null, { id: '1', content });
+    expect((docs.updateDocument as ReturnType<typeof vi.fn>).mock.calls[0][1].content).toBe(content);
   });
 });
 

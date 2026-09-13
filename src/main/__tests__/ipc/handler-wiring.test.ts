@@ -53,6 +53,7 @@ vi.mock('../../db', () => ({
 // Mock all repo modules
 vi.mock('../../repos/documents', () => ({
   listDocuments: vi.fn().mockReturnValue([{ id: '1', title: 'Test' }]),
+  findDocumentByTitle: vi.fn().mockReturnValue(null),
   getDocumentById: vi.fn().mockReturnValue({ id: '1', title: 'Test' }),
   createDocument: vi.fn().mockReturnValue({ id: 'new', title: 'Created' }),
   updateDocument: vi.fn().mockReturnValue({ id: '1', title: 'Updated' }),
@@ -123,8 +124,8 @@ describe('IPC Handler Wiring', () => {
 
   // If a channel is missing, the renderer's invoke() call would hang forever
   // with no response. This is the most basic check.
-  it('registers exactly 42 channels', () => {
-    expect(handlers.size).toBe(42);
+  it('registers exactly 56 channels', () => {
+    expect(handlers.size).toBe(56);
   });
 
   // Verify every expected channel name exists. A typo in a channel name

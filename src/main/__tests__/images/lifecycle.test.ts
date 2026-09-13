@@ -390,7 +390,8 @@ describe('DB Consistency', () => {
     expect(colNames).toContain('width');
     expect(colNames).toContain('height');
     expect(colNames).toContain('createdAt');
-    expect(colNames).toHaveLength(6);
+    expect(colNames).toContain('contentHash');
+    expect(colNames).toHaveLength(7);
   });
 
   // Verify that id is the primary key.

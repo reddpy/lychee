@@ -40,6 +40,7 @@ vi.mock('electron', () => ({
 
 vi.mock('../../repos/documents', () => ({
   listDocuments: vi.fn().mockReturnValue([]),
+  findDocumentByTitle: vi.fn().mockReturnValue(null),
   getDocumentById: vi.fn().mockReturnValue(null),
   createDocument: vi.fn().mockReturnValue({ id: '1', title: '' }),
   updateDocument: vi.fn().mockReturnValue({ id: '1', title: '', updatedAt: '' }),
@@ -894,9 +895,9 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
   // ────────────────────────────────────────────────────────
 
   it('calling registerIpcHandlers twice overwrites handlers (no duplicates)', () => {
-    expect(handlers.size).toBe(42);
+    expect(handlers.size).toBe(56);
     registerIpcHandlers();
-    expect(handlers.size).toBe(42);
+    expect(handlers.size).toBe(56);
   });
 
   // ────────────────────────────────────────────────────────

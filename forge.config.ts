@@ -11,6 +11,7 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 
 import fs from "fs";
 import path from "path";
+import { execFileSync } from "node:child_process";
 
 import { mainConfig } from "./webpack.main.config";
 import { rendererConfig } from "./webpack.renderer.config";
@@ -105,7 +106,8 @@ const config: ForgeConfig = {
     // Copy build/icon.png into the packaged app's resources/ directory so the
     // runtime BrowserWindow `icon:` path can resolve it on Linux/Windows.
     // (macOS reads the icon from the .icns embedded in the bundle.)
-    extraResource: [linuxIcon],
+    // `out/mcp` ships the standalone agent (MCP) server under resources/mcp.
+    extraResource: [linuxIcon, path.resolve(__dirname, "out", "mcp")],
     ...(shouldSignMac
       ? {
           osxSign: {
@@ -197,8 +199,12 @@ const config: ForgeConfig = {
   hooks: {
     // Generate the Azure Trusted Signing metadata file before packaging so it
     // exists when signtool runs (no-op unless Windows signing env is present).
+    // Also bundle the standalone MCP server so it ships under resources/mcp.
     prePackage: async () => {
       writeWinSignMetadata();
+      execFileSync("node", [path.resolve(__dirname, "scripts", "build-mcp.mjs")], {
+        stdio: "inherit",
+      });
     },
   },
 };

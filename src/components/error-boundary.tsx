@@ -44,6 +44,7 @@ type ErrorBoundaryState = {
   // slip through and unmount the tree to a blank screen.
   hasError: boolean;
   error: unknown;
+  componentStack: string;
   prevResetKeys: readonly unknown[];
 };
 
@@ -65,6 +66,7 @@ export class ErrorBoundary extends React.Component<
   state: ErrorBoundaryState = {
     hasError: false,
     error: null,
+    componentStack: "",
     prevResetKeys: this.props.resetKeys ?? [],
   };
 
@@ -81,16 +83,17 @@ export class ErrorBoundary extends React.Component<
     // Keys changed: always record them, and clear a tripped boundary so the
     // subtree gets another attempt.
     return state.hasError
-      ? { hasError: false, error: null, prevResetKeys: next }
+      ? { hasError: false, error: null, componentStack: "", prevResetKeys: next }
       : { prevResetKeys: next };
   }
 
   componentDidCatch(error: unknown, info: React.ErrorInfo): void {
     reportRenderError(this.props.scope, error, info);
+    this.setState({ componentStack: info.componentStack ?? "" });
   }
 
   reset = (): void => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, componentStack: "" });
   };
 
   render(): React.ReactNode {
@@ -100,12 +103,23 @@ export class ErrorBoundary extends React.Component<
       return this.props.fallback(this.state.error, this.reset);
     }
 
-    return <DefaultFallback message={messageOf(this.state.error)} />;
+    return (
+      <DefaultFallback
+        message={messageOf(this.state.error)}
+        componentStack={this.state.componentStack}
+      />
+    );
   }
 }
 
 /** Full-window recovery screen used when no custom fallback is supplied. */
-function DefaultFallback({ message }: { message: string }) {
+function DefaultFallback({
+  message,
+  componentStack,
+}: {
+  message: string;
+  componentStack?: string;
+}) {
   return (
     <div
       role="alert"
@@ -123,6 +137,11 @@ function DefaultFallback({ message }: { message: string }) {
       {message ? (
         <pre className="max-h-32 max-w-md overflow-auto rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-3 py-2 text-left text-xs whitespace-pre-wrap text-[hsl(var(--muted-foreground))]">
           {message}
+        </pre>
+      ) : null}
+      {componentStack ? (
+        <pre className="max-h-40 max-w-md overflow-auto rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-3 py-2 text-left text-[10px] whitespace-pre-wrap text-[hsl(var(--muted-foreground))]">
+          {componentStack.trim()}
         </pre>
       ) : null}
       <button

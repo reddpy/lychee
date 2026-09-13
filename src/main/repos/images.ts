@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
@@ -11,6 +11,7 @@ interface ImageRow {
   width: number | null;
   height: number | null;
   createdAt: string;
+  contentHash: string | null;
 }
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -19,6 +20,27 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/gif': 'gif',
   'image/webp': 'webp',
 };
+
+const EXT_TO_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+};
+
+/** SHA-256 of raw image bytes — the content address. */
+export function contentHashOf(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex');
+}
+
+export function mimeToExtension(mimeType: string): string | undefined {
+  return MIME_TO_EXT[mimeType];
+}
+
+export function extensionToMime(extension: string): string | undefined {
+  return EXT_TO_MIME[extension.toLowerCase()];
+}
 
 /** Validate that the buffer starts with known magic bytes for the claimed MIME type. */
 function validateMagicBytes(buf: Buffer, mimeType: string): void {
@@ -68,31 +90,84 @@ function getImagesDir(): string {
 }
 
 export function saveImage(data: string, mimeType: string): { id: string; filePath: string } {
-  const ext = MIME_TO_EXT[mimeType];
-  if (!ext) throw new Error(`Unsupported image type: ${mimeType}`);
-
-  const id = randomUUID();
-  const filename = `${id}.${ext}`;
-  const filePath = path.join(getImagesDir(), filename);
-
   // Strip data URL prefix if present (e.g. "data:image/png;base64,...")
   const base64 = data.includes(',') ? data.split(',')[1] : data;
   const buf = Buffer.from(base64, 'base64');
-
   if (buf.length === 0) {
     throw new Error('Image data is empty (zero bytes)');
   }
+  return saveImageBuffer(buf, mimeType);
+}
+
+/**
+ * Store raw image bytes. Computes the content hash up front so the vault can map
+ * the image to a portable `assets/<hash>.<ext>` path.
+ */
+export function saveImageBuffer(buf: Buffer, mimeType: string): { id: string; filePath: string } {
+  const ext = MIME_TO_EXT[mimeType];
+  if (!ext) throw new Error(`Unsupported image type: ${mimeType}`);
+  if (buf.length === 0) throw new Error('Image data is empty (zero bytes)');
 
   validateMagicBytes(buf, mimeType);
 
-  fs.writeFileSync(filePath, buf);
+  const id = randomUUID();
+  const filename = `${id}.${ext}`;
+  fs.writeFileSync(path.join(getImagesDir(), filename), buf);
 
   const db = getDb();
   db.prepare(
-    `INSERT INTO images (id, filename, mimeType, createdAt) VALUES (?, ?, ?, ?)`,
-  ).run(id, filename, mimeType, new Date().toISOString());
+    `INSERT INTO images (id, filename, mimeType, createdAt, contentHash) VALUES (?, ?, ?, ?, ?)`,
+  ).run(id, filename, mimeType, new Date().toISOString(), contentHashOf(buf));
 
   return { id, filePath: filename };
+}
+
+/** Image metadata needed to materialize a vault asset (or resolve one back). */
+export function getImage(
+  id: string,
+): { id: string; filename: string; mimeType: string; contentHash: string | null } | null {
+  const row = getDb()
+    .prepare(`SELECT id, filename, mimeType, contentHash FROM images WHERE id = ?`)
+    .get(id) as Pick<ImageRow, 'id' | 'filename' | 'mimeType' | 'contentHash'> | undefined;
+  return row ?? null;
+}
+
+export function findImageByContentHash(
+  contentHash: string,
+): { id: string; filename: string; mimeType: string } | null {
+  const row = getDb()
+    .prepare(`SELECT id, filename, mimeType FROM images WHERE contentHash = ?`)
+    .get(contentHash) as Pick<ImageRow, 'id' | 'filename' | 'mimeType'> | undefined;
+  return row ?? null;
+}
+
+export function setImageContentHash(id: string, contentHash: string): void {
+  getDb().prepare(`UPDATE images SET contentHash = ? WHERE id = ?`).run(contentHash, id);
+}
+
+/** Read an image's bytes and return its content hash, backfilling the column. */
+export function readImageForAsset(
+  id: string,
+): { buffer: Buffer; mimeType: string; contentHash: string } | null {
+  const row = getDb()
+    .prepare(`SELECT filename, mimeType, contentHash FROM images WHERE id = ?`)
+    .get(id) as Pick<ImageRow, 'filename' | 'mimeType' | 'contentHash'> | undefined;
+  if (!row) return null;
+
+  const imagesDir = getImagesDir();
+  const filePath = path.resolve(imagesDir, row.filename);
+  if (!filePath.startsWith(path.resolve(imagesDir) + path.sep)) return null;
+
+  let buffer: Buffer;
+  try {
+    buffer = fs.readFileSync(filePath);
+  } catch {
+    return null;
+  }
+
+  const contentHash = row.contentHash ?? contentHashOf(buffer);
+  if (!row.contentHash) setImageContentHash(id, contentHash);
+  return { buffer, mimeType: row.mimeType, contentHash };
 }
 
 export function getImagePath(id: string): { filePath: string } {
@@ -171,16 +246,7 @@ export async function downloadImage(url: string): Promise<{ id: string; filePath
     if (!mimeType) {
       throw new Error(`Unsupported content-type: ${contentType}`);
     }
-    validateMagicBytes(buffer, mimeType);
-    const ext = MIME_TO_EXT[mimeType];
-    const id = randomUUID();
-    const filename = `${id}.${ext}`;
-    fs.writeFileSync(path.join(getImagesDir(), filename), buffer);
-    const db = getDb();
-    db.prepare(
-      `INSERT INTO images (id, filename, mimeType, createdAt) VALUES (?, ?, ?, ?)`,
-    ).run(id, filename, mimeType, new Date().toISOString());
-    return { id, filePath: filename };
+    return saveImageBuffer(buffer, mimeType);
   } finally {
     clearTimeout(timeout);
   }
