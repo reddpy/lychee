@@ -368,3 +368,69 @@ export function writeTombstone(
   fs.writeFileSync(path.join(dir, `${deviceId}.jsonl`), `${lines}\n`);
 }
 
+/** Append records to a device's tombstone log without rewriting earlier ones. */
+export function appendTombstone(
+  vaultDir: string,
+  deviceId: string,
+  entries: Array<{ id: string; action: 'trash' | 'restore' | 'purge'; at: string }>,
+): void {
+  const dir = path.join(vaultDir, '.lychee', 'tombstones');
+  fs.mkdirSync(dir, { recursive: true });
+  const lines = entries
+    .map((entry) => JSON.stringify({ ...entry, device: deviceId }))
+    .join('\n');
+  fs.appendFileSync(path.join(dir, `${deviceId}.jsonl`), `${lines}\n`);
+}
+
+/** Every tombstone line across all device logs, concatenated. */
+export function tombstoneText(vaultDir: string): string {
+  const dir = path.join(vaultDir, '.lychee', 'tombstones');
+  if (!fs.existsSync(dir)) return '';
+  return fs
+    .readdirSync(dir)
+    .filter((name) => name.endsWith('.jsonl'))
+    .map((name) => fs.readFileSync(path.join(dir, name), 'utf8'))
+    .join('\n');
+}
+
+/** The live vault-relative path of the file whose frontmatter id matches. */
+export function filePathForId(
+  vaultDir: string,
+  id: string,
+  options: { trash?: boolean } = {},
+): string | undefined {
+  const read = options.trash ? readTrashedNote : readNote;
+  return listMarkdown(vaultDir, options).find((relativePath) => {
+    try {
+      return read(vaultDir, relativePath).data.id === id;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Create a note through the same IPC the UI calls; returns the created row. */
+export async function createNoteViaIpc(
+  page: Page,
+  title: string,
+): Promise<{ id: string; title: string }> {
+  const document = await page.evaluate(
+    async (payload) =>
+      (
+        await (window as any).lychee.invoke('documents.create', payload)
+      ).document,
+    { title },
+  );
+  await page.waitForTimeout(400);
+  return document;
+}
+
+/** All live documents keyed by their title (last write wins on collisions). */
+export async function idsByTitle(page: Page): Promise<Map<string, string>> {
+  const docs = await page.evaluate(async () =>
+    (await (window as any).lychee.invoke('documents.list', { limit: 500, offset: 0 })).documents,
+  );
+  return new Map((docs as Array<{ id: string; title: string }>).map((doc) => [doc.title, doc.id]));
+}
+
+

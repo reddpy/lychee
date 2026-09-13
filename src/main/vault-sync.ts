@@ -37,6 +37,7 @@ import {
   purgeVaultEntry,
   resolveWithinVault,
   scanVaultDirectory,
+  vaultEntryExists,
 } from "./vault";
 import { VaultWatcher, type VaultFileEvent } from "./vault-watcher";
 
@@ -79,12 +80,32 @@ export class VaultSync {
   private pathCache: { at: number; map: Map<string, string> } | null = null;
   /** Cached tombstone state; TTL-bounded. */
   private tombstoneCache: { at: number; map: Map<string, TombstoneState> } | null = null;
+  /**
+   * Whether the startup index reconcile has completed. Until it has, file
+   * events are queued instead of processed. Main starts the watcher before the
+   * renderer's bootstrap reconciles duplicates/hierarchy from the files, and
+   * processing in scan order would race that reconcile (two files claiming one
+   * id could both be applied, or the wrong one could win).
+   */
+  private reconciled = false;
 
   constructor(private readonly send: (event: VaultFileChangedEvent) => void) {
     this.watcher = new VaultWatcher(
       (event) => this.onFileEvent(event),
       () => this.reconcileTombstones(),
     );
+  }
+
+  /**
+   * Allow file events to be processed after the startup index reconcile. Any
+   * event that arrived while waiting is re-read now so nothing is dropped.
+   */
+  markReconciled(): void {
+    if (this.reconciled) return;
+    this.reconciled = true;
+    const queued = [...this.queued];
+    this.queued.clear();
+    for (const relativePath of queued) this.watcher.refresh(relativePath);
   }
 
   start(directory: string): void {
@@ -287,6 +308,37 @@ export class VaultSync {
     }
   }
 
+  /**
+   * Rewrite every live sibling under `parentId` so its file's frontmatter `order`
+   * matches the database after an operation shifted sibling positions (create,
+   * trash, restore). Files are authoritative on the next launch, so a stale
+   * `order` on disk would be adopted by `reconcileIndexFromVault` and silently
+   * change the sidebar order. `excludeIds` avoids rewriting notes another path
+   * already handled (e.g. a fresh export or a forced restore rewrite).
+   *
+   * Only siblings whose file currently exists are rewritten: during a burst of
+   * external deletes the DB rows still exist while their unlink events are
+   * queued, and rewriting them here would resurrect a file that is about to be
+   * trashed (making its delete look like a no-op).
+   */
+  rebalanceSiblings(parentId: string | null, excludeIds: Iterable<string> = []): void {
+    const exclude = new Set(excludeIds);
+    const directory = this.watcher.getDirectory() ?? this.vaultDirectory();
+    if (!directory) return;
+    const ids: string[] = [];
+    for (const node of listDocumentTree()) {
+      if (node.parentId !== parentId || exclude.has(node.id)) continue;
+      const relativePath = getDocumentById(node.id)?.metadata.vaultRelativePath;
+      if (!relativePath) continue;
+      try {
+        if (vaultEntryExists(directory, relativePath)) ids.push(node.id);
+      } catch {
+        // Unresolvable path: leave it for the next sweep.
+      }
+    }
+    if (ids.length > 0) this.rewriteNotes(ids);
+  }
+
   /** Called once at startup: resume watching if the user left it enabled. */
   startIfEnabled(): void {
     if (getSetting(VAULT_WATCH_ENABLED_KEY) !== "true") return;
@@ -342,11 +394,13 @@ export class VaultSync {
             const { restoredIds } = restoreDocument(id);
             this.restoreNoteFiles(restoredIds);
             this.sweepPaths(false, restoredIds);
+            this.rebalanceSiblings(note.parentId, restoredIds);
             changed = true;
           }
         } else if (!note.deletedAt && tombstoneSupersedes(state, note.updatedAt)) {
           const { trashedIds } = trashDocument(id);
           this.trashNoteFiles(trashedIds);
+          this.rebalanceSiblings(note.parentId);
           this.pathCache = null;
           trashed.push(...trashedIds);
           changed = true;
@@ -362,6 +416,12 @@ export class VaultSync {
   }
 
   private onFileEvent(event: VaultFileEvent): void {
+    if (!this.reconciled) {
+      // Startup reconcile hasn't run yet: remember the path and re-read it once
+      // the index is authoritative.
+      this.queued.add(event.relativePath);
+      return;
+    }
     const directory = this.watcher.getDirectory();
     if (!directory) return;
     if (!event.exists || event.contents == null) {
@@ -497,6 +557,7 @@ export class VaultSync {
     try {
       const { trashedIds } = trashDocument(note.id);
       this.trashNoteFiles(trashedIds);
+      this.rebalanceSiblings(note.parentId);
       this.recordTombstones(trashedIds, "trash");
       this.pathCache = null;
       this.send({ action: "delete", relativePath, ids: trashedIds });

@@ -94,6 +94,8 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     }
     const document = createDocument(payload);
     writeThrough(document.id);
+    // Creating shifts existing siblings down; rewrite them so the files agree.
+    getVaultSync().rebalanceSiblings(document.parentId, [document.id]);
     getVaultSync().sweepPaths();
     return { document };
   });
@@ -127,6 +129,8 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
   handle('documents.trash', (payload) => {
     const result = trashDocument(payload.id);
     getVaultSync().trashNoteFiles(result.trashedIds);
+    // Trashing closes the gap in the old parent; keep the siblings' files dense.
+    getVaultSync().rebalanceSiblings(result.document.parentId);
     getVaultSync().sweepPaths();
     getVaultSync().recordTombstones(result.trashedIds, 'trash');
     return result;
@@ -138,6 +142,8 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     // Force-rewrite restored notes: if their file is gone (deleted from .trash,
     // or lost with the vault), recreate it so a live note always has a file.
     getVaultSync().sweepPaths(false, result.restoredIds);
+    // Restoring shifts siblings at the insertion point; keep their files dense.
+    getVaultSync().rebalanceSiblings(result.document.parentId, result.restoredIds);
     getVaultSync().recordTombstones(result.restoredIds, 'restore');
     return result;
   });
@@ -371,6 +377,9 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     setSetting(VAULT_LOCATION_KEY, directory);
     // Files are authoritative for metadata/hierarchy; rebuild the index from them.
     reconcileIndexFromVault(directory);
+    // Only now is the index authoritative: let the watcher apply events (any
+    // that arrived during startup were queued and are re-read here).
+    getVaultSync().markReconciled();
     const hasFiles = scanVaultDirectory(directory).entries.length > 0;
     const hasDbNotes = listAllDocumentTitles().length > 0;
     // Watching is the default; only an explicit opt-out disables it.
