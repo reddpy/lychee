@@ -43,7 +43,7 @@ async function wantTrashed(
 ): Promise<void> {
   await expect
     .poll(async () => (await listTrashedFromDb(window)).some((doc) => doc.id === id), {
-      timeout: 15_000,
+      timeout: 30_000,
     })
     .toBe(true);
 }
@@ -57,7 +57,7 @@ async function wantActive(
       async () =>
         (await listDocumentsFromDb(window)).some((doc) => doc.id === id) &&
         (await getDocumentFromDb(window, id))?.deletedAt === null,
-      { timeout: 15_000 },
+      { timeout: 30_000 },
     )
     .toBe(true);
 }

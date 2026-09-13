@@ -12,8 +12,8 @@ import { writeNote, writeTombstone, noteItem, listMarkdown } from './vault-helpe
 /**
  * Cross-device tombstones. A tombstone is a line in
  * `<vault>/.lychee/tombstones/<device>.jsonl`; the watcher reconciles them into
- * the local DB. The fixture pre-creates the tombstone directory so chokidar is
- * watching it from launch.
+ * the local DB. The fixture pre-creates the tombstone directory so the watcher
+ * subscribes to it from launch.
  */
 
 const LEGACY_ID = '77777777-7777-4777-8777-777777777777';

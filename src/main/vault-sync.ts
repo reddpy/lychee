@@ -39,7 +39,7 @@ import {
   scanVaultDirectory,
   vaultEntryExists,
 } from "./vault";
-import { VaultWatcher, type VaultFileEvent } from "./vault-watcher";
+import { VaultWatcher, type VaultFileEvent, type VaultWatcherLike } from "./vault-watcher";
 
 import {
   VAULT_LOCATION_KEY,
@@ -71,7 +71,7 @@ export {
  *   file is restored from the DB. Nothing is silently lost.
  */
 export class VaultSync {
-  private readonly watcher: VaultWatcher;
+  private readonly watcher: VaultWatcherLike;
   /** Paths currently being applied (prevents duplicate/concurrent imports). */
   private readonly pending = new Set<string>();
   /** Paths that changed again while pending, to re-process after resolve. */
@@ -449,8 +449,12 @@ export class VaultSync {
     // filename is the title (Obsidian model), so this is a retitle. Orphans from
     // the old duplicate-id bug are cleaned up at startup, not handled here.
     const storedPath = note?.metadata.vaultRelativePath;
+    // Case-insensitive path identity: on macOS/Windows a case-only difference
+    // is the same file, not an external rename, so it must not trigger an apply.
     const externalRename =
-      note != null && storedPath !== undefined && storedPath !== event.relativePath;
+      note != null &&
+      storedPath !== undefined &&
+      storedPath.toLowerCase() !== event.relativePath.toLowerCase();
 
     const action = externalRename
       ? "apply"
@@ -612,7 +616,15 @@ export class VaultSync {
   private dedupeId(directory: string, id: string, keepPath: string | undefined): void {
     if (!keepPath) return;
     for (const entry of scanVaultDirectory(directory).entries) {
-      if (entry.id !== id || entry.relativePath === keepPath) continue;
+      // Case-insensitive: on macOS/Windows `Newer.md` and `newer.md` are the
+      // same file, so a case-only difference must not be treated as a rival
+      // (which would trash the live winner).
+      if (
+        entry.id !== id ||
+        entry.relativePath.toLowerCase() === keepPath.toLowerCase()
+      ) {
+        continue;
+      }
       try {
         trashVaultEntry(directory, entry.relativePath);
       } catch {
@@ -825,7 +837,19 @@ export class VaultSync {
       }) +
       "\n" +
       exportAssetsToVault(directory, stripLeadingTitle(bodyMarkdown, note.title));
-    writeVaultFile(directory, relativePath, fileContents, options);
+    // Skip a redundant rewrite when the file already holds exactly these bytes.
+    // Besides avoiding needless I/O, this prevents a coalescing watcher from
+    // merging our own "create" with a user's immediate delete of the same file
+    // into a single no-op notification (which would hide the delete).
+    let alreadyMatches = false;
+    try {
+      const absolute = resolveWithinVault(directory, relativePath);
+      alreadyMatches =
+        fs.existsSync(absolute) && fs.readFileSync(absolute, "utf8") === fileContents;
+    } catch {
+      alreadyMatches = false;
+    }
+    if (!alreadyMatches) writeVaultFile(directory, relativePath, fileContents, options);
     const fileRevision = revisionOf(fileContents);
     setDocumentMetadata(note.id, {
       vaultFileRevision: fileRevision,

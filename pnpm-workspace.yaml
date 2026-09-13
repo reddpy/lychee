@@ -2,6 +2,7 @@ nodeLinker: hoisted
 blockExoticSubdeps: false
 
 allowBuilds:
+  '@parcel/watcher': true
   better-sqlite3: true
   electron: true
   electron-winstaller: true

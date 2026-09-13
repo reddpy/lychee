@@ -1,0 +1,158 @@
+name: Vault E2E (platform matrix)
+
+# The vault watcher uses a native binding (@parcel/watcher) whose backends differ
+# per OS: FSEvents (macOS), ReadDirectoryChangesW (Windows), inotify (Linux). The
+# generic CI e2e matrix runs Linux only and does not include the vault specs, so
+# this workflow packages the app on each platform and runs the full vault suite
+# against the real runtime the users get.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/main/vault-*.ts'
+      - 'src/main/vault-sync.ts'
+      - 'src/main/assets.ts'
+      - 'src/main/tombstones.ts'
+      - 'src/main/tombstone-io.ts'
+      - 'src/main/restore-metadata.ts'
+      - 'src/main/repos/documents.ts'
+      - 'src/shared/tombstone.ts'
+      - 'src/shared/vault-*.ts'
+      - 'src/shared/frontmatter.ts'
+      - 'src/shared/markdown-title.ts'
+      - 'src/main/ipc.ts'
+      - 'src/renderer/vault-*.ts'
+      - 'e2e/vault-*.spec.ts'
+      - 'e2e/vault-helpers.ts'
+      - 'e2e/electron-app.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/vault-platform.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/main/vault-*.ts'
+      - 'src/main/vault-sync.ts'
+      - 'src/main/assets.ts'
+      - 'src/main/tombstones.ts'
+      - 'src/main/tombstone-io.ts'
+      - 'src/main/restore-metadata.ts'
+      - 'src/main/repos/documents.ts'
+      - 'src/shared/tombstone.ts'
+      - 'src/shared/vault-*.ts'
+      - 'src/shared/frontmatter.ts'
+      - 'src/shared/markdown-title.ts'
+      - 'src/main/ipc.ts'
+      - 'src/renderer/vault-*.ts'
+      - 'e2e/vault-*.spec.ts'
+      - 'e2e/vault-helpers.ts'
+      - 'e2e/electron-app.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/vault-platform.yml'
+
+concurrency:
+  group: vault-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vault-e2e:
+    name: Vault E2E (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+          - name: Linux
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.0
+
+      - uses: actions/setup-node@v4
+        with:
+          # Pinned: Node 24.16.0 breaks extract-zip/yauzl (truncates the Electron
+          # archive), so electron's postinstall and electron-forge packaging both
+          # silently fail. 24.15.0 is the last clean version. See README/CI notes.
+          node-version: 24.15.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install system dependencies for Electron (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            xvfb \
+            libgtk-3-0 \
+            libnotify4 \
+            libnss3 \
+            libxss1 \
+            libxtst6 \
+            xauth \
+            libgbm1 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libcups2 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            libxkbcommon0
+
+      # E2E=1 at build time enables the preload test surface; it is also required
+      # at run time (see src/preload.ts, e2e/ipc-mock.ts).
+      - name: Package Electron app (E2E)
+        run: pnpm run package
+        env:
+          E2E: '1'
+
+      - name: Run vault E2E (macOS / Windows)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: >-
+          pnpm exec playwright test
+          e2e/vault-*.spec.ts
+          --workers=2
+          --reporter=list
+        env:
+          E2E: '1'
+
+      - name: Run vault E2E (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: >-
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24"
+          pnpm exec playwright test
+          e2e/vault-*.spec.ts
+          --workers=2
+          --reporter=list
+        env:
+          E2E: '1'
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vault-e2e-${{ matrix.name }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

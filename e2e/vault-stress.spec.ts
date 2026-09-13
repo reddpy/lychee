@@ -181,8 +181,8 @@ test.describe('Stress — churn', () => {
     await expect
       .poll(async () => (await getDocumentFromDb(window, id))?.title, { timeout: 15_000 })
       .toBe('Churn Renamed');
-    // The app rewrites at the canonical (title-named) path. Let chokidar's
-    // awaitWriteFinish settle before deleting it.
+    // The app rewrites at the canonical (title-named) path. Let the watcher's
+    // write settle before deleting it.
     await waitForFile(path.join(vaultDir, 'Churn Renamed.md'));
     await window.waitForTimeout(700);
     fs.rmSync(path.join(vaultDir, 'Churn Renamed.md'));

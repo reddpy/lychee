@@ -1,8 +1,26 @@
-import chokidar, { type FSWatcher } from "chokidar";
+import * as parcelWatcher from "@parcel/watcher";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { revisionOf } from "../shared/hash";
 import { shouldIgnoreVaultPath, isConflictCopyPath } from "../shared/vault-watch";
+
+/**
+ * Cross-platform vault watcher backed by `@parcel/watcher` (FSEvents /
+ * ReadDirectoryChangesW / inotify / Watchman) through a native napi binding.
+ *
+ * `VaultSync` orchestrates the DB/filesystem; this class only turns OS events
+ * into normalized `VaultFileEvent`s. It:
+ * - debounces per path, then processes through a serialized queue so a large
+ *   change set cannot starve the DB/renderer,
+ * - settles before reading (an editor's temp→rename or a partial write is never
+ *   imported half-written),
+ * - suppresses our own writes by path + content revision,
+ * - watches the tombstone directory separately,
+ * - scans existing files once on start (`@parcel/watcher` only reports changes),
+ * - runs a periodic `getEventsSince` safety net for events `subscribe` may have
+ *   coalesced away (a create+delete within its C++ throttle window).
+ */
 
 export interface VaultFileEvent {
   relativePath: string;
@@ -11,30 +29,40 @@ export interface VaultFileEvent {
   contents: string | null;
 }
 
+/** The surface `VaultSync` depends on. */
+export interface VaultWatcherLike {
+  isRunning(): boolean;
+  getDirectory(): string | null;
+  suppress(relativePath: string, revision: string, ttlMs?: number): void;
+  unsuppress(relativePath: string): void;
+  refresh(relativePath: string): void;
+  start(directory: string): void;
+  stop(): void;
+}
+
 const DEBOUNCE_MS = 250;
 const SETTLE_MS = 250;
 const SUPPRESS_TTL_MS = 8000;
-
 /**
- * Cross-platform vault watcher (chokidar → FSEvents / ReadDirectoryChangesW /
- * inotify). Reliability choices:
- *
- * - `awaitWriteFinish` waits for an editor's (or our own) temp→rename write to
- *   settle before we read, so we never read a half-written file.
- * - `atomic: true` handles editors that write via rename.
- * - per-path debounce coalesces bursts; a single global promise chain serializes
- *   processing so a large change set cannot exhaust the DB/renderer.
- * - `suppress()` records revisions we just wrote, so our own writes (and the
- *   baseline race before the DB metadata commit) do not echo back as external
- *   edits.
+ * Safety-net query interval. `subscribe` coalesces a create + delete within its
+ * C++ throttle window into a single (possibly no-op) notification, so a delete
+ * of a file the app just wrote can be missed. `getEventsSince` against a
+ * snapshot taken at start recovers those. On FSEvents/Watchman this is a cached
+ * lookup; on Linux/Windows it is a tree walk (acceptable for a notes vault).
  */
-export class VaultWatcher {
-  private watcher: FSWatcher | null = null;
-  private tombstoneWatcher: FSWatcher | null = null;
+const POLL_MS = 3000;
+
+export class VaultWatcher implements VaultWatcherLike {
+  private subscription: parcelWatcher.AsyncSubscription | null = null;
+  private tombstoneSubscription: parcelWatcher.AsyncSubscription | null = null;
   private directory: string | null = null;
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly suppressed = new Map<string, { revision: string; until: number }>();
+  /** Paths discovered by the initial scan; these are already-complete files. */
+  private readonly initialPaths = new Set<string>();
   private tombstoneTimer: NodeJS.Timeout | null = null;
+  private pollTimer: NodeJS.Timeout | null = null;
+  private snapshotPath: string | null = null;
   private queue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -43,7 +71,7 @@ export class VaultWatcher {
   ) {}
 
   isRunning(): boolean {
-    return this.watcher !== null;
+    return this.subscription !== null;
   }
 
   getDirectory(): string | null {
@@ -67,46 +95,80 @@ export class VaultWatcher {
 
   /** Re-read a path now (e.g. a change arrived while the previous one was applying). */
   refresh(relativePath: string): void {
-    const directory = this.directory;
-    if (!directory) return;
-    this.schedule(path.join(directory, relativePath));
+    this.schedule(relativePath);
   }
 
   start(directory: string): void {
-    if (this.watcher) this.stop();
-    this.directory = directory;
-    this.watcher = chokidar.watch(directory, {
-      // Scan existing files on start so changes made while the app was closed are
-      // reconciled (baselines make already-exported files a no-op).
-      ignoreInitial: false,
-      atomic: true,
-      awaitWriteFinish: { stabilityThreshold: SETTLE_MS, pollInterval: 100 },
-      followSymlinks: false,
-      persistent: true,
-      depth: 25,
-      ignored: (candidate: string) => shouldIgnoreVaultPath(path.basename(candidate)),
-    });
+    if (this.subscription) this.stop();
+    // @parcel/watcher reports real (symlink-resolved) paths. On macOS the temp
+    // dir is a symlink (`/var` -> `/private/var`), so watching `/var/...` and
+    // then calling `path.relative` against event paths under `/private/var/...`
+    // escapes the root and every event looks like a dotfile. Watch the realpath.
+    let resolved = directory;
+    try {
+      resolved = fs.realpathSync(directory);
+    } catch {
+      // Directory may not exist yet; keep the given path.
+    }
+    this.directory = resolved;
+    // @parcel/watcher rejects a subscription to a missing path; the tombstone
+    // directory is created lazily on the first delete, so ensure it exists.
+    const tombstoneDir = path.join(resolved, ".lychee", "tombstones");
+    try {
+      fs.mkdirSync(tombstoneDir, { recursive: true });
+    } catch {
+      // Best-effort; a later delete will create it.
+    }
 
-    const schedule = (absolute: string) => this.schedule(absolute);
-    this.watcher
-      .on("add", schedule)
-      .on("change", schedule)
-      .on("unlink", schedule)
-      .on("error", (error) => console.error("[vault-watcher]", error));
+    void parcelWatcher
+      .subscribe(
+        resolved,
+        (error, events) => {
+          if (error) {
+            console.error("[vault-watcher]", error);
+            return;
+          }
+          for (const event of events) {
+            const relativePath = path
+              .relative(resolved, event.path)
+              .split(path.sep)
+              .join("/");
+            this.schedule(relativePath);
+          }
+        },
+        // Suffix noise only; dot-files/dirs are filtered per-segment below so
+        // correctness never depends on glob semantics.
+        { ignore: ["**/*.tmp", "**/*~", "**/*.swp", "**/*.swx"] },
+      )
+      .then((sub) => {
+        if (this.directory === resolved) {
+          this.subscription = sub;
+          // @parcel/watcher only reports changes after subscription, so import
+          // files that already exist on launch with a one-shot walk.
+          this.initialScan();
+          void this.startPolling(resolved);
+        } else {
+          void sub.unsubscribe();
+        }
+      })
+      .catch((error) => console.error("[vault-watcher]", error));
 
-    // Tombstone logs live under a dot-directory (ignored by the markdown watcher),
-    // so watch them separately to pick up deletes synced from other devices.
-    this.tombstoneWatcher = chokidar.watch(path.join(directory, ".lychee", "tombstones"), {
-      ignoreInitial: true,
-      persistent: true,
-      depth: 2,
-    });
-    const scheduleTombstones = () => this.scheduleTombstones();
-    this.tombstoneWatcher
-      .on("add", scheduleTombstones)
-      .on("change", scheduleTombstones)
-      .on("unlink", scheduleTombstones)
-      .on("error", (error) => console.error("[vault-watcher]", error));
+    void parcelWatcher
+      .subscribe(tombstoneDir, (error) => {
+        if (!error) this.scheduleTombstones();
+      })
+      .then((sub) => {
+        if (this.directory === resolved) {
+          this.tombstoneSubscription = sub;
+          // Reconcile once after subscribing: a tombstone written between
+          // `start` and the async subscription resolving would otherwise be
+          // missed (no event is replayed for it).
+          this.onTombstones();
+        } else {
+          void sub.unsubscribe();
+        }
+      })
+      .catch((error) => console.error("[vault-watcher]", error));
   }
 
   stop(): void {
@@ -114,14 +176,87 @@ export class VaultWatcher {
     this.timers.clear();
     if (this.tombstoneTimer) clearTimeout(this.tombstoneTimer);
     this.tombstoneTimer = null;
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
+    this.snapshotPath = null;
     this.suppressed.clear();
-    const watcher = this.watcher;
-    const tombstoneWatcher = this.tombstoneWatcher;
-    this.watcher = null;
-    this.tombstoneWatcher = null;
+    this.initialPaths.clear();
+    const subscription = this.subscription;
+    const tombstoneSubscription = this.tombstoneSubscription;
+    this.subscription = null;
+    this.tombstoneSubscription = null;
     this.directory = null;
-    if (watcher) void watcher.close();
-    if (tombstoneWatcher) void tombstoneWatcher.close();
+    if (subscription) void subscription.unsubscribe();
+    if (tombstoneSubscription) void tombstoneSubscription.unsubscribe();
+  }
+
+  /** Query for changes that subscribe may have coalesced away, then re-snapshot. */
+  private async startPolling(resolved: string): Promise<void> {
+    const snapshotPath = path.join(
+      os.tmpdir(),
+      `lychee-watch-${revisionOf(resolved).slice(0, 16)}.snapshot`,
+    );
+    this.snapshotPath = snapshotPath;
+    const snapshot = async (): Promise<void> => {
+      try {
+        await parcelWatcher.writeSnapshot(resolved, snapshotPath);
+      } catch (error) {
+        console.error("[vault-watcher] snapshot failed", error);
+      }
+    };
+    await snapshot();
+    if (this.directory !== resolved) return;
+    this.pollTimer = setInterval(() => {
+      void (async () => {
+        if (this.directory !== resolved) return;
+        // Tombstones are a separate subscription with their own file writes;
+        // reconcile them on the same cadence as a safety net in case a create
+        // event was coalesced or arrived before the subscription was ready.
+        this.onTombstones();
+        try {
+          const events = await parcelWatcher.getEventsSince(resolved, snapshotPath);
+          for (const event of events) {
+            const relativePath = path
+              .relative(resolved, event.path)
+              .split(path.sep)
+              .join("/");
+            this.schedule(relativePath);
+          }
+          await snapshot();
+        } catch (error) {
+          // A missing/corrupt snapshot must not kill the loop; recreate it.
+          console.error("[vault-watcher] event query failed", error);
+          await snapshot();
+        }
+      })();
+    }, POLL_MS);
+  }
+
+  /** Walk the tree once and schedule every existing `.md` file (ignoreInitial). */
+  private initialScan(): void {
+    const directory = this.directory;
+    if (!directory) return;
+    const walk = (dir: string): void => {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (entry.name.startsWith(".")) continue;
+        const absolute = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(absolute);
+          continue;
+        }
+        if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) continue;
+        const relativePath = path.relative(directory, absolute).split(path.sep).join("/");
+        this.initialPaths.add(relativePath);
+        this.schedule(relativePath);
+      }
+    };
+    walk(directory);
   }
 
   private scheduleTombstones(): void {
@@ -132,13 +267,20 @@ export class VaultWatcher {
     }, DEBOUNCE_MS);
   }
 
-  private schedule(absolute: string): void {
-    const directory = this.directory;
-    if (!directory) return;
-    const relativePath = path.relative(directory, absolute).split(path.sep).join("/");
-    // Only markdown is ever a Lychee note; never read unrelated files.
+  /** True for any path with a dot-segment or an editor artifact basename. */
+  private isIgnored(relativePath: string): boolean {
+    if (!relativePath) return true;
+    for (const segment of relativePath.split("/")) {
+      if (shouldIgnoreVaultPath(segment)) return true;
+    }
+    return shouldIgnoreVaultPath(path.basename(relativePath));
+  }
+
+  private schedule(relativePath: string): void {
+    if (!this.directory) return;
     if (!relativePath.toLowerCase().endsWith(".md")) return;
     if (isConflictCopyPath(relativePath)) return;
+    if (this.isIgnored(relativePath)) return;
 
     const existing = this.timers.get(relativePath);
     if (existing) clearTimeout(existing);
@@ -154,18 +296,43 @@ export class VaultWatcher {
     );
   }
 
+  /** Wait until two consecutive reads agree, so a partial write is never read. */
+  private async readSettled(absolute: string): Promise<string | null> {
+    const started = Date.now();
+    let previous: string | null = null;
+    for (;;) {
+      let contents: string | null;
+      try {
+        contents = await fs.promises.readFile(absolute, "utf8");
+      } catch {
+        contents = null;
+      }
+      if (contents === null) return null;
+      if (previous === contents) return contents;
+      previous = contents;
+      if (Date.now() - started > SETTLE_MS * 4) return contents;
+      await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    }
+  }
+
   private async flush(relativePath: string): Promise<void> {
     const directory = this.directory;
     if (!directory) return;
 
+    // Initial-scan files are already fully written, so skip the settle delay;
+    // otherwise a 7-note startup import takes seconds and races external edits.
+    const isInitial = this.initialPaths.delete(relativePath);
     const absolute = path.join(directory, relativePath);
     let contents: string | null;
-    try {
-      contents = await fs.promises.readFile(absolute, "utf8");
-    } catch {
-      contents = null;
+    if (isInitial) {
+      try {
+        contents = await fs.promises.readFile(absolute, "utf8");
+      } catch {
+        contents = null;
+      }
+    } else {
+      contents = await this.readSettled(absolute);
     }
-
     const revision = contents === null ? "" : revisionOf(contents);
 
     const suppression = this.suppressed.get(relativePath);
