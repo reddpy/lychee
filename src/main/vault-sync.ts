@@ -542,6 +542,9 @@ export class VaultSync {
   private onFileRemoved(relativePath: string, directory: string): void {
     if (!relativePath.toLowerCase().endsWith(".md")) return;
     if (isConflictCopyPath(relativePath)) return;
+    // A removed path invalidates its own-write baseline, so re-adding the same
+    // bytes later (a move back) is not silently swallowed as our own write.
+    this.watcher.unsuppress(relativePath);
     // Only act on a genuine delete: a failed read (permissions, transient IO)
     // must not trash a note whose file is still there.
     try {

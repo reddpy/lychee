@@ -54,6 +54,17 @@ export class VaultWatcher {
     this.suppressed.set(relativePath, { revision, until: Date.now() + ttlMs });
   }
 
+  /**
+   * Drop the own-write baseline for a path. Called when the path is observed to
+   * be removed: if the same bytes are later written/moved back to the same path
+   * within the suppression TTL, the content hash would still match and the
+   * change would be mistaken for our own write (e.g. a note moved out of a
+   * folder and back).
+   */
+  unsuppress(relativePath: string): void {
+    this.suppressed.delete(relativePath);
+  }
+
   /** Re-read a path now (e.g. a change arrived while the previous one was applying). */
   refresh(relativePath: string): void {
     const directory = this.directory;

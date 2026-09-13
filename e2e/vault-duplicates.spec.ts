@@ -70,7 +70,11 @@ test.describe('Duplicate resolution', () => {
       .toBe('Dup New');
     expect((await listDocumentsFromDb(secondWindow)).filter((doc) => doc.id === DUP).length).toBe(1);
     await expect.poll(() => fileIdsOnDisk(vaultDir).filter((id) => id === DUP).length).toBe(1);
-    expect(fileIdsOnDisk(vaultDir, { trash: true }).filter((id) => id === DUP).length).toBe(1);
+    await expect
+      .poll(() => fileIdsOnDisk(vaultDir, { trash: true }).filter((id) => id === DUP).length, {
+        timeout: 10_000,
+      })
+      .toBe(1);
     await second.close();
   });
 });
@@ -103,7 +107,11 @@ test.describe('Duplicate resolution — three copies', () => {
       .toBe('Tri B');
     expect((await listDocumentsFromDb(secondWindow)).filter((doc) => doc.id === DUP2).length).toBe(1);
     await expect.poll(() => fileIdsOnDisk(vaultDir).filter((id) => id === DUP2).length).toBe(1);
-    expect(fileIdsOnDisk(vaultDir, { trash: true }).filter((id) => id === DUP2).length).toBe(2);
+    await expect
+      .poll(() => fileIdsOnDisk(vaultDir, { trash: true }).filter((id) => id === DUP2).length, {
+        timeout: 10_000,
+      })
+      .toBe(2);
     await second.close();
   });
 });

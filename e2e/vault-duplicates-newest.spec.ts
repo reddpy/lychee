@@ -60,8 +60,14 @@ test.describe('Duplicates — newest wins by frontmatter updated', () => {
     await expect
       .poll(async () => (await getDocumentFromDb(window, NEWEST))?.updatedAt)
       .toBe('2024-09-01T00:00:00.000Z');
-    expect(fileIdsOnDisk(vaultDir).filter((id) => id === NEWEST).length).toBe(1);
-    expect(fileIdsOnDisk(vaultDir, { trash: true }).filter((id) => id === NEWEST).length).toBe(1);
+    await expect
+      .poll(() => fileIdsOnDisk(vaultDir).filter((id) => id === NEWEST).length, { timeout: 10_000 })
+      .toBe(1);
+    await expect
+      .poll(() => fileIdsOnDisk(vaultDir, { trash: true }).filter((id) => id === NEWEST).length, {
+        timeout: 10_000,
+      })
+      .toBe(1);
     await second.close();
   });
 
