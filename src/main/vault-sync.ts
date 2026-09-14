@@ -27,7 +27,7 @@ import {
   updateDocument,
 } from "./repos/documents";
 import { getSetting } from "./repos/settings";
-import { appendTombstones, readTombstones } from "./tombstones";
+import { appendTombstones, compactTombstones, readTombstones } from "./tombstones";
 import { exportAssetsToVault, importAssetsFromVault } from "./assets";
 import { resolveVaultRoot } from "./mcp-config";
 import {
@@ -35,11 +35,13 @@ import {
   trashVaultEntry,
   restoreVaultEntry,
   purgeVaultEntry,
+  pruneTrash,
   resolveWithinVault,
   scanVaultDirectory,
   vaultEntryExists,
 } from "./vault";
 import { VaultWatcher, type VaultFileEvent, type VaultWatcherLike } from "./vault-watcher";
+import { withVaultWriteLock } from "./vault-lock";
 
 import {
   VAULT_LOCATION_KEY,
@@ -53,6 +55,23 @@ export {
   VAULT_WATCH_DIRECTORY_KEY,
   VAULT_WATCH_ENABLED_KEY,
 } from "./vault-location";
+
+/**
+ * Whether a vault file's frontmatter id belongs to a different note than `id`.
+ * A mismatch means a path collision (two empty-title notes, or an import race),
+ * not an external edit to *this* note's file.
+ */
+function isForeignOwner(contents: string, id: string): boolean {
+  try {
+    const { data } = parseFrontmatter(contents);
+    return typeof data.id === "string" && data.id.length > 0 && data.id !== id;
+  } catch {
+    return false;
+  }
+}
+
+/** Trash entries older than this are pruned on startup (bounds unbounded growth). */
+const TRASH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * Orchestrates watched-file changes against the database. All DB and file writes
@@ -117,6 +136,7 @@ export class VaultSync {
     this.queued.clear();
     this.watcher.start(directory);
     this.reconcileTombstones();
+    this.compactVaultOnStart(directory);
   }
 
   stop(): void {
@@ -141,15 +161,20 @@ export class VaultSync {
    * Write a note's current database state to its vault file. Called by the IPC
    * handlers after a save so the markdown file is always the durable source of
    * truth, even when the watcher is not running.
+   *
+   * `guard` enables optimistic concurrency: the write is skipped when the target
+   * file no longer matches the revision we last wrote (an external edit, the MCP
+   * server, or a sync client changed it). The watcher/reconcile path then
+   * resolves the divergence instead of the save silently clobbering it.
    */
-  writeNoteToVault(id: string, fsync = true, rename = true): void {
+  writeNoteToVault(id: string, fsync = true, rename = true, guard = false): void {
     const note = getDocumentById(id);
     if (!note) return;
     if (rename) {
       // Canonical placement is a whole-tree concern: sibling suffixes shift and
       // two notes' target paths can collide, so route through the collision-safe
       // sweep (which also rewrites this note).
-      this.sweepPaths(fsync, [id]);
+      this.sweepPaths(fsync, [id], guard);
       return;
     }
     const directory = this.watcher.getDirectory() ?? getVaultDirectory();
@@ -157,7 +182,7 @@ export class VaultSync {
     const desiredPath = this.pathMap().get(id);
     if (!desiredPath) return;
     const currentPath = note.metadata.vaultRelativePath ?? desiredPath;
-    this.writeCanonical(directory, currentPath, note, note.content, note.content, { fsync });
+    this.writeCanonical(directory, currentPath, note, note.content, note.content, { fsync, guard });
   }
 
   /**
@@ -182,7 +207,7 @@ export class VaultSync {
    * `forceRewriteIds` are rewritten even when their path is unchanged (e.g. a
    * content/metadata save that must land in the file).
    */
-  sweepPaths(fsync = false, forceRewriteIds: string[] = []): void {
+  sweepPaths(fsync = false, forceRewriteIds: string[] = [], guard = false): void {
     try {
       const directory = this.watcher.getDirectory() ?? this.vaultDirectory();
       if (!directory) return;
@@ -201,15 +226,23 @@ export class VaultSync {
       }
       if (affected.length === 0) return;
 
-      // Phase 1: write every affected note at its canonical path.
+      // Phase 1: write every affected note at its canonical path. A note whose
+      // guarded write was skipped (the file diverged externally) is recorded so
+      // we do NOT remove its old file in phase 2 — that would orphan the note.
+      const skipped = new Set<string>();
       for (const item of affected) {
         const note = getDocumentById(item.id);
         if (!note) continue;
-        this.writeCanonical(directory, item.to, note, note.content, note.content, { fsync });
+        const written = this.writeCanonical(directory, item.to, note, note.content, note.content, {
+          fsync,
+          guard,
+        });
+        if (!written) skipped.add(item.id);
       }
 
       // Phase 2: drop stale old files that no note claims any more.
       for (const item of affected) {
+        if (skipped.has(item.id)) continue;
         if (!item.from || item.from === item.to) continue;
         if (desiredLower.has(item.from.toLowerCase())) continue;
         try {
@@ -349,6 +382,24 @@ export class VaultSync {
       const root = resolveVaultRoot(directory);
       this.watcher.start(root);
       this.reconcileTombstones();
+      this.compactVaultOnStart(root);
+    }
+  }
+
+  /**
+   * One-time housekeeping when a vault becomes active: compact the append-only
+   * tombstone logs and age out old `.trash` files. Both are best-effort.
+   */
+  private compactVaultOnStart(directory: string): void {
+    try {
+      compactTombstones(directory);
+    } catch {
+      // Best-effort.
+    }
+    try {
+      pruneTrash(directory, TRASH_MAX_AGE_MS);
+    } catch {
+      // Best-effort.
     }
   }
 
@@ -358,7 +409,9 @@ export class VaultSync {
    * missing vault.
    */
   recordTombstones(ids: string[], action: "trash" | "restore" | "purge"): void {
-    const directory = this.watcher.getDirectory();
+    // Record even when the watcher is off: tombstones are how deletes converge
+    // across devices/sessions, and the write-through path still runs.
+    const directory = this.vaultDirectory();
     if (!directory || ids.length === 0) return;
     appendTombstones(directory, ids, action);
     this.tombstoneCache = null;
@@ -822,8 +875,8 @@ export class VaultSync {
     note: DocumentRow,
     bodyMarkdown: string,
     contentRevisionSource: string,
-    options: { fsync?: boolean } = {},
-  ): void {
+    options: { fsync?: boolean; guard?: boolean } = {},
+  ): boolean {
     const fileContents =
       serializeFrontmatter({
         id: note.id,
@@ -837,19 +890,73 @@ export class VaultSync {
       }) +
       "\n" +
       exportAssetsToVault(directory, stripLeadingTitle(bodyMarkdown, note.title));
-    // Skip a redundant rewrite when the file already holds exactly these bytes.
-    // Besides avoiding needless I/O, this prevents a coalescing watcher from
-    // merging our own "create" with a user's immediate delete of the same file
-    // into a single no-op notification (which would hide the delete).
-    let alreadyMatches = false;
-    try {
-      const absolute = resolveWithinVault(directory, relativePath);
-      alreadyMatches =
-        fs.existsSync(absolute) && fs.readFileSync(absolute, "utf8") === fileContents;
-    } catch {
-      alreadyMatches = false;
-    }
-    if (!alreadyMatches) writeVaultFile(directory, relativePath, fileContents, options);
+    const absolute = resolveWithinVault(directory, relativePath);
+    // The file we last wrote may sit at a different path than the destination
+    // (a rename/move). The optimistic baseline is that source file's revision.
+    const baselinePath = note.metadata.vaultRelativePath ?? relativePath;
+    const baselineAbsolute = resolveWithinVault(directory, baselinePath);
+    const hasBaseline =
+      note.metadata.vaultRelativePath !== undefined ||
+      note.metadata.vaultFileRevision !== undefined;
+    const expected = note.metadata.vaultFileRevision ?? null;
+
+    // Serialize the read-check-write against other processes (MCP/sync) and hold
+    // the lock only for the file operation, never across the DB/metadata update.
+    const written = withVaultWriteLock(directory, baselinePath, () => {
+      let current: string | null;
+      try {
+        current = fs.existsSync(baselineAbsolute)
+          ? fs.readFileSync(baselineAbsolute, "utf8")
+          : null;
+      } catch {
+        current = null;
+      }
+      if (options.guard && hasBaseline) {
+        const matches =
+          expected === null
+            ? current === null
+            : current !== null && revisionOf(current) === expected;
+        if (!matches) {
+          // If the baseline file is now owned by a *different* note (an
+          // empty-title / import path collision), this note never legitimately
+          // held it. A rename/move can safely proceed to its distinct
+          // destination; an in-place write must not clobber the other note, so
+          // skip and let reconcile repath us.
+          const collisionRename =
+            current !== null &&
+            relativePath !== baselinePath &&
+            isForeignOwner(current, note.id);
+          if (!collisionRename) {
+            // The file changed since our last write. Do not clobber it; the
+            // watcher/reconcile path applies the external edit or preserves a
+            // conflict copy, then rewrites the canonical projection.
+            console.warn("Vault write skipped (external change):", baselinePath);
+            return false;
+          }
+        }
+      }
+      // Skip a redundant rewrite when the destination already holds exactly
+      // these bytes. Besides avoiding needless I/O, this prevents a coalescing
+      // watcher from merging our own "create" with a user's immediate delete of
+      // the same file into a single no-op notification (which would hide the
+      // delete).
+      if (relativePath === baselinePath && current === fileContents) return true;
+      if (relativePath !== baselinePath) {
+        // Rename/move: the destination may already hold these exact bytes from a
+        // prior partial sweep; don't rewrite if so.
+        try {
+          if (fs.existsSync(absolute) && fs.readFileSync(absolute, "utf8") === fileContents) {
+            return true;
+          }
+        } catch {
+          // fall through to write
+        }
+      }
+      writeVaultFile(directory, relativePath, fileContents, { fsync: options.fsync });
+      return true;
+    });
+    if (!written) return false;
+
     const fileRevision = revisionOf(fileContents);
     setDocumentMetadata(note.id, {
       vaultFileRevision: fileRevision,
@@ -857,6 +964,7 @@ export class VaultSync {
       vaultRelativePath: relativePath,
     });
     this.watcher.suppress(relativePath, fileRevision);
+    return true;
   }
 }
 

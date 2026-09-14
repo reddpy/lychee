@@ -157,6 +157,10 @@ test.describe('Reorder — files → app (adopted on relaunch)', () => {
     await expect
       .poll(async () => (await listDocumentsFromDb(window)).length, { timeout: 15_000 })
       .toBe(7);
+    // Wait for the rows to paint before reading order — the DB poll above can
+    // settle before the sidebar list has rendered.
+    await expect(noteItem(window, 'Roadmap')).toBeVisible();
+    await expect(noteItem(window, 'Projects')).toBeVisible();
     // Projects has order 1 and Roadmap order 0 in the fixture.
     const rows = await window.locator('[data-note-id]').allTextContents();
     const roadmap = rows.findIndex((text) => text.includes('Roadmap'));

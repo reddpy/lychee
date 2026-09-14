@@ -119,9 +119,20 @@ describe('reconcileIndexFromVault', () => {
     expect(getDocumentById('empty')!.content).toBe('# Kept');
   });
 
-  it('ignores files whose id has no database row (watcher imports those)', () => {
-    writeNote('New.md', { id: 'brand-new', title: 'New' });
+  it('imports files whose id has no database row (empty index rebuild)', () => {
+    writeNote('New.md', { id: 'brand-new', title: 'New' }, '# New\n\nbody text');
     const result = reconcileIndexFromVault(vault);
+    expect(result.updated).toBe(1);
+    const row = getDocumentById('brand-new');
+    expect(row).not.toBeNull();
+    expect(row!.title).toBe('New');
+    expect(row!.content).toContain('body text');
+    expect(row!.metadata.vaultRelativePath).toBe('New.md');
+  });
+
+  it('does not import new files when watching is opted out (importNew: false)', () => {
+    writeNote('New.md', { id: 'brand-new', title: 'New' }, '# New\n\nbody text');
+    const result = reconcileIndexFromVault(vault, { importNew: false });
     expect(result.updated).toBe(0);
     expect(getDocumentById('brand-new')).toBeNull();
   });

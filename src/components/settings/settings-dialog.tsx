@@ -679,6 +679,7 @@ function DataSettings() {
     | 'backup'
     | 'export-markdown'
     | 'import-markdown'
+    | 'rebuild-index'
     | 'watch'
     | null
   >(null);
@@ -689,6 +690,11 @@ function DataSettings() {
     created: number;
     skipped: number;
     skippedFiles: number;
+  } | null>(null);
+  const [rebuilt, setRebuilt] = useState<{
+    scanned: number;
+    imported: number;
+    updated: number;
   } | null>(null);
   const [watch, setWatch] = useState<{ running: boolean; directory: string | null } | null>(null);
 
@@ -802,6 +808,24 @@ function DataSettings() {
       await useDocumentStore.getState().loadDocuments(true);
     } catch {
       setActionError('Lychee couldn’t import those notes. Check the folder and try again.');
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const rebuildIndex = async (): Promise<void> => {
+    setActiveAction('rebuild-index');
+    setActionError(null);
+    setBackupPath(null);
+    setExported(null);
+    setImported(null);
+    setRebuilt(null);
+    try {
+      const result = await window.lychee.invoke('vault.rebuildIndex', {});
+      setRebuilt(result);
+      await useDocumentStore.getState().loadDocuments(true);
+    } catch {
+      setActionError('Lychee couldn’t rebuild the note list from your vault folder.');
     } finally {
       setActiveAction(null);
     }
@@ -984,6 +1008,37 @@ function DataSettings() {
               <FolderOpen className="h-3.5 w-3.5" />
             )}
             Import…
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Rebuild index from vault</p>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              Re-read every markdown file and rebuild the note list from the vault, importing any
+              files that aren’t in Lychee yet. Use this if the app looks out of sync with the folder.
+            </p>
+            {rebuilt && (
+              <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                Scanned {rebuilt.scanned} files · imported {rebuilt.imported} · updated{' '}
+                {rebuilt.updated}.
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={activeAction !== null}
+            onClick={() => void rebuildIndex()}
+          >
+            {activeAction === 'rebuild-index' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RotateCcw className="h-3.5 w-3.5" />
+            )}
+            Rebuild
           </Button>
         </div>
 

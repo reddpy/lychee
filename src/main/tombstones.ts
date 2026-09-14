@@ -3,7 +3,7 @@ import type { TombstoneAction } from "../shared/tombstone";
 import { getSetting, setSetting } from "./repos/settings";
 import { appendTombstone as appendTombstoneIo, readTombstones } from "./tombstone-io";
 
-export { TOMBSTONE_DIRECTORY, readTombstones } from "./tombstone-io";
+export { TOMBSTONE_DIRECTORY, readTombstones, compactTombstones } from "./tombstone-io";
 
 const DEVICE_ID_KEY = "deviceId";
 

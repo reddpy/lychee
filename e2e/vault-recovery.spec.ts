@@ -60,7 +60,11 @@ test.describe('Recovery from index loss', () => {
     await expect
       .poll(async () => (await listDocumentsFromDb(secondWindow)).length, { timeout: 20_000 })
       .toBe(7);
-    expect((await getDocumentFromDb(secondWindow, ROADMAP_ID))?.title).toBe('Roadmap');
+    const roadmap = await getDocumentFromDb(secondWindow, ROADMAP_ID);
+    expect(roadmap?.title).toBe('Roadmap');
+    // Bodies (not just metadata) must be rebuilt from the files.
+    expect(roadmap?.content).toContain('Q1 goals');
+    expect(roadmap?.content).toContain('Round-trip');
     await expect(noteItem(secondWindow, 'Roadmap')).toBeVisible();
     await second.close();
   });
@@ -166,6 +170,30 @@ test.describe('Recovery from index loss', () => {
     );
     expect((await getDocumentFromDb(secondWindow, ROADMAP_ID))!.sortOrder).toBe(2);
     await second.close();
+  });
+
+  test('rebuild index imports files even while watching is off', async ({ window, vaultDir }) => {
+    await expect
+      .poll(async () => (await listDocumentsFromDb(window)).length, { timeout: 15_000 })
+      .toBe(7);
+
+    await window.evaluate(async () => {
+      await (window as any).lychee.invoke('vault.watchStop', {});
+    });
+    const id = 'abcdef00-0000-4000-8000-0000000000aa';
+    writeNote(vaultDir, 'Reindexed.md', { id, title: 'Reindexed' }, 'rebuilt body');
+    await window.waitForTimeout(1200);
+    // Watching is off: the file is not ingested automatically.
+    expect((await listDocumentsFromDb(window)).some((doc) => doc.id === id)).toBe(false);
+
+    // An explicit rebuild ingests it and reports what it did.
+    const result = await window.evaluate(async () =>
+      (window as any).lychee.invoke('vault.rebuildIndex', {}),
+    );
+    expect(result.imported).toBeGreaterThanOrEqual(1);
+    await expect
+      .poll(async () => (await getDocumentFromDb(window, id))?.content ?? '', { timeout: 15_000 })
+      .toContain('rebuilt body');
   });
 });
 

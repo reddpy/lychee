@@ -209,6 +209,10 @@ export type IpcContract = {
     req: Record<string, never>;
     res: { directory: string; needsExport: boolean; needsRefresh: boolean; watchEnabled: boolean };
   };
+  'vault.rebuildIndex': {
+    req: Record<string, never>;
+    res: { scanned: number; imported: number; updated: number };
+  };
   'vault.location': {
     req: Record<string, never>;
     res: { directory: string };

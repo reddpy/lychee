@@ -226,6 +226,53 @@ export function purgeVaultEntry(root: string, relativePath: string): void {
   withFsRetry(() => fs.rmSync(target, { recursive: true, force: true }));
 }
 
+/**
+ * Delete `.trash` entries whose modification time is older than `maxAgeMs`.
+ * Permanent deletes already remove tracked files; this bounds the trash for
+ * files removed externally or orphaned by an interrupted operation. Nested
+ * notes are handled (the trash preserves the vault's relative layout). Empty
+ * directories left behind are removed. Returns the number of files deleted.
+ */
+export function pruneTrash(root: string, maxAgeMs: number, now = Date.now()): number {
+  const trashRoot = resolveWithinVault(root, TRASH_DIRECTORY);
+  if (!fs.existsSync(trashRoot)) return 0;
+
+  const cutoff = now - maxAgeMs;
+  let removed = 0;
+
+  const walk = (directory: string): void => {
+    let dirents: fs.Dirent[];
+    try {
+      dirents = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const dirent of dirents) {
+      const absolute = path.join(directory, dirent.name);
+      if (dirent.isDirectory()) {
+        walk(absolute);
+        try {
+          fs.rmdirSync(absolute); // only succeeds when empty
+        } catch {
+          // still has (fresh) contents
+        }
+        continue;
+      }
+      try {
+        if (fs.statSync(absolute).mtimeMs < cutoff) {
+          fs.rmSync(absolute, { force: true });
+          removed += 1;
+        }
+      } catch {
+        // skip unreadable entries
+      }
+    }
+  };
+
+  walk(trashRoot);
+  return removed;
+}
+
 /** Stable content revision — the optimistic-concurrency and watcher baseline. */
 export function contentRevision(contents: string): string {
   return revisionOf(contents);

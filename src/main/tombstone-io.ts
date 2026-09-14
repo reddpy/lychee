@@ -66,3 +66,62 @@ export function appendTombstone(
     fs.closeSync(fd);
   }
 }
+
+/**
+ * Compact each device log to its latest record per note id. The effective state
+ * is unchanged (within a device, newer records supersede older ones, and the
+ * union-merge across devices is preserved), but the append-only logs stop
+ * growing without bound. Writes atomically (temp → rename) so a crash cannot
+ * corrupt a log. Returns the number of bytes saved.
+ */
+export function compactTombstones(vault: string): number {
+  const directory = tombstoneDirectory(vault);
+  let files: string[];
+  try {
+    files = fs.readdirSync(directory);
+  } catch {
+    return 0;
+  }
+
+  let saved = 0;
+  for (const file of files) {
+    if (!file.endsWith(".jsonl")) continue;
+    const filePath = path.join(directory, file);
+    let raw: string;
+    let records: TombstoneRecord[];
+    try {
+      raw = fs.readFileSync(filePath, "utf8");
+      records = parseTombstoneLog(raw);
+    } catch {
+      continue;
+    }
+
+    const latest = new Map<string, TombstoneRecord>();
+    for (const record of records) {
+      const current = latest.get(record.id);
+      if (
+        !current ||
+        record.at > current.at ||
+        (record.at === current.at && record.device > current.device)
+      ) {
+        latest.set(record.id, record);
+      }
+    }
+    if (latest.size >= records.length) continue; // already compact
+
+    const contents = [...latest.values()].map(serializeTombstone).join("");
+    const tempPath = `${filePath}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(tempPath, contents);
+      fs.renameSync(tempPath, filePath);
+      saved += raw.length - contents.length;
+    } catch {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
+  return saved;
+}

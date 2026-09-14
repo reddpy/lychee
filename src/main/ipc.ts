@@ -73,7 +73,9 @@ function handle<C extends IpcChannel>(channel: C, fn: Handler<C>) {
 /** Best-effort write-through: a failed file write must not fail the DB save. */
 function writeThrough(id: string, fsync = true, rename = true): void {
   try {
-    getVaultSync().writeNoteToVault(id, fsync, rename);
+    // `guard: true` — never clobber a file another writer (MCP/sync/external
+    // editor) changed since our last export; the watcher resolves the divergence.
+    getVaultSync().writeNoteToVault(id, fsync, rename, true);
   } catch (error) {
     console.error('Vault write-through failed:', error);
   }
@@ -375,21 +377,38 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     const directory = stored ? resolveVaultRoot(stored) : defaultVaultPath();
     fs.mkdirSync(directory, { recursive: true });
     setSetting(VAULT_LOCATION_KEY, directory);
-    // Files are authoritative for metadata/hierarchy; rebuild the index from them.
-    reconcileIndexFromVault(directory);
+    // Watching is the default; only an explicit opt-out disables it.
+    const watchEnabled = getSetting(VAULT_WATCH_ENABLED_KEY) !== 'false';
+    // Files are authoritative for metadata/hierarchy; rebuild the index from
+    // them. New files are ingested only while watching is enabled, so the
+    // opt-out is respected even on an empty database.
+    reconcileIndexFromVault(directory, { importNew: watchEnabled });
     // Only now is the index authoritative: let the watcher apply events (any
     // that arrived during startup were queued and are re-read here).
     getVaultSync().markReconciled();
     const hasFiles = scanVaultDirectory(directory).entries.length > 0;
     const hasDbNotes = listAllDocumentTitles().length > 0;
-    // Watching is the default; only an explicit opt-out disables it.
-    const watchEnabled = getSetting(VAULT_WATCH_ENABLED_KEY) !== 'false';
     return {
       directory,
       needsExport: !hasFiles && hasDbNotes,
       needsRefresh: metadataRestored,
       watchEnabled,
     };
+  });
+
+  handle('vault.rebuildIndex', () => {
+    // Explicit user action: always ingest files, regardless of the watch opt-out.
+    const stored =
+      getSetting(VAULT_LOCATION_KEY) ?? getSetting(VAULT_WATCH_DIRECTORY_KEY) ?? '';
+    const directory = stored ? resolveVaultRoot(stored) : defaultVaultPath();
+    if (!directory) return { scanned: 0, imported: 0, updated: 0 };
+    const { updated, imported } = reconcileIndexFromVault(directory, { importNew: true });
+    getVaultSync().invalidatePaths();
+    getVaultSync().markReconciled();
+    // Multi-window model: main owns the database and the vault; every window is
+    // a view. Broadcast so all open windows reload their sidebar/tabs.
+    getVaultSync().notifyChanged();
+    return { scanned: scanVaultDirectory(directory).entries.length, imported, updated };
   });
 
   handle('vault.location', () => {

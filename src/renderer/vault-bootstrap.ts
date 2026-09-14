@@ -1,4 +1,5 @@
 import { listAllDocuments } from "./document-io"
+import { useDocumentStore } from "./document-store"
 import { buildVaultEntriesProgressive, writeVaultEntriesInBatches } from "./vault-export"
 
 /**
@@ -28,6 +29,11 @@ export async function bootstrapVault(): Promise<void> {
     if (watchEnabled) {
       await window.lychee.invoke("vault.watchStart", { directory })
     }
+
+    // Bootstrap may have rebuilt the index from the files (empty/lost DB). Reload
+    // so the sidebar reflects it even if the mount-time load ran first and the
+    // watcher has no changes to emit.
+    await useDocumentStore.getState().loadDocuments(true)
   } catch (error) {
     console.error("[vault] bootstrap failed", error)
   }

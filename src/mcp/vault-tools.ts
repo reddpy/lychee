@@ -13,14 +13,17 @@ import {
   writeVaultFile,
 } from "../main/vault";
 import { appendTombstone, readTombstones } from "../main/tombstone-io";
+import { withVaultWriteLock } from "../main/vault-lock";
 
 /**
  * Vault-backed tools shared by the MCP server (and unit-testable directly).
  *
  * Read tools operate on the markdown files, so they work whether or not the app
  * is running. Writes preserve frontmatter and are optimistic: callers may pass
- * the `revision` they last read, and the write is refused if the file changed —
- * the same revision guard the app uses.
+ * the `revision` they last read, and the write is refused if the file changed.
+ * Each read-check-write runs under the shared cross-process vault lock
+ * (`withVaultWriteLock`), so the app and the MCP server cannot interleave and
+ * lose an edit.
  */
 
 const INTERNAL_LINK = /https:\/\/note\.lychee\.invalid\/([A-Za-z0-9._-]+)/g;
@@ -179,39 +182,41 @@ export function updateNote(
   const entry = findEntry(vault, idOrPath);
   if (!entry) return { ok: false, reason: "note_not_found" };
 
-  const absolute = resolveWithinVault(vault, entry.relativePath);
-  let current: string;
-  try {
-    current = fs.readFileSync(absolute, "utf8");
-  } catch {
-    return { ok: false, reason: "note_unreadable" };
-  }
-
-  const currentRevision = revisionOf(current);
-  if (expectedRevision && expectedRevision !== currentRevision) {
-    return { ok: false, reason: "revision_mismatch", currentRevision };
-  }
-
-  const { data, body: currentBody } = parseFrontmatter(current);
-  if (!allowFenceChanges) {
-    const before = fenceLanguages(currentBody).join(",");
-    const after = fenceLanguages(body).join(",");
-    if (before !== after) {
-      return { ok: false, reason: "fence_conflict", currentRevision };
+  return withVaultWriteLock(vault, entry.relativePath, () => {
+    const absolute = resolveWithinVault(vault, entry.relativePath);
+    let current: string;
+    try {
+      current = fs.readFileSync(absolute, "utf8");
+    } catch {
+      return { ok: false, reason: "note_unreadable" };
     }
-  }
 
-  const frontmatter = serializeFrontmatter({
-    id: data.id ?? entry.id ?? "",
-    title: data.title ?? entry.title ?? "",
-    created: data.created,
-    updated: new Date().toISOString(),
-    contentSchemaVersion: data.contentSchemaVersion,
-    order: data.order,
+    const currentRevision = revisionOf(current);
+    if (expectedRevision && expectedRevision !== currentRevision) {
+      return { ok: false, reason: "revision_mismatch", currentRevision };
+    }
+
+    const { data, body: currentBody } = parseFrontmatter(current);
+    if (!allowFenceChanges) {
+      const before = fenceLanguages(currentBody).join(",");
+      const after = fenceLanguages(body).join(",");
+      if (before !== after) {
+        return { ok: false, reason: "fence_conflict", currentRevision };
+      }
+    }
+
+    const frontmatter = serializeFrontmatter({
+      id: data.id ?? entry.id ?? "",
+      title: data.title ?? entry.title ?? "",
+      created: data.created,
+      updated: new Date().toISOString(),
+      contentSchemaVersion: data.contentSchemaVersion,
+      order: data.order,
+    });
+    const next = `${frontmatter}\n${body.replace(/^\n+/, "")}`;
+    writeVaultFile(vault, entry.relativePath, next);
+    return { ok: true, relativePath: entry.relativePath, revision: revisionOf(next) };
   });
-  const next = `${frontmatter}\n${body.replace(/^\n+/, "")}`;
-  writeVaultFile(vault, entry.relativePath, next);
-  return { ok: true, relativePath: entry.relativePath, revision: revisionOf(next) };
 }
 
 /**

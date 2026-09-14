@@ -9,12 +9,11 @@ async function createAndTrashNote(
   await window.waitForTimeout(400);
   await window.locator('h1.editor-title').click();
   await window.keyboard.type(title);
-  if (bodyLines.length > 0) {
-    await window.keyboard.press('Enter');
-    for (let i = 0; i < bodyLines.length; i += 1) {
-      await window.keyboard.type(bodyLines[i]);
-      if (i < bodyLines.length - 1) await window.keyboard.press('Enter');
-    }
+  // The title is a separate field; commit it (Enter) so the sidebar shows it.
+  await window.keyboard.press('Enter');
+  for (let i = 0; i < bodyLines.length; i += 1) {
+    await window.keyboard.type(bodyLines[i]);
+    if (i < bodyLines.length - 1) await window.keyboard.press('Enter');
   }
   await window.waitForTimeout(700);
 
@@ -38,6 +37,7 @@ test.describe('Trash Bin', () => {
     await window.waitForTimeout(400);
     await window.locator('h1.editor-title').click();
     await window.keyboard.type('Trashable Note');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     const noteId = await window.locator('[data-note-id]').first().getAttribute('data-note-id');
@@ -85,6 +85,7 @@ test.describe('Trash Bin', () => {
     await window.waitForTimeout(400);
     await window.locator('h1.editor-title').click();
     await window.keyboard.type('For Trash');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     const note = window.locator('[data-note-id]').filter({ hasText: 'For Trash' });
@@ -110,6 +111,7 @@ test.describe('Trash Bin', () => {
     await window.waitForTimeout(400);
     await window.locator('h1.editor-title').click();
     await window.keyboard.type('Restore Me');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     const noteId = await window.locator('[data-note-id]').first().getAttribute('data-note-id');
@@ -160,6 +162,7 @@ test.describe('Trash Bin', () => {
     await window.waitForTimeout(400);
     await window.locator('h1.editor-title').click();
     await window.keyboard.type('Delete Forever');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     // Return to the edge trigger before interacting with the floating sidebar.
@@ -210,6 +213,7 @@ test.describe('Trash Bin', () => {
     await window.waitForTimeout(400);
     await window.locator('h1.editor-title').click();
     await window.keyboard.type('Alpha Note');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     let note = window.locator('[data-note-id]').filter({ hasText: 'Alpha Note' });
@@ -221,6 +225,7 @@ test.describe('Trash Bin', () => {
     await window.waitForTimeout(400);
     await window.locator('h1.editor-title').click();
     await window.keyboard.type('Beta Note');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(700);
 
     note = window.locator('[data-note-id]').filter({ hasText: 'Beta Note' });

@@ -2,10 +2,13 @@ import type { NoteMetadata } from "../shared/documents";
 import { revisionOf } from "../shared/hash";
 import { serializeFrontmatter } from "../shared/frontmatter";
 import { parentMarkdownPath, planVaultPaths, markdownStem } from "../shared/vault-path";
-import { stripLeadingTitle, resolveTitle } from "../shared/markdown-title";
-import { applyIndexFields, getDocumentById, listDocumentTree, setDocumentMetadata } from "./repos/documents";
+import { stripLeadingTitle, resolveTitle, resolveNewTitle } from "../shared/markdown-title";
+import { applyIndexFields, getDocumentById, importDocument, listDocumentTree, setDocumentMetadata } from "./repos/documents";
 import { scanVaultDirectory, trashVaultEntry, renameVaultEntry, writeVaultFile } from "./vault";
-import { importAssetsFromVault } from "./assets";
+import { importAssetsFromVault, exportAssetsToVault } from "./assets";
+import { readTombstones } from "./tombstones";
+import { isDeletedState, tombstoneSupersedes } from "../shared/tombstone";
+import { isConflictCopyPath } from "../shared/vault-watch";
 import type { ScannedVaultEntry } from "../shared/vault-import";
 
 /**
@@ -19,8 +22,23 @@ import type { ScannedVaultEntry } from "../shared/vault-import";
  * newest one wins and the rest are moved to `.trash` so they can never ping-pong
  * stale content back into the note.
  */
-export function reconcileIndexFromVault(vault: string): { updated: number } {
-  const { entries } = scanVaultDirectory(vault);
+export function reconcileIndexFromVault(
+  vault: string,
+  options: { importNew?: boolean } = {},
+): { updated: number; imported: number } {
+  const importNew = options.importNew !== false;
+  const { entries: scanned } = scanVaultDirectory(vault);
+  const tombstones = readTombstones(vault);
+  // Match the watcher's ignore rules so reconciliation and live watching agree:
+  // conflict copies are never notes, and a synced delete/purge tombstone
+  // suppresses a file that is still present locally (e.g. the delete arrived
+  // before the file did).
+  const entries = scanned.filter((entry) => {
+    if (isConflictCopyPath(entry.relativePath)) return false;
+    if (!entry.id) return true;
+    const state = tombstones.get(entry.id);
+    return !(state && isDeletedState(state) && tombstoneSupersedes(state, entry.updated));
+  });
 
   const byId = new Map<string, ScannedVaultEntry[]>();
   for (const entry of entries) {
@@ -33,7 +51,6 @@ export function reconcileIndexFromVault(vault: string): { updated: number } {
   // Choose the newest entry per id and trash the orphans.
   const chosen = new Map<string, ScannedVaultEntry>();
   for (const [id, group] of byId) {
-    if (!getDocumentById(id)) continue; // new file: the watcher imports it
     const picked = [...group].sort((a, b) =>
       (b.updated ?? b.created ?? "").localeCompare(a.updated ?? a.created ?? ""),
     )[0];
@@ -46,6 +63,57 @@ export function reconcileIndexFromVault(vault: string): { updated: number } {
       } catch {
         // A failed cleanup must not abort reconciliation.
       }
+    }
+  }
+
+  // Notes that already had an index row before this reconcile. Their titles are
+  // reconciled against the file (external rename); freshly imported notes keep
+  // the title `resolveNewTitle` chose, since their filename is just the
+  // sanitized form of that title and must not override it.
+  const preExisting = new Set<string>();
+  for (const id of chosen.keys()) {
+    if (getDocumentById(id)) preExisting.add(id);
+  }
+
+  // Import files with no index row directly from disk. This rebuilds an empty
+  // (or lost) database from the vault without depending on the watcher or the
+  // renderer — files are the source of truth, so the index is fully derivable.
+  // Skipped when watching is opted out: the app must not ingest external files.
+  // A `parentId` of null here is corrected by the hierarchy pass below once
+  // every note exists.
+  let imported = 0;
+  if (importNew) {
+    for (const [id, entry] of chosen) {
+      if (getDocumentById(id)) continue;
+      const importedTitle = resolveNewTitle({
+        frontmatterTitle: entry.title,
+        stemTitle: markdownStem(entry.relativePath),
+      });
+      const hasBody = entry.body.trim().length > 0;
+      const fileContent = hasBody
+        ? stripLeadingTitle(importAssetsFromVault(vault, entry.body), importedTitle)
+        : "";
+      importDocument({
+        id,
+        title: importedTitle,
+        content: fileContent,
+        parentId: null,
+        emoji: entry.emoji ?? null,
+        sortOrder: typeof entry.order === "number" ? entry.order : 0,
+        createdAt: entry.created,
+        updatedAt: entry.updated,
+        metadata: {
+          ...(entry.contentSchemaVersion !== undefined
+            ? { contentSchemaVersion: entry.contentSchemaVersion }
+            : {}),
+          ...(entry.bookmarked !== undefined ? { bookmarkedAt: entry.bookmarked ?? null } : {}),
+          ...(hasBody ? { vaultContentRevision: revisionOf(fileContent) } : {}),
+          ...(entry.revision ? { vaultFileRevision: entry.revision } : {}),
+        },
+      });
+      imported += 1;
+      // Ensure the path baseline exists even if a concurrent import won the race.
+      setDocumentMetadata(id, { vaultRelativePath: entry.relativePath });
     }
   }
 
@@ -90,12 +158,15 @@ export function reconcileIndexFromVault(vault: string): { updated: number } {
     if (entry.bookmarked !== undefined) metadata.bookmarkedAt = entry.bookmarked ?? null;
 
     // Frontmatter title is authoritative; a changed filename stem is adopted
-    // only when the frontmatter title did not change (external rename).
-    const adoptedTitle = resolveTitle({
-      frontmatterTitle: entry.title,
-      stemTitle: markdownStem(entry.relativePath),
-      currentTitle: row.title,
-    });
+    // only when the frontmatter title did not change (external rename). A note
+    // imported moments ago already has the correct title.
+    const adoptedTitle = preExisting.has(id)
+      ? resolveTitle({
+          frontmatterTitle: entry.title,
+          stemTitle: markdownStem(entry.relativePath),
+          currentTitle: row.title,
+        })
+      : row.title;
 
     // Files are the source of truth for content. Adopt the file body (rewriting
     // portable `assets/...` back to local image ids) so the index self-heals —
@@ -110,13 +181,18 @@ export function reconcileIndexFromVault(vault: string): { updated: number } {
     // bytes as ours and does not re-apply every file on the next watch start.
     if (entry.revision) metadata.vaultFileRevision = entry.revision;
 
+    // `order` from the file is authoritative, but normalized the same way the
+    // wall-clock writer/import path does (integer, non-negative).
+    const resolvedOrder =
+      typeof entry.order === "number" ? Math.max(0, Math.floor(entry.order)) : undefined;
+
     applyIndexFields(id, {
       title: adoptedTitle,
       ...(fileContent !== null ? { content: fileContent } : {}),
       // Only take over when the file explicitly carries the field; older vault
       // files predate emoji/bookmark frontmatter and must not clear the index.
       emoji: entry.emoji === undefined ? row.emoji : entry.emoji,
-      sortOrder: typeof entry.order === "number" ? entry.order : row.sortOrder,
+      sortOrder: resolvedOrder ?? row.sortOrder,
       parentId,
       createdAt: entry.created ?? row.createdAt,
       updatedAt: entry.updated ?? row.updatedAt,
@@ -136,9 +212,12 @@ export function reconcileIndexFromVault(vault: string): { updated: number } {
         created: entry.created,
         updated: entry.updated,
         contentSchemaVersion: entry.contentSchemaVersion,
-        order: typeof entry.order === "number" ? entry.order : undefined,
+        order: resolvedOrder,
       });
-      const contents = `${frontmatter}\n${strippedBody}`;
+      const contents = `${frontmatter}\n${exportAssetsToVault(
+        vault,
+        fileContent ?? strippedBody,
+      )}`;
       try {
         writeVaultFile(vault, entry.relativePath, contents);
         setDocumentMetadata(id, { vaultFileRevision: revisionOf(contents) });
@@ -149,9 +228,12 @@ export function reconcileIndexFromVault(vault: string): { updated: number } {
   }
 
   // Self-heal: if a committed title change never got its rename (e.g. the app
-  // was closed mid-commit), move the file to its canonical path now.
+  // was closed mid-commit), move the file to its canonical path now. Only for
+  // notes that already had an index row — a freshly imported file's own path is
+  // authoritative and must be preserved (Obsidian model).
   const canonical = planVaultPaths(listDocumentTree());
   for (const [id, entry] of chosen) {
+    if (!preExisting.has(id)) continue;
     const desired = canonical.get(id);
     if (desired && desired !== entry.relativePath) {
       try {
@@ -163,5 +245,5 @@ export function reconcileIndexFromVault(vault: string): { updated: number } {
     }
   }
 
-  return { updated };
+  return { updated, imported };
 }
