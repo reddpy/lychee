@@ -57,11 +57,11 @@ describe('Database Schema — Fresh Migration', () => {
     expect(colNames).toHaveLength(7);
   });
 
-  it('sets schema_version to 2 in meta table', () => {
+  it('sets schema_version to 3 in meta table', () => {
     const row = db
       .prepare(`SELECT value FROM meta WHERE key = 'schema_version'`)
       .get() as { value: string };
-    expect(row.value).toBe('2');
+    expect(row.value).toBe('3');
   });
 
   it('creates all expected indexes', () => {

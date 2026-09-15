@@ -787,6 +787,7 @@ export function LexicalEditor({
               activeTabId={activeTabId}
               isActive={!hidden}
               editorState={composerState}
+              noteMarkdown={contentForLoad}
               onEditorChange={handleEditorChange}
             />
           </>

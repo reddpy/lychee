@@ -72,6 +72,29 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    up: (db) => {
+      // Yjs CRDT state per note: a compacted snapshot plus an append-only update
+      // log. Local-only (never synced via a cloud folder). `document_crdt` holds
+      // the compacted baseline; `document_crdt_updates` accumulates edits until
+      // the next compaction merges them into the snapshot.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS document_crdt (
+          id TEXT PRIMARY KEY,
+          snapshot BLOB,
+          updatedAt TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS document_crdt_updates (
+          seq INTEGER PRIMARY KEY AUTOINCREMENT,
+          id TEXT NOT NULL,
+          payload BLOB NOT NULL,
+          at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_crdt_updates_id ON document_crdt_updates(id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

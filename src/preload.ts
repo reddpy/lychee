@@ -55,6 +55,11 @@ const exposed: Record<string, unknown> = {
   invoke,
   on,
   platform: process.platform,
+  // Build/runtime feature flags the renderer needs synchronously.
+  flags: {
+    // Yjs-backed editor binding (off by default; enabled in the Yjs e2e run).
+    yjs: process.env.LYCHEE_YJS === "1",
+  },
   getImageDataUrl: (id: string): string | null => {
     try {
       const result = ipcRenderer.sendSync("images.getDataUrlSync", { id }) as
@@ -94,6 +99,7 @@ declare global {
       invoke: IpcInvoke;
       on: IpcOn;
       platform: NodeJS.Platform;
+      flags: { yjs: boolean };
       getImageDataUrl: (id: string) => string | null;
       __mocks?: {
         set: (

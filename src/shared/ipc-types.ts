@@ -166,6 +166,23 @@ export type IpcContract = {
       skipped: Array<{ relativePath: string; reason: string }>;
     };
   };
+  // ── Yjs CRDT persistence (local-only) ──────────────────────────────
+  'crdt.load': {
+    req: { id: string };
+    res: { updates: string[] };
+  };
+  'crdt.append': {
+    req: { id: string; update: string };
+    res: { ok: true };
+  };
+  'crdt.compact': {
+    req: { id: string; snapshot: string };
+    res: { ok: true };
+  };
+  'crdt.remove': {
+    req: { id: string };
+    res: { ok: true };
+  };
   'vault.importDocuments': {
     req: { directory?: string; documents: VaultImportRequest[] };
     res: { created: number; skipped: number };

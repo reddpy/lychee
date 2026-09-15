@@ -12,7 +12,7 @@ import {
   type SerializedLexicalNode,
   type Spread,
 } from "lexical"
-import { ReferenceComponent } from "./reference-component"
+import { getNodeRenderer } from "./node-renderers"
 
 export type ImageAlignment = "left" | "center" | "right"
 
@@ -383,27 +383,30 @@ export class ReferenceNode extends DecoratorNode<ReactElement | null> {
   }
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): ReactElement | null {
-    return (
-      <ReferenceComponent
-        nodeKey={this.__key}
-        url={this.__url}
-        displayMode={this.__displayMode}
-        title={this.__title}
-        description={this.__description}
-        imageUrl={this.__imageUrl}
-        faviconUrl={this.__faviconUrl}
-        imageId={this.__imageId}
-        src={this.__src}
-        altText={this.__altText}
-        width={this.__width}
-        height={this.__height}
-        loading={this.__loading}
-        alignment={this.__alignment}
-        sourceUrl={this.__url}
-        autoResolve={this.__autoResolve}
-        hydrationAttempted={this.__hydrationAttempted}
-      />
-    )
+    // Resolved via the registry so this module stays importable without the
+    // renderer/React-component runtime (headless Yjs, main process, MCP).
+    const Renderer = getNodeRenderer("reference")
+    if (!Renderer) return null
+    const props = {
+      nodeKey: this.__key,
+      url: this.__url,
+      displayMode: this.__displayMode,
+      title: this.__title,
+      description: this.__description,
+      imageUrl: this.__imageUrl,
+      faviconUrl: this.__faviconUrl,
+      imageId: this.__imageId,
+      src: this.__src,
+      altText: this.__altText,
+      width: this.__width,
+      height: this.__height,
+      loading: this.__loading,
+      alignment: this.__alignment,
+      sourceUrl: this.__url,
+      autoResolve: this.__autoResolve,
+      hydrationAttempted: this.__hydrationAttempted,
+    }
+    return <Renderer {...props} />
   }
 }
 

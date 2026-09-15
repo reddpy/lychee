@@ -96,11 +96,14 @@ type Options = {
    * without a fixture directory.
    */
   vaultExtra: Record<string, string | Buffer> | null;
+  /** Enable the Yjs-backed editor binding (off by default). */
+  yjsFlag: boolean;
 };
 
 export const test = base.extend<Fixtures & Options>({
   vaultSeed: [null, { option: true }],
   vaultExtra: [null, { option: true }],
+  yjsFlag: [false, { option: true }],
 
   testDir: async ({}, use) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-e2e-'));
@@ -128,10 +131,11 @@ export const test = base.extend<Fixtures & Options>({
     await use(vaultDir);
   },
 
-  electronApp: async ({ testDir, vaultDir }, use) => {
+  electronApp: async ({ testDir, vaultDir, yjsFlag }, use) => {
     const app = await launchLychee({
       userDataDir: path.join(testDir, 'userdata'),
       vaultDir,
+      yjsFlag,
     });
     await use(app);
     await app.close();
@@ -147,6 +151,7 @@ export const test = base.extend<Fixtures & Options>({
 export async function launchLychee(opts: {
   userDataDir: string;
   vaultDir: string;
+  yjsFlag?: boolean;
 }): Promise<ElectronApplication> {
   fs.mkdirSync(opts.userDataDir, { recursive: true });
 
@@ -171,6 +176,7 @@ export async function launchLychee(opts: {
       E2E: '1',
       // Never export into the user's real ~/Documents/Lychee.
       LYCHEE_VAULT_DIR: opts.vaultDir,
+      LYCHEE_YJS: opts.yjsFlag ? '1' : '0',
     },
     timeout: process.env.CI ? 60_000 : 30_000,
   };

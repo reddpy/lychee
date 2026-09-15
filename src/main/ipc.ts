@@ -38,6 +38,7 @@ import {
   setSpellCheckLanguages,
 } from './spellcheck';
 import { createDatabaseBackup } from './db';
+import { appendDocumentUpdate, compactDocument, loadDocumentUpdates, removeDocumentCrdt } from './repos/crdt';
 import { scanVaultDirectory, writeVaultEntries } from './vault';
 import { exportAssetsToVault, importAssetsFromVault } from './assets';
 import { buildServerConfig, defaultVaultPath, manualMcpConfig, mcpSetupFields, resolveVaultRoot } from './mcp-config';
@@ -376,6 +377,30 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
   handle('clipboard.writeText', (payload) => {
     if (typeof payload.text !== 'string') throw new Error('text must be a string');
     clipboard.writeText(payload.text);
+    return { ok: true };
+  });
+
+  // ── Yjs CRDT persistence (local-only) ──────────────────────────────
+  handle('crdt.load', (payload) => {
+    if (!payload?.id) throw new Error('Missing required field: id');
+    return { updates: loadDocumentUpdates(payload.id).map((buf) => buf.toString('base64')) };
+  });
+
+  handle('crdt.append', (payload) => {
+    if (!payload?.id) throw new Error('Missing required field: id');
+    appendDocumentUpdate(payload.id, Buffer.from(payload.update, 'base64'));
+    return { ok: true };
+  });
+
+  handle('crdt.compact', (payload) => {
+    if (!payload?.id) throw new Error('Missing required field: id');
+    compactDocument(payload.id, Buffer.from(payload.snapshot, 'base64'));
+    return { ok: true };
+  });
+
+  handle('crdt.remove', (payload) => {
+    if (!payload?.id) throw new Error('Missing required field: id');
+    removeDocumentCrdt(payload.id);
     return { ok: true };
   });
 

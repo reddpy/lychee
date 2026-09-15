@@ -6,6 +6,7 @@ import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin"
 import { LinkClickPlugin } from "@/components/editor/plugins/link-click-plugin"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
+import { YjsUndoPlugin } from "@/components/editor/plugins/yjs-undo-plugin"
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin"
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin"
 import { TabIndentationPlugin } from "@lexical/react/LexicalTabIndentationPlugin"
@@ -74,6 +75,8 @@ export function Plugins({
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const autolink = useEditorPreferencesStore((s) => s.autolink)
   const slashMenu = useEditorPreferencesStore((s) => s.slashMenu)
+  const yjsEnabled =
+    typeof window !== "undefined" && window.lychee?.flags?.yjs === true
 
   return (
     <div ref={editorContainerRef} className="relative">
@@ -93,7 +96,7 @@ export function Plugins({
       <TypewriterPlugin />
 
       {/* Core plugins */}
-      <HistoryPlugin />
+      {yjsEnabled ? <YjsUndoPlugin documentId={documentId} /> : <HistoryPlugin />}
       <MenuHistoryPlugin isActive={isActive} />
       <ListPlugin />
       <CheckListPlugin />

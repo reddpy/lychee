@@ -8,7 +8,11 @@ import type { LexicalEditor } from "lexical"
 
 import { editorTheme } from "@/components/editor/themes/editor-theme"
 import { nodes } from "@/components/editor/nodes"
+// Register decorator node → React renderers before the composer mounts. This
+// side effect is renderer-only; headless contexts import `nodes` directly.
+import "@/components/editor/nodes/register-node-renderers"
 import { Plugins } from "@/components/editor/plugins"
+import { YjsBindingPlugin } from "@/components/editor/plugins/yjs-binding-plugin"
 import { LYCHEE_SAVE_TAG } from "@/components/editor/editor-tags"
 
 export { LYCHEE_SAVE_TAG } from "@/components/editor/editor-tags"
@@ -54,6 +58,7 @@ export function Editor({
   activeTabId,
   isActive,
   editorState,
+  noteMarkdown,
   onEditorChange,
 }: {
   documentId: string
@@ -63,13 +68,25 @@ export function Editor({
   isActive: boolean
   /** A validated, serialized editor state (or undefined for default content). */
   editorState?: string
+  /** The note's stored markdown; seeds the Y.Doc in Yjs mode. */
+  noteMarkdown?: string
   onEditorChange?: (editor: LexicalEditor) => void
 }) {
+  const yjsEnabled =
+    typeof window !== "undefined" && window.lychee?.flags?.yjs === true
+  const useYjs = yjsEnabled && noteMarkdown !== undefined
   return (
     <div className="bg-background overflow-hidden">
       <LexicalComposer
-        initialConfig={editorState ? { ...editorConfig, editorState } : editorConfig}
+        initialConfig={
+          useYjs
+            ? editorConfig
+            : editorState
+              ? { ...editorConfig, editorState }
+              : editorConfig
+        }
       >
+        {useYjs && <YjsBindingPlugin documentId={documentId} markdown={noteMarkdown ?? ""} />}
         <Plugins
           documentId={documentId}
           tabId={tabId}
