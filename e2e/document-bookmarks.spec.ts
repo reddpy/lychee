@@ -28,11 +28,11 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import {
+  test,
   findPackagedBinary,
   hasDevBuild,
   PROJECT_ROOT,
 } from './electron-app';
-import { test } from './electron-app';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 

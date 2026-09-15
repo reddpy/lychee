@@ -1,11 +1,12 @@
 import type { NoteMetadata } from "../shared/documents";
 import { revisionOf } from "../shared/hash";
 import { serializeFrontmatter } from "../shared/frontmatter";
-import { parentMarkdownPath, planVaultPaths, markdownStem } from "../shared/vault-path";
-import { stripLeadingTitle, resolveTitle, resolveNewTitle } from "../shared/markdown-title";
+import { planVaultPaths } from "../shared/vault-path";
+import { stripLeadingTitle } from "../shared/markdown-title";
 import { applyIndexFields, getDocumentById, importDocument, listDocumentTree, setDocumentMetadata } from "./repos/documents";
 import { scanVaultDirectory, trashVaultEntry, renameVaultEntry, writeVaultFile } from "./vault";
-import { importAssetsFromVault, exportAssetsToVault } from "./assets";
+import { exportAssetsToVault } from "./assets";
+import { deriveEntry } from "./vault-entry";
 import { readTombstones } from "./tombstones";
 import { isDeletedState, tombstoneSupersedes } from "../shared/tombstone";
 import { isConflictCopyPath } from "../shared/vault-watch";
@@ -75,29 +76,35 @@ export function reconcileIndexFromVault(
     if (getDocumentById(id)) preExisting.add(id);
   }
 
+  // Case-insensitive: macOS/Windows treat `Folder.md` and `folder.md` as the
+  // same file, so a child path and its parent note can differ only by case.
+  const idByPath = new Map<string, string>();
+  for (const [id, entry] of chosen) idByPath.set(entry.relativePath.toLowerCase(), id);
+
   // Import files with no index row directly from disk. This rebuilds an empty
   // (or lost) database from the vault without depending on the watcher or the
   // renderer — files are the source of truth, so the index is fully derivable.
   // Skipped when watching is opted out: the app must not ingest external files.
-  // A `parentId` of null here is corrected by the hierarchy pass below once
-  // every note exists.
   let imported = 0;
   if (importNew) {
     for (const [id, entry] of chosen) {
       if (getDocumentById(id)) continue;
-      const importedTitle = resolveNewTitle({
+      const derived = deriveEntry({
+        vault,
+        relativePath: entry.relativePath,
         frontmatterTitle: entry.title,
-        stemTitle: markdownStem(entry.relativePath),
+        body: entry.body,
+        mode: "import",
+        id,
+        idByPath,
       });
-      const hasBody = entry.body.trim().length > 0;
-      const fileContent = hasBody
-        ? stripLeadingTitle(importAssetsFromVault(vault, entry.body), importedTitle)
-        : "";
+      const hasBody = derived.content !== null;
+      const fileContent = derived.content ?? "";
       importDocument({
         id,
-        title: importedTitle,
+        title: derived.title,
         content: fileContent,
-        parentId: null,
+        parentId: derived.parentId,
         emoji: entry.emoji ?? null,
         sortOrder: typeof entry.order === "number" ? entry.order : 0,
         createdAt: entry.created,
@@ -117,11 +124,6 @@ export function reconcileIndexFromVault(
     }
   }
 
-  const idByPath = new Map<string, string>();
-  // Case-insensitive: macOS/Windows treat `Folder.md` and `folder.md` as the
-  // same file, so a child path and its parent note can differ only by case.
-  for (const [id, entry] of chosen) idByPath.set(entry.relativePath.toLowerCase(), id);
-
   const isDescendantOf = (candidateId: string, ancestorId: string): boolean => {
     const seen = new Set<string>();
     let current: string | null = candidateId;
@@ -138,17 +140,6 @@ export function reconcileIndexFromVault(
     const row = getDocumentById(id);
     if (!row) continue;
 
-    const parentPath = parentMarkdownPath(entry.relativePath);
-    let parentId: string | null = parentPath
-      ? idByPath.get(parentPath.toLowerCase()) ?? null
-      : null;
-    if (parentId && !getDocumentById(parentId)) parentId = null;
-    // Never point a note at itself or one of its descendants (folder moves can
-    // otherwise create cycles that the tree rendering would choke on).
-    if (parentId && (parentId === id || isDescendantOf(parentId, id))) {
-      parentId = null;
-    }
-
     const metadata: NoteMetadata = {
       ...row.metadata,
       // Track the on-disk path so a later title change/move renames this file
@@ -157,25 +148,31 @@ export function reconcileIndexFromVault(
     };
     if (entry.bookmarked !== undefined) metadata.bookmarkedAt = entry.bookmarked ?? null;
 
-    // Frontmatter title is authoritative; a changed filename stem is adopted
-    // only when the frontmatter title did not change (external rename). A note
-    // imported moments ago already has the correct title.
-    const adoptedTitle = preExisting.has(id)
-      ? resolveTitle({
-          frontmatterTitle: entry.title,
-          stemTitle: markdownStem(entry.relativePath),
-          currentTitle: row.title,
-        })
-      : row.title;
+    // Derive title/hierarchy/content from the file in one shared step. A note
+    // imported moments ago keeps the title `resolveNewTitle` chose; an existing
+    // note adopts an external rename.
+    const derived = deriveEntry({
+      vault,
+      relativePath: entry.relativePath,
+      frontmatterTitle: entry.title,
+      body: entry.body,
+      mode: preExisting.has(id) ? "update" : "import",
+      currentTitle: row.title,
+      id,
+      idByPath,
+    });
 
-    // Files are the source of truth for content. Adopt the file body (rewriting
-    // portable `assets/...` back to local image ids) so the index self-heals —
-    // this also repairs rows left over from the pre-markdown migration. An empty
-    // body is ignored so a not-yet-written file cannot wipe a note.
-    const hasBody = entry.body.trim().length > 0;
-    const fileContent = hasBody
-      ? stripLeadingTitle(importAssetsFromVault(vault, entry.body), adoptedTitle)
-      : null;
+    let parentId = derived.parentId;
+    if (parentId && !getDocumentById(parentId)) parentId = null;
+    // Never point a note at itself or one of its descendants (folder moves can
+    // otherwise create cycles that the tree rendering would choke on).
+    if (parentId && (parentId === id || isDescendantOf(parentId, id))) {
+      parentId = null;
+    }
+
+    const adoptedTitle = derived.title;
+    // An empty body is ignored so a not-yet-written file cannot wipe a note.
+    const fileContent = derived.content;
     if (fileContent !== null) metadata.vaultContentRevision = revisionOf(fileContent);
     // Baseline the file revision we're adopting so the watcher treats the current
     // bytes as ours and does not re-apply every file on the next watch start.

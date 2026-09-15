@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { app } from "electron";
+import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
 import type { Database as BetterSqlite3Database } from "better-sqlite3";
@@ -87,25 +88,16 @@ function vacuumIntoFile(database: BetterSqlite3Database, destPath: string): void
   database.exec(`VACUUM INTO '${escaped}'`);
 }
 
-export function initDatabase(): { dbPath: string } {
-  // If already initialized, return the last known path.
-  if (db) {
-    // better-sqlite3 exposes `.name` (string) on the db instance (not in typings).
-    const existingPath =
-      typeof (db as unknown as { name?: unknown }).name === "string"
-        ? ((db as unknown as { name: string }).name as string)
-        : "lychee.sqlite3";
-    return { dbPath: existingPath };
-  }
-
-  const userDataDir = app.getPath("userData");
-  fs.mkdirSync(userDataDir, { recursive: true });
-
-  const dbPath = path.join(userDataDir, "lychee.sqlite3");
-  // Capture *before* opening: `new Database` creates the file if missing,
-  // so this is the only reliable fresh-install signal.
-  const isFreshInstall = !fs.existsSync(dbPath);
-
+/**
+ * Open the DB and bring it to the latest schema, preserving the fail-closed
+ * contract: an unreadable schema version, a failed pre-migration backup, or a
+ * failed migration all throw so launch can abort rather than risk data.
+ */
+function openAndMigrate(
+  dbPath: string,
+  userDataDir: string,
+  isFreshInstall: boolean,
+): { database: BetterSqlite3Database } {
   const database = new Database(dbPath);
 
   let backupPath: string | null = null;
@@ -160,8 +152,81 @@ export function initDatabase(): { dbPath: string } {
     throw err;
   }
 
+  return { database };
+}
+
+/**
+ * SQLite error codes that mean the file itself is not a usable database. These
+ * are the only ones we recover from: the index is disposable and fully derivable
+ * from the vault, so a corrupt index is a non-event, whereas an unreadable
+ * schema version or a failed backup/migration stays fail-closed (see above).
+ */
+const QUARANTINE_CODES = new Set(["SQLITE_CORRUPT", "SQLITE_NOTADB"]);
+
+/**
+ * Move an unusable DB (and its WAL/SHM sidecars) aside so a fresh index can be
+ * created at the canonical path. Best-effort: if the rename fails we delete, so
+ * the retry is never blocked by the original file. Exported for tests.
+ */
+export function quarantineDatabase(dbPath: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  // A random suffix keeps two concurrent recoveries (two app instances racing
+  // on the same userData dir) from overwriting each other's quarantine.
+  const base = `${dbPath}.corrupt-${stamp}-${randomBytes(3).toString("hex")}`;
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const from = `${dbPath}${suffix}`;
+    if (!fs.existsSync(from)) continue;
+    try {
+      fs.renameSync(from, `${base}${suffix}`);
+    } catch {
+      try {
+        fs.rmSync(from, { force: true });
+      } catch {
+        // best-effort
+      }
+    }
+  }
+  return base;
+}
+
+export function initDatabase(): { dbPath: string; recovered?: string } {
+  // If already initialized, return the last known path.
+  if (db) {
+    // better-sqlite3 exposes `.name` (string) on the db instance (not in typings).
+    const existingPath =
+      typeof (db as unknown as { name?: unknown }).name === "string"
+        ? ((db as unknown as { name: string }).name as string)
+        : "lychee.sqlite3";
+    return { dbPath: existingPath };
+  }
+
+  const userDataDir = app.getPath("userData");
+  fs.mkdirSync(userDataDir, { recursive: true });
+
+  const dbPath = path.join(userDataDir, "lychee.sqlite3");
+  // Capture *before* opening: `new Database` creates the file if missing,
+  // so this is the only reliable fresh-install signal.
+  const isFreshInstall = !fs.existsSync(dbPath);
+
+  let database: BetterSqlite3Database;
+  let recovered: string | undefined;
+  try {
+    database = openAndMigrate(dbPath, userDataDir, isFreshInstall).database;
+  } catch (err) {
+    const code = String(backupErrorCode(err));
+    if (!QUARANTINE_CODES.has(code)) throw err;
+    // The index is disposable — files are the source of truth and the vault
+    // rebuilds it. Quarantine the unusable file (for forensics) and start a
+    // fresh index rather than locking the user out of their notes.
+    recovered = quarantineDatabase(dbPath);
+    console.error(
+      `[db] index unusable (${code}): quarantined to ${recovered}; rebuilding from the vault.`,
+    );
+    database = openAndMigrate(dbPath, userDataDir, true).database;
+  }
+
   db = database;
-  return { dbPath };
+  return recovered ? { dbPath, recovered } : { dbPath };
 }
 
 export function getDb(): BetterSqlite3Database {

@@ -36,6 +36,11 @@ vi.mock('electron', () => ({
   shell: {
     openExternal: vi.fn().mockResolvedValue(undefined),
   },
+  // VaultSync broadcasts change events to every window; model "no windows".
+  BrowserWindow: {
+    getFocusedWindow: (): null => null,
+    getAllWindows: (): unknown[] => [],
+  },
 }));
 
 vi.mock('../../repos/documents', () => ({
@@ -895,9 +900,9 @@ describe('IPC Concurrent & Rapid-Fire Calls', () => {
   // ────────────────────────────────────────────────────────
 
   it('calling registerIpcHandlers twice overwrites handlers (no duplicates)', () => {
-    expect(handlers.size).toBe(56);
+    expect(handlers.size).toBe(57);
     registerIpcHandlers();
-    expect(handlers.size).toBe(56);
+    expect(handlers.size).toBe(57);
   });
 
   // ────────────────────────────────────────────────────────

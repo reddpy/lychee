@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef } from "react"
-import { AutoLinkPlugin } from "@lexical/react/LexicalAutoLinkPlugin"
+import { AutoLinkPlugin, LinkMatcher } from "@lexical/react/LexicalAutoLinkPlugin"
 import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin"
 import { LinkClickPlugin } from "@/components/editor/plugins/link-click-plugin"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
@@ -13,7 +13,6 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin"
 import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin"
 import { TablePlugin } from "@lexical/react/LexicalTablePlugin"
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin"
-import { LinkMatcher } from "@lexical/react/LexicalAutoLinkPlugin"
 import * as linkify from "linkifyjs"
 
 import { ContentEditable } from "@/components/editor/editor-ui/content-editable"

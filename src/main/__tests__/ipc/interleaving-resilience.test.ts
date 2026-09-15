@@ -11,6 +11,11 @@ vi.mock('electron', () => ({
   shell: {
     openExternal: vi.fn().mockResolvedValue(undefined),
   },
+  // VaultSync broadcasts change events to every window; model "no windows".
+  BrowserWindow: {
+    getFocusedWindow: (): null => null,
+    getAllWindows: (): unknown[] => [],
+  },
 }));
 
 vi.mock('../../repos/documents', () => ({
@@ -29,6 +34,9 @@ vi.mock('../../repos/documents', () => ({
   listTrashedDocuments: vi.fn().mockReturnValue([]),
   permanentDeleteDocument: vi.fn().mockReturnValue({ deletedIds: ['doc-1'] }),
   moveDocument: vi.fn().mockReturnValue({ id: 'doc-1' }),
+  // The settings mock below makes a vault appear configured, so VaultSync's
+  // sibling sweep walks the tree; return an empty one rather than undefined.
+  listDocumentTree: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock('../../repos/images', () => ({

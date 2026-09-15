@@ -17,7 +17,7 @@
     "publish": "electron-forge publish",
     "publish:mac": "dotenv -e .env -- electron-forge publish",
     "publish:win": "dotenv -e .env -- electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx .",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

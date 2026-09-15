@@ -5,21 +5,15 @@ import { randomUUID } from 'crypto';
 import type { IpcContract, IpcChannel } from '../shared/ipc-types';
 import { applyChromeToAllWindows, setChromeColors, setOverlayDimmed } from './window-chrome';
 import {
-  createDocument,
   deleteDocument,
   findDocumentByTitle,
   getDocumentById,
   importDocument,
   listAllDocumentTitles,
   listDocuments,
-  listDocumentTree,
   listTrashedDocuments,
-  moveDocument,
-  permanentDeleteDocument,
-  restoreDocument,
   setDocumentMetadata,
   trashDocument,
-  updateDocument,
 } from './repos/documents';
 import { saveImage, getImagePath, getImageDataUrl, deleteImage, downloadImage, readImageBytes } from './repos/images';
 import { resolveUrl } from './repos/url-resolver';
@@ -56,6 +50,7 @@ import {
   VAULT_WATCH_DIRECTORY_KEY,
   VAULT_WATCH_ENABLED_KEY,
 } from './vault-sync';
+import { createNote as serviceCreateNote, moveNote as serviceMoveNote, permanentDeleteNote as servicePermanentDeleteNote, restoreNote as serviceRestoreNote, setActiveVault, trashNote as serviceTrashNote, updateNote as serviceUpdateNote } from './note-service';
 import { revisionOf } from '../shared/hash';
 import { stripLeadingTitle } from '../shared/markdown-title';
 import { isDeletedState, tombstoneSupersedes } from '../shared/tombstone';
@@ -68,17 +63,6 @@ type Handler<C extends IpcChannel> = (
 
 function handle<C extends IpcChannel>(channel: C, fn: Handler<C>) {
   ipcMain.handle(channel, async (_event, payload: IpcContract[C]['req']) => fn(payload));
-}
-
-/** Best-effort write-through: a failed file write must not fail the DB save. */
-function writeThrough(id: string, fsync = true, rename = true): void {
-  try {
-    // `guard: true` — never clobber a file another writer (MCP/sync/external
-    // editor) changed since our last export; the watcher resolves the divergence.
-    getVaultSync().writeNoteToVault(id, fsync, rename, true);
-  } catch (error) {
-    console.error('Vault write-through failed:', error);
-  }
 }
 
 export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void } = {}) {
@@ -94,11 +78,7 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     if (typeof payload?.title === 'string' && payload.title.trim() && findDocumentByTitle(payload.title)) {
       throw new Error('Duplicate title');
     }
-    const document = createDocument(payload);
-    writeThrough(document.id);
-    // Creating shifts existing siblings down; rewrite them so the files agree.
-    getVaultSync().rebalanceSiblings(document.parentId, [document.id]);
-    getVaultSync().sweepPaths();
+    const document = serviceCreateNote(payload);
     return { document };
   });
 
@@ -118,8 +98,7 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
       getVaultSync().commitNote(payload.id);
       return { document: getDocumentById(payload.id) };
     }
-    const document = updateDocument(payload.id, payload);
-    if (document) writeThrough(document.id, payload.flush !== false, payload.rename !== false);
+    const document = serviceUpdateNote(payload.id, payload);
     return { document };
   });
 
@@ -128,63 +107,23 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     return { ok: true };
   });
 
-  handle('documents.trash', (payload) => {
-    const result = trashDocument(payload.id);
-    getVaultSync().trashNoteFiles(result.trashedIds);
-    // Trashing closes the gap in the old parent; keep the siblings' files dense.
-    getVaultSync().rebalanceSiblings(result.document.parentId);
-    getVaultSync().sweepPaths();
-    getVaultSync().recordTombstones(result.trashedIds, 'trash');
-    return result;
-  });
+  handle('documents.trash', (payload) => serviceTrashNote(payload.id));
 
-  handle('documents.restore', (payload) => {
-    const result = restoreDocument(payload.id);
-    getVaultSync().restoreNoteFiles(result.restoredIds);
-    // Force-rewrite restored notes: if their file is gone (deleted from .trash,
-    // or lost with the vault), recreate it so a live note always has a file.
-    getVaultSync().sweepPaths(false, result.restoredIds);
-    // Restoring shifts siblings at the insertion point; keep their files dense.
-    getVaultSync().rebalanceSiblings(result.document.parentId, result.restoredIds);
-    getVaultSync().recordTombstones(result.restoredIds, 'restore');
-    return result;
-  });
+  handle('documents.restore', (payload) => serviceRestoreNote(payload.id));
 
   handle('documents.listTrashed', (payload) => ({
     documents: listTrashedDocuments(payload),
   }));
 
   handle('documents.permanentDelete', (payload) => {
-    const { deletedIds, deletedPaths } = permanentDeleteDocument(payload.id);
-    getVaultSync().purgeNoteFiles(deletedPaths);
-    getVaultSync().sweepPaths();
-    getVaultSync().recordTombstones(deletedIds, 'purge');
+    const { deletedIds } = servicePermanentDeleteNote(payload.id);
     return { deletedIds };
   });
 
   handle('documents.move', (payload) => {
     if (payload.sortOrder < 0) throw new Error('sortOrder must be non-negative');
     if (!Number.isInteger(payload.sortOrder)) throw new Error('sortOrder must be an integer');
-    const before = getDocumentById(payload.id);
-    const document = moveDocument(payload.id, payload.parentId, payload.sortOrder);
-    const sync = getVaultSync();
-    sync.invalidatePaths();
-    // A move/reorder shifts sibling sort orders (and may change parents), so
-    // rewrite the moved note and every sibling in the old and new parent.
-    const parents = new Set<string | null>([before?.parentId ?? null, document.parentId]);
-    const affected = new Set<string>([document.id]);
-    try {
-      for (const node of listDocumentTree()) {
-        if (parents.has(node.parentId)) affected.add(node.id);
-      }
-    } catch {
-      // Best-effort: sibling rewrite is an optimization, not correctness-critical.
-    }
-    sync.rewriteNotes([...affected]);
-    sync.sweepPaths();
-    // A move/reorder from outside the UI (agent/MCP/script) must refresh the
-    // renderer; the in-app drag path also reloads, which is harmless.
-    sync.notifyChanged();
+    const document = serviceMoveNote(payload.id, payload.parentId, payload.sortOrder);
     return { document };
   });
 
@@ -309,6 +248,7 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     }
     const root = resolveVaultRoot(payload.directory);
     getVaultSync().start(root);
+    setActiveVault(root);
     setSetting(VAULT_WATCH_DIRECTORY_KEY, root);
     setSetting(VAULT_LOCATION_KEY, root);
     setSetting(VAULT_WATCH_ENABLED_KEY, 'true');
@@ -377,6 +317,7 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     const directory = stored ? resolveVaultRoot(stored) : defaultVaultPath();
     fs.mkdirSync(directory, { recursive: true });
     setSetting(VAULT_LOCATION_KEY, directory);
+    setActiveVault(directory);
     // Watching is the default; only an explicit opt-out disables it.
     const watchEnabled = getSetting(VAULT_WATCH_ENABLED_KEY) !== 'false';
     // Files are authoritative for metadata/hierarchy; rebuild the index from
@@ -402,6 +343,7 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
       getSetting(VAULT_LOCATION_KEY) ?? getSetting(VAULT_WATCH_DIRECTORY_KEY) ?? '';
     const directory = stored ? resolveVaultRoot(stored) : defaultVaultPath();
     if (!directory) return { scanned: 0, imported: 0, updated: 0 };
+    setActiveVault(directory);
     const { updated, imported } = reconcileIndexFromVault(directory, { importNew: true });
     getVaultSync().invalidatePaths();
     getVaultSync().markReconciled();
@@ -417,6 +359,7 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     const directory = stored ? resolveVaultRoot(stored) : defaultVaultPath();
     fs.mkdirSync(directory, { recursive: true });
     setSetting(VAULT_LOCATION_KEY, directory);
+    setActiveVault(directory);
     return { directory };
   });
 

@@ -142,6 +142,60 @@ export function listAllDocumentTitles(): Array<{ id: string; title: string }> {
     .all() as Array<{ id: string; title: string }>;
 }
 
+export interface SubtreeNode {
+  id: string;
+  parentId: string | null;
+  deletedAt: string | null;
+  vaultRelativePath?: string;
+}
+
+/**
+ * The document at `id` and all its descendants (trashed or not), read-only.
+ * Structural operations use this to compute their scope *before* mutating
+ * anything, so the filesystem can be changed first and the index projected after.
+ */
+export function listSubtree(id: string): SubtreeNode[] {
+  const rows = getDb()
+    .prepare(`SELECT id, parentId, deletedAt, metadata FROM documents`)
+    .all() as Array<{
+    id: string;
+    parentId: string | null;
+    deletedAt: string | null;
+    metadata: string | null;
+  }>;
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const children = new Map<string, string[]>();
+  for (const row of rows) {
+    if (!row.parentId) continue;
+    const list = children.get(row.parentId) ?? [];
+    list.push(row.id);
+    children.set(row.parentId, list);
+  }
+
+  const out: SubtreeNode[] = [];
+  const seen = new Set<string>();
+  const stack = [id];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    const row = byId.get(current);
+    if (!row) continue;
+    let vaultRelativePath: string | undefined;
+    try {
+      vaultRelativePath = (
+        JSON.parse(row.metadata ?? "{}") as { vaultRelativePath?: string }
+      ).vaultRelativePath;
+    } catch {
+      vaultRelativePath = undefined;
+    }
+    out.push({ id: row.id, parentId: row.parentId, deletedAt: row.deletedAt, vaultRelativePath });
+    for (const child of children.get(current) ?? []) stack.push(child);
+  }
+  return out;
+}
+
 /**
  * Find a non-trashed note with the same (trimmed, case-insensitive) title.
  * Empty titles are not considered duplicates — untitled notes are allowed.
@@ -173,6 +227,20 @@ export function findDocumentByTitle(
   return row ?? null;
 }
 
+/**
+ * Shift live siblings at or below `position` down by one, opening a slot for a
+ * new/repositioned note. Used by the file-first create path to reproduce the
+ * "new note goes to the top" ordering in the index projection.
+ */
+export function makeRoomForNewDocument(parentId: string | null, position = 0): void {
+  getDb()
+    .prepare(
+      `UPDATE documents SET sortOrder = sortOrder + 1
+       WHERE parentId IS ? AND deletedAt IS NULL AND sortOrder >= ?`,
+    )
+    .run(parentId, position);
+}
+
 export function createDocument(input: {
   title?: string;
   content?: string;
@@ -184,11 +252,8 @@ export function createDocument(input: {
   const createdAt = nowIso();
   const parentId = input.parentId ?? null;
 
-  // Get next sortOrder for siblings (new docs go to the top, so sortOrder = 0, and shift others down)
-  db.prepare(
-    `UPDATE documents SET sortOrder = sortOrder + 1
-     WHERE parentId IS ? AND deletedAt IS NULL`,
-  ).run(parentId);
+  // New docs go to the top: make room at the requested position.
+  makeRoomForNewDocument(parentId, 0);
 
   const doc: DocumentRow = {
     id: randomUUID(),

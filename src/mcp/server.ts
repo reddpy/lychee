@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   appendToNote,
+  createNote,
   findBacklinks,
   getNote,
   listNotes,
@@ -55,6 +56,33 @@ export function createServer(vault: string): McpServer {
 
   server.tool("list_notes", "List the notes in the Lychee vault (id, title, path).", async () =>
     asText(listNotes(vault)),
+  );
+
+  registerTool(
+    "create_note",
+    "Create a new note. The filename is the title (Obsidian model). Optionally nest it under a parent and seed markdown/emoji.",
+    {
+      title: z
+        .string()
+        .optional()
+        .describe("Note title, which becomes the filename. Omit for an untitled note."),
+      markdown: z.string().optional().describe("Initial markdown body (without frontmatter)"),
+      parentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Parent note id or vault-relative path, or null/omitted for the vault root"),
+      emoji: z.string().optional().describe("Note emoji icon"),
+    },
+    async ({ title, markdown, parentId, emoji }) =>
+      asText(
+        createNote(vault, {
+          title,
+          body: markdown,
+          parentIdOrPath: parentId ?? null,
+          emoji,
+        }),
+      ),
   );
 
   registerTool(

@@ -297,6 +297,7 @@ function useMenuEventSubscriptions() {
 function e2eCrashProbe(scope: string): React.ReactElement | null {
   if (!__LYCHEE_E2E__) return null;
   const { E2ECrashProbe } =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("../components/e2e-crash-probe") as typeof import("../components/e2e-crash-probe");
   return <E2ECrashProbe scope={scope} />;
 }

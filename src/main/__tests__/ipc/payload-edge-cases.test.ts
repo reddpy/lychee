@@ -39,6 +39,11 @@ vi.mock('electron', () => ({
   shell: {
     openExternal: vi.fn().mockResolvedValue(undefined),
   },
+  // VaultSync broadcasts change events to every window; model "no windows".
+  BrowserWindow: {
+    getFocusedWindow: (): null => null,
+    getAllWindows: (): unknown[] => [],
+  },
 }));
 
 vi.mock('../../repos/documents', () => ({

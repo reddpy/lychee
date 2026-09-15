@@ -8,7 +8,7 @@ import {
   MenuOption,
   useBasicTypeaheadTriggerMatch,
 } from "@lexical/react/LexicalTypeaheadMenuPlugin"
-import { TextNode, $getSelection, $isRangeSelection, $createParagraphNode } from "lexical"
+import { TextNode, $getSelection, $isRangeSelection, $createParagraphNode, $insertNodes } from "lexical"
 import { $setBlocksType } from "@lexical/selection"
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
 import { $createCodeNode } from "@lexical/code"
@@ -34,7 +34,6 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { $isTitleNode } from "@/components/editor/nodes/title-node"
-import { $insertNodes } from "lexical"
 import { filterSlashCommands } from "./slash-command-search"
 
 class SlashCommandOption extends MenuOption {

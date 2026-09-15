@@ -160,7 +160,11 @@ test.describe('Trash Bin', () => {
     // Create and trash a note
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
-    await window.locator('h1.editor-title').click();
+    // Leave the edge trigger so the floating sidebar collapses before reaching
+    // for the editor, which sits underneath it while it peeks open.
+    await window.mouse.move(700, 300);
+    await window.waitForTimeout(300);
+    await window.locator('main:visible h1.editor-title').click();
     await window.keyboard.type('Delete Forever');
     await window.keyboard.press('Enter');
     await window.waitForTimeout(700);

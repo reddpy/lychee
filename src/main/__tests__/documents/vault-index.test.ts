@@ -15,6 +15,7 @@ import { setupDb, importDocument, getDocumentById, updateDocument } from './setu
 import { applyIndexFields } from '../../repos/documents';
 import { setSetting } from '../../repos/settings';
 import { reconcileIndexFromVault } from '../../vault-index';
+import { createNote } from '../../vault-store';
 import { VAULT_LOCATION_KEY, getVaultSync } from '../../vault-sync';
 
 let vault: string;
@@ -135,6 +136,61 @@ describe('reconcileIndexFromVault', () => {
     const result = reconcileIndexFromVault(vault, { importNew: false });
     expect(result.updated).toBe(0);
     expect(getDocumentById('brand-new')).toBeNull();
+  });
+
+  it('imports notes created through the shared file-first store (MCP parity)', () => {
+    const parent = createNote(vault, { title: 'Agent Parent', body: 'parent body' });
+    expect(parent.ok).toBe(true);
+    if (!parent.ok) return;
+    const child = createNote(vault, {
+      title: 'Agent Child',
+      body: 'child body',
+      parentIdOrPath: parent.id,
+      emoji: '🤖',
+    });
+    expect(child.ok).toBe(true);
+    if (!child.ok) return;
+
+    const result = reconcileIndexFromVault(vault);
+    expect(result.imported).toBe(2);
+
+    const parentRow = getDocumentById(parent.id)!;
+    expect(parentRow.title).toBe('Agent Parent');
+    expect(parentRow.content).toBe('parent body');
+    expect(parentRow.parentId).toBeNull();
+
+    const childRow = getDocumentById(child.id)!;
+    expect(childRow.title).toBe('Agent Child');
+    expect(childRow.content).toBe('child body');
+    expect(childRow.parentId).toBe(parent.id);
+    expect(childRow.emoji).toBe('🤖');
+  });
+
+  it('rebuilds a whole agent-authored tree from files at once', () => {
+    const expected = new Map<string, { parent: string | null }>();
+    let parentId: string | null = null;
+    for (let i = 0; i < 50; i += 1) {
+      const created = createNote(vault, {
+        title: `Agent ${i}`,
+        body: `body ${i}`,
+        parentIdOrPath: parentId,
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      expected.set(created.id, { parent: parentId });
+      // Alternate between nesting deeper and staying at the root.
+      parentId = i % 2 === 0 ? created.id : null;
+    }
+
+    const result = reconcileIndexFromVault(vault);
+    expect(result.imported).toBe(50);
+    expect(result.updated).toBe(50);
+
+    for (const [id, { parent }] of expected) {
+      const row = getDocumentById(id);
+      expect(row).not.toBeNull();
+      expect(row!.parentId).toBe(parent);
+    }
   });
 
   it('drops a self-referencing parent to avoid a cycle', () => {

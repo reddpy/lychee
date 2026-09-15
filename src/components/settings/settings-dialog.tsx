@@ -59,7 +59,7 @@ import { buildVaultEntriesProgressive, writeVaultEntriesInBatches } from '@/rend
 import { buildImportRequests } from '@/renderer/vault-import';
 import { useDocumentStore } from '@/renderer/document-store';
 import { planVaultImport } from '@/shared/vault-import';
-import type { IpcContract } from '@/shared/ipc-types';
+import type { IpcContract, DataLocations, SpellCheckState } from '@/shared/ipc-types';
 import {
   EDITOR_CODE_TAB_SIZES,
   EDITOR_FONT_FAMILIES,
@@ -78,7 +78,6 @@ import {
 import { useUpdateStore } from '@/renderer/update-store';
 import { type UpdateAction, describeUpdate } from '@/renderer/update-status-view';
 import { resetAllSettings } from '@/renderer/preferences-reset';
-import type { DataLocations, SpellCheckState } from '@/shared/ipc-types';
 import {
   displayKeybinding,
   keybindingFromEvent,

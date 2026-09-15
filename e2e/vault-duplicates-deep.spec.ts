@@ -99,7 +99,7 @@ test.describe('Duplicates — repeated convergence', () => {
   }) => {
     const id = 'f8000000-0000-4000-8000-000000000001';
     const userDataDir = path.join(testDir, 'userdata');
-    let app = await launchAndWait(userDataDir, vaultDir, id);
+    const app = await launchAndWait(userDataDir, vaultDir, id);
     await app.app.close();
 
     for (let round = 1; round <= 2; round += 1) {

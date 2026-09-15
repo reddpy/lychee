@@ -142,6 +142,7 @@ function interceptSquirrelShortcutEvents(): boolean {
 
 if (interceptSquirrelShortcutEvents()) {
   // app.quit() above; fall through to event loop.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
 } else if (require('electron-squirrel-startup')) {
   app.quit();
 }

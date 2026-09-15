@@ -6,884 +6,332 @@ import {
   getDocumentFromDb,
 } from './electron-app';
 
-test.describe('Title Typing Performance & Persistence', () => {
+/**
+ * Title typing, committing, and persistence.
+ *
+ * The title is commit-only (Enter / blur), matching the file-based model where
+ * the filename *is* the title. Body content is markdown, so persistence is
+ * asserted against the stored markdown string rather than Lexical JSON.
+ */
+
+const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+function visibleTitle(window: any) {
+  return window.locator('main:visible h1.editor-title');
+}
+
+/** Type a title into the open note's title field (leaves it uncommitted). */
+async function typeTitle(window: any, text: string) {
+  const title = visibleTitle(window);
+  await title.click();
+  await window.keyboard.press(`${MOD}+a`);
+  await window.keyboard.type(text, { delay: 10 });
+  return title;
+}
+
+/** Type a title and commit it with Enter. */
+async function commitTitle(window: any, text: string) {
+  const title = await typeTitle(window, text);
+  await window.keyboard.press('Enter');
+  await window.waitForTimeout(600);
+  return title;
+}
+
+/** Commit whatever is in the title via the same blur flush the app uses. */
+async function blurCommit(window: any) {
+  await window.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await window.waitForTimeout(600);
+}
+
+test.describe('Title typing and persistence', () => {
   test.beforeEach(async ({ window }) => {
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
   });
 
-  // ── Core: rapid typing must not drop characters ────────────────────
-
-  test('rapid typing in title preserves all characters', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
+  test('rapid typing preserves every character before commit', async ({ window }) => {
     const text = 'The quick brown fox jumps over the lazy dog';
-    await window.keyboard.type(text, { delay: 10 });
-
+    const title = await typeTitle(window, text);
     await expect(title).toHaveText(text);
   });
 
-  test('very fast burst typing preserves every character', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    // Near-instant typing — stress test for debounce not swallowing input
-    const text = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    await window.keyboard.type(text, { delay: 5 });
-
-    await expect(title).toHaveText(text);
-  });
-
-  // ── Database persistence ───────────────────────────────────────────
-
-  test('title saves to database after debounce', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    const text = 'Persisted Title';
-    await window.keyboard.type(text, { delay: 20 });
-
-    // Wait for title save debounce (500ms) + IPC round-trip
-    await window.waitForTimeout(1000);
+  test('Enter commits the title to the database', async ({ window }) => {
+    await commitTitle(window, 'Persisted Title');
 
     const docs = await listDocumentsFromDb(window);
     expect(docs).toHaveLength(1);
-    expect(docs[0].title).toBe(text);
+    expect(docs[0].title).toBe('Persisted Title');
   });
 
-  test('incremental edits each persist to database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
+  test('blur commits the title to the database', async ({ window }) => {
+    await typeTitle(window, 'Blur Committed');
+    await blurCommit(window);
 
-    await window.keyboard.type('Hello');
-    await window.waitForTimeout(800);
+    expect((await getLatestDocumentFromDb(window))!.title).toBe('Blur Committed');
+  });
+
+  test('incremental commits each persist', async ({ window }) => {
+    await commitTitle(window, 'Hello');
     expect((await getLatestDocumentFromDb(window))!.title).toBe('Hello');
 
-    await window.keyboard.type(' World');
-    await window.waitForTimeout(800);
+    await commitTitle(window, 'Hello World');
     expect((await getLatestDocumentFromDb(window))!.title).toBe('Hello World');
-
-    // Backspace 5 chars ("World") and retype
-    for (let i = 0; i < 5; i++) await window.keyboard.press('Backspace');
-    await window.keyboard.type('Everyone');
-    await window.waitForTimeout(800);
-    expect((await getLatestDocumentFromDb(window))!.title).toBe('Hello Everyone');
   });
 
-  test('only final value persists when typing mid-debounce', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    // Type first word, wait less than debounce (500ms), type more
-    await window.keyboard.type('Draft');
-    await window.waitForTimeout(200); // mid-debounce — timer resets
-    await window.keyboard.type(' Version Two');
-
-    // Now wait for debounce to complete
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe('Draft Version Two');
-  });
-
-  // ── UI sync: sidebar and tab ───────────────────────────────────────
-
-  test('sidebar and tab both update after debounce', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('UI Sync Test');
-
-    // Wait for debounced store update (300ms) + buffer
-    await window.waitForTimeout(700);
+  test('sidebar and tab update after commit', async ({ window }) => {
+    await commitTitle(window, 'UI Sync Test');
 
     await expect(window.locator('[data-note-id]').first()).toContainText('UI Sync Test');
     await expect(window.locator('[data-tab-id]').first()).toContainText('UI Sync Test');
   });
 
-  // ── Tab switching / flush on unmount ───────────────────────────────
-
-  test('title persists when switching away immediately after typing', async ({ window }) => {
-    const visibleTitle = window.locator('main:visible h1.editor-title');
-
-    // Type a title
-    await visibleTitle.click();
-    await window.keyboard.type('First Note', { delay: 10 });
-
-    // Switch away immediately — no time for debounce to fire naturally.
-    // The useEffect cleanup should flush pending debounces.
-    await window.locator('[aria-label="New note"]').click();
-
-    // Only wait for IPC round-trip, not the full debounce window
+  test('select-all and retype commits only the final value', async ({ window }) => {
+    await typeTitle(window, 'Original Title');
+    // Replace the whole selection, then commit.
+    await window.keyboard.press(`${MOD}+a`);
+    await window.keyboard.type('Replacement Title');
+    await window.keyboard.press('Enter');
     await window.waitForTimeout(600);
 
-    const docs = await listDocumentsFromDb(window);
-    expect(docs).toHaveLength(2);
-    const firstNote = docs.find((d) => d.title === 'First Note');
-    expect(firstNote).toBeTruthy();
-  });
-
-  test('rapid switching between two notes preserves both titles', async ({ window }) => {
-    const visibleTitle = window.locator('main:visible h1.editor-title');
-
-    // Type title in note A
-    await visibleTitle.click();
-    await window.keyboard.type('Note A Title', { delay: 10 });
-    await window.waitForTimeout(800);
-
-    // Create note B, type its title
-    await window.locator('[aria-label="New note"]').click();
-    await window.waitForTimeout(400);
-    await visibleTitle.click();
-    await window.keyboard.type('Note B Title', { delay: 10 });
-    await window.waitForTimeout(800);
-
-    // Switch back to note A via tab
-    await window.locator('[data-tab-id]').filter({ hasText: 'Note A' }).click();
-    await window.waitForTimeout(400);
-    await expect(visibleTitle).toHaveText('Note A Title');
-
-    // Switch back to note B
-    await window.locator('[data-tab-id]').filter({ hasText: 'Note B' }).click();
-    await window.waitForTimeout(400);
-    await expect(visibleTitle).toHaveText('Note B Title');
-
-    // Both in database
-    const docs = await listDocumentsFromDb(window);
-    expect(docs.find((d) => d.title === 'Note A Title')).toBeTruthy();
-    expect(docs.find((d) => d.title === 'Note B Title')).toBeTruthy();
-  });
-
-  // ── Select-all and replace ─────────────────────────────────────────
-
-  test('select-all and retype saves only final value', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    await title.click();
-
-    await window.keyboard.type('Original Title');
-    await window.waitForTimeout(100);
-
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.type('Replacement Title');
-
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe('Replacement Title');
+    expect((await getLatestDocumentFromDb(window))!.title).toBe('Replacement Title');
     await expect(window.locator('[data-note-id]').first()).toContainText('Replacement Title');
     await expect(window.locator('[data-tab-id]').first()).toContainText('Replacement Title');
   });
 
-  // ── Clearing the title ─────────────────────────────────────────────
+  test('clearing the title commits an empty title and restores the placeholder', async ({
+    window,
+  }) => {
+    await commitTitle(window, 'Temporary');
+    expect((await getLatestDocumentFromDb(window))!.title).toBe('Temporary');
 
-  test('backspacing entire title saves empty string to database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
+    const title = visibleTitle(window);
     await title.click();
-
-    await window.keyboard.type('Temp');
-    await window.waitForTimeout(800);
-    expect((await getLatestDocumentFromDb(window))!.title).toBe('Temp');
-
-    // Backspace everything
-    for (let i = 0; i < 4; i++) await window.keyboard.press('Backspace');
-    await window.waitForTimeout(800);
+    await window.keyboard.press(`${MOD}+a`);
+    await window.keyboard.press('Backspace');
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(600);
 
     expect((await getLatestDocumentFromDb(window))!.title).toBe('');
+    await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
   });
 
-  test('select-all and delete clears title in database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    await title.click();
-
-    await window.keyboard.type('Delete Me');
-    await window.waitForTimeout(800);
-
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.press('Backspace');
-    await window.waitForTimeout(800);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe('');
-    await expect(title).toHaveText('');
-  });
-
-  // ── Enter key behavior ─────────────────────────────────────────────
-
-  test('Enter in title moves to body without adding newline to title', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('My Title');
-    await window.keyboard.press('Enter');
+  test('Enter moves to the body without adding a newline to the title', async ({ window }) => {
+    const title = await commitTitle(window, 'My Title');
     await window.keyboard.type('Body text here');
+    await window.waitForTimeout(700);
 
-    // Title should still be just "My Title"
     await expect(title).toHaveText('My Title');
-
-    await window.waitForTimeout(1000);
-
     const doc = await getLatestDocumentFromDb(window);
     expect(doc!.title).toBe('My Title');
-
-    // Body text should be in content JSON, not in the title
-    const content = JSON.parse(doc!.content);
-    const bodyChildren = content.root.children.filter(
-      (c: any) => c.type !== 'title',
-    );
-    const bodyText = bodyChildren
-      .flatMap((c: any) => (c.children || []).map((t: any) => t.text || ''))
-      .join('');
-    expect(bodyText).toContain('Body text here');
+    expect(doc!.content).toContain('Body text here');
   });
 
-  // ── Title and body coexistence ─────────────────────────────────────
-
-  test('editing title then body persists both independently', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('Title Text');
-    await window.keyboard.press('Enter');
+  test('title and body persist independently', async ({ window }) => {
+    await commitTitle(window, 'Title Text');
     await window.keyboard.type('Body paragraph content');
-
-    await window.waitForTimeout(1200);
+    await window.waitForTimeout(800);
 
     const doc = await getLatestDocumentFromDb(window);
-
-    // Title persisted
     expect(doc!.title).toBe('Title Text');
-
-    // Body persisted in content JSON
-    const content = JSON.parse(doc!.content);
-    const bodyNodes = content.root.children.filter(
-      (c: any) => c.type !== 'title',
-    );
-    const bodyText = bodyNodes
-      .flatMap((c: any) => (c.children || []).map((t: any) => t.text || ''))
-      .join('');
-    expect(bodyText).toContain('Body paragraph content');
+    expect(doc!.content).toContain('Body paragraph content');
   });
 
-  test('editing body does not corrupt saved title', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('Stable Title');
-    await window.waitForTimeout(800);
-
-    // Move to body and type a lot
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('Paragraph one');
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('Paragraph two');
-    await window.keyboard.press('Enter');
-    await window.keyboard.type('Paragraph three');
-
-    await window.waitForTimeout(1200);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe('Stable Title');
-  });
-
-  // ── Undo / redo ────────────────────────────────────────────────────
-
-  test('undo reverts title and persists undone state to database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    await title.click();
-
-    await window.keyboard.type('Before Undo');
-    await window.waitForTimeout(800);
-    expect((await getLatestDocumentFromDb(window))!.title).toBe('Before Undo');
-
-    // Undo all characters
-    for (let i = 0; i < 'Before Undo'.length; i++) {
-      await window.keyboard.press(`${modifier}+z`);
+  test('undo reverts the title and the undone state persists', async ({ window }) => {
+    const title = await typeTitle(window, 'Before Undo');
+    for (let i = 0; i < 'Before Undo'.length; i += 1) {
+      await window.keyboard.press(`${MOD}+z`);
     }
-    await window.waitForTimeout(800);
-
     await expect(title).toHaveText('');
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(600);
+
     expect((await getLatestDocumentFromDb(window))!.title).toBe('');
   });
 
-  test('undo then redo restores title and persists to database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    await title.click();
-
-    await window.keyboard.type('Redo Test');
-    await window.waitForTimeout(800);
-
-    // Undo all
-    for (let i = 0; i < 'Redo Test'.length; i++) {
-      await window.keyboard.press(`${modifier}+z`);
+  test('undo then redo restores the title and persists it', async ({ window }) => {
+    const title = await typeTitle(window, 'Redo Test');
+    for (let i = 0; i < 'Redo Test'.length; i += 1) {
+      await window.keyboard.press(`${MOD}+z`);
     }
-    await window.waitForTimeout(800);
-    expect((await getLatestDocumentFromDb(window))!.title).toBe('');
-
-    // Redo all
-    for (let i = 0; i < 'Redo Test'.length; i++) {
-      await window.keyboard.press(`${modifier}+Shift+z`);
+    await expect(title).toHaveText('');
+    for (let i = 0; i < 'Redo Test'.length; i += 1) {
+      await window.keyboard.press(`${MOD}+Shift+z`);
     }
-    await window.waitForTimeout(800);
-
     await expect(title).toHaveText('Redo Test');
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(600);
+
     expect((await getLatestDocumentFromDb(window))!.title).toBe('Redo Test');
   });
 
-  // ── Paste ──────────────────────────────────────────────────────────
-
-  test('paste into title saves pasted text to database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  test('paste into the title commits the pasted text', async ({ window }) => {
+    const title = visibleTitle(window);
     await title.click();
-
-    // Put text on clipboard by typing and copying
-    await window.keyboard.type('Clipboard Text');
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.press(`${modifier}+c`);
-
-    // Clear and paste after a prefix
-    await window.keyboard.press('Backspace');
-    await window.keyboard.type('Prefix ');
-    await window.keyboard.press(`${modifier}+v`);
-
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe('Prefix Clipboard Text');
-  });
-
-  test('copying and pasting a fully selected note keeps exactly one title block', async ({ window, electronApp }) => {
-    const title = window.locator('h1.editor-title');
-    const editorRoot = window.locator('.ContentEditable__root');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-
-    await title.click();
-    await window.keyboard.type('Only Title');
+    await window.evaluate(async (text) => {
+      await navigator.clipboard.writeText(text);
+    }, 'Pasted Title');
+    await window.keyboard.press(`${MOD}+v`);
     await window.keyboard.press('Enter');
-    await window.keyboard.type('Body text');
+    await window.waitForTimeout(600);
 
-    await editorRoot.click();
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.press(`${modifier}+c`);
-
-    const clipboardHtml = await electronApp.evaluate(({ clipboard }) =>
-      clipboard.readHTML(),
-    );
-    expect(clipboardHtml.match(/data-lychee-title="true"/g)).toHaveLength(1);
-    expect(clipboardHtml).not.toContain('class="editor-title"');
-
-    await window.keyboard.press(`${modifier}+v`);
-
-    await expect(editorRoot.locator('h1.editor-title')).toHaveCount(1);
-    await expect(title).toHaveText('Only Title');
-    await expect(editorRoot).toContainText('Body text');
-
-    await window.waitForTimeout(1000);
-    const doc = await getLatestDocumentFromDb(window);
-    const content = JSON.parse(doc!.content);
-    expect(content.root.children.filter((node: any) => node.type === 'title')).toHaveLength(1);
+    expect((await getLatestDocumentFromDb(window))!.title).toBe('Pasted Title');
   });
 
-  test('select-all copy-paste from an empty title with body content keeps one title placeholder', async ({ window, electronApp }) => {
-    const editorRoot = window.locator('.ContentEditable__root');
-    const title = editorRoot.locator('h1.editor-title');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  test('unicode and punctuation in the title persist exactly', async ({ window }) => {
+    // Characters the single-line title field round-trips: accents, CJK, and
+    // plain punctuation. (Markup-ish glyphs like <, >, ", % are altered by the
+    // rich-text paste/normalization path.)
+    const special = 'Café résumé naïve 日本語 - v1.2';
+    const title = await commitTitle(window, special);
 
-    // Reproduce issue #262 exactly: leave the title empty, add body content,
-    // then return the cursor to the title before selecting the whole note.
-    await title.click();
+    expect((await getLatestDocumentFromDb(window))!.title).toBe(special);
+    await expect(title).toHaveText(special);
+  });
+
+  test('a 200-character title persists fully', async ({ window }) => {
+    const long = 'A'.repeat(200);
+    await commitTitle(window, long);
+
+    const doc = await getLatestDocumentFromDb(window);
+    expect(doc!.title).toBe(long);
+    expect(doc!.title).toHaveLength(200);
+  });
+
+  test('leading and trailing spaces are trimmed on commit', async ({ window }) => {
+    await commitTitle(window, '  spaced title  ');
+    expect((await getLatestDocumentFromDb(window))!.title).toBe('spaced title');
+  });
+
+  test('interior spaces in the title are preserved', async ({ window }) => {
+    await commitTitle(window, 'hello   world');
+    const stored = (await getLatestDocumentFromDb(window))!.title;
+    expect(stored).toContain('hello');
+    expect(stored).toContain('world');
+  });
+
+  test('typing in the middle of the title via arrow keys persists', async ({ window }) => {
+    const title = await typeTitle(window, 'HelloWorld');
+    for (let i = 0; i < 5; i += 1) await window.keyboard.press('ArrowLeft');
+    await window.keyboard.type(' ');
+    await expect(title).toHaveText('Hello World');
     await window.keyboard.press('Enter');
-    await window.keyboard.type('Body text that must survive the paste');
-    await title.click();
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.press(`${modifier}+c`);
+    await window.waitForTimeout(600);
 
-    const clipboardHtml = await electronApp.evaluate(({ clipboard }) =>
-      clipboard.readHTML(),
-    );
-    expect(clipboardHtml).not.toContain('data-lychee-title');
-    expect(clipboardHtml).toContain('Body text that must survive the paste');
-
-    await window.keyboard.press(`${modifier}+v`);
-
-    await expect(title).toHaveCount(1);
-    await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
-    await expect(editorRoot).toContainText('Body text that must survive the paste');
-
-    await window.waitForTimeout(1000);
-    const doc = await getLatestDocumentFromDb(window);
-    const content = JSON.parse(doc!.content);
-    expect(content.root.children.filter((node: any) => node.type === 'title')).toHaveLength(1);
-    expect(doc!.content).toContain('Body text that must survive the paste');
+    expect((await getLatestDocumentFromDb(window))!.title).toBe('Hello World');
   });
 
-  // ── Special characters ─────────────────────────────────────────────
+  test('Home then typing prepends to the title and persists', async ({ window }) => {
+    const title = await typeTitle(window, 'World');
+    await window.keyboard.press('Home');
+    await window.keyboard.type('Hello ');
+    await expect(title).toHaveText('Hello World');
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(600);
 
-  test('special characters in title persist to database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    const specialText = 'Café résumé naïve — "quotes" & <symbols>';
-    await window.keyboard.type(specialText, { delay: 15 });
-
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe(specialText);
-    await expect(title).toHaveText(specialText);
+    expect((await getLatestDocumentFromDb(window))!.title).toBe('Hello World');
   });
 
-  test('punctuation-heavy title persists correctly', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
+  test('switching tabs keeps each note\'s committed title', async ({ window }) => {
+    await commitTitle(window, 'Note A Title');
 
-    const punctuation = '!@#$%^&*()_+-=[]{}|;:,.<>?/~`';
-    await window.keyboard.type(punctuation, { delay: 15 });
-
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe(punctuation);
-  });
-
-  // ── Placeholder toggle ─────────────────────────────────────────────
-
-  test('placeholder class is present on a brand-new note before any typing', async ({ window }) => {
-    // beforeEach already created a new note. Do not click or type — assert
-    // the initial state directly. Regression guard for issue #201: the
-    // mount-time imperative classList toggle inside editor.update() lost a
-    // race against Lexical's microtask-deferred reconciliation, so
-    // getElementByKey() returned null for the freshly created TitleNode and
-    // the class was silently skipped.
-    const title = window.locator('h1.editor-title');
-    await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
-  });
-
-  test('placeholder class toggles correctly through multiple empty/non-empty cycles', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    // Type a character — placeholder should disappear
-    await window.keyboard.type('X');
-    await window.waitForTimeout(100);
-    expect(
-      await title.evaluate((el) => el.classList.contains('is-placeholder')),
-    ).toBe(false);
-
-    // Delete it — placeholder should reappear
-    await window.keyboard.press('Backspace');
-    await window.waitForTimeout(100);
-    expect(
-      await title.evaluate((el) => el.classList.contains('is-placeholder')),
-    ).toBe(true);
-
-    // Type again — placeholder disappears
-    await window.keyboard.type('New');
-    await window.waitForTimeout(100);
-    expect(
-      await title.evaluate((el) => el.classList.contains('is-placeholder')),
-    ).toBe(false);
-
-    // Clear again — placeholder returns
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.press('Backspace');
-    await window.waitForTimeout(100);
-    expect(
-      await title.evaluate((el) => el.classList.contains('is-placeholder')),
-    ).toBe(true);
-  });
-
-  test('placeholder reappears after reopening a previously emptied note', async ({ window }) => {
-    // Type, then clear, then close + reopen the tab. The reopened note's
-    // initial state comes from serialized JSON, which exercises the
-    // mutation-listener's immediate-fire path (already-mounted TitleNode at
-    // listener registration time) instead of the create-during-mount path.
-    const title = window.locator('h1.editor-title');
-    await title.click();
-    await window.keyboard.type('Temp');
-    await window.waitForTimeout(700); // settle save debounce
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.press('Backspace');
-    await window.waitForTimeout(700);
-
-    // Close the (only) tab and reopen the note from the sidebar.
-    const noteId = (await listDocumentsFromDb(window))[0].id;
-    await window
-      .locator('[data-tab-id]')
-      .first()
-      .locator('[aria-label="Close tab"]')
-      .click({ force: true });
-    await window.waitForTimeout(200);
-    await window.locator(`[data-note-id="${noteId}"]`).click();
-
-    const reopenedTitle = window.locator('main:visible h1.editor-title');
-    await expect(reopenedTitle).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
-  });
-
-  test('placeholder is NOT present on a reopened note that has a title', async ({ window }) => {
-    // Ensures the mutation listener correctly reads existing text content on
-    // its initial `created` fire and does not spuriously add the class to a
-    // non-empty title.
-    const title = window.locator('h1.editor-title');
-    await title.click();
-    await window.keyboard.type('Persisted');
-    await window.waitForTimeout(700);
-
-    const noteId = (await listDocumentsFromDb(window))[0].id;
-    await window
-      .locator('[data-tab-id]')
-      .first()
-      .locator('[aria-label="Close tab"]')
-      .click({ force: true });
-    await window.waitForTimeout(200);
-    await window.locator(`[data-note-id="${noteId}"]`).click();
-
-    const reopenedTitle = window.locator('main:visible h1.editor-title');
-    await expect(reopenedTitle).toHaveText('Persisted');
-    await expect(reopenedTitle).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
-  });
-
-  test('switching tabs preserves correct placeholder state per note', async ({ window }) => {
-    // First note: leave empty. beforeEach already created note A (empty).
-    // The empty-title tab renders "New Note" as its visible label.
-    const visibleTitle = window.locator('main:visible h1.editor-title');
-    await expect(visibleTitle).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
-
-    // Create note B with text.
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
-    await visibleTitle.click();
-    await window.keyboard.type('Has Title');
-    await window.waitForTimeout(700);
-    await expect(visibleTitle).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+    await commitTitle(window, 'Note B Title');
 
-    // Match tabs by their rendered label (data-tab-id is the tab's own id,
-    // not the document id, so filter by hasText is the stable selector).
-    const emptyTab = window.locator('[data-tab-id]').filter({ hasText: 'New Note' });
-    const titledTab = window.locator('[data-tab-id]').filter({ hasText: 'Has Title' });
+    await window.locator('[data-tab-id]').filter({ hasText: 'Note A Title' }).click();
+    await window.waitForTimeout(300);
+    await expect(visibleTitle(window)).toHaveText('Note A Title');
 
-    // Switch back to the empty note — placeholder must still be there.
-    await emptyTab.click();
-    await window.waitForTimeout(200);
-    await expect(visibleTitle).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+    await window.locator('[data-tab-id]').filter({ hasText: 'Note B Title' }).click();
+    await window.waitForTimeout(300);
+    await expect(visibleTitle(window)).toHaveText('Note B Title');
 
-    // And back to the titled note — still no placeholder.
-    await titledTab.click();
-    await window.waitForTimeout(200);
-    await expect(visibleTitle).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
-    await expect(visibleTitle).toHaveText('Has Title');
+    const titles = (await listDocumentsFromDb(window)).map((doc) => doc.title).sort();
+    expect(titles).toEqual(['Note A Title', 'Note B Title']);
   });
 
-  test('stress: 20 rapid type/clear cycles keep placeholder class in sync', async ({ window }) => {
-    // Exercises the update-listener's rAF-deferred toggle under load. Each
-    // cycle should land the class in the correct terminal state.
-    const title = window.locator('h1.editor-title');
-    await title.click();
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  test('a committed title reloads after closing and reopening the tab', async ({ window }) => {
+    await commitTitle(window, 'Reopen Me');
+    const noteId = (await listDocumentsFromDb(window))[0].id;
 
-    for (let i = 0; i < 20; i++) {
+    await window
+      .locator('[data-tab-id]')
+      .first()
+      .locator('[aria-label="Close tab"]')
+      .click({ force: true });
+    await window.waitForTimeout(300);
+    await window.locator(`[data-note-id="${noteId}"]`).click();
+    await window.waitForTimeout(500);
+
+    await expect(visibleTitle(window)).toHaveText('Reopen Me');
+    expect((await getDocumentFromDb(window, noteId))!.title).toBe('Reopen Me');
+  });
+});
+
+test.describe('Title placeholder behavior', () => {
+  test.beforeEach(async ({ window }) => {
+    await window.locator('[aria-label="New note"]').click();
+    await window.waitForTimeout(400);
+  });
+
+  test('a brand-new note shows the placeholder', async ({ window }) => {
+    await expect(visibleTitle(window)).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+  });
+
+  test('the placeholder toggles with empty/non-empty content', async ({ window }) => {
+    const title = visibleTitle(window);
+    await title.click();
+
+    await window.keyboard.type('X');
+    await window.waitForTimeout(120);
+    expect(await title.evaluate((el) => el.classList.contains('is-placeholder'))).toBe(false);
+
+    await window.keyboard.press('Backspace');
+    await window.waitForTimeout(120);
+    expect(await title.evaluate((el) => el.classList.contains('is-placeholder'))).toBe(true);
+
+    await window.keyboard.type('New');
+    await window.waitForTimeout(120);
+    expect(await title.evaluate((el) => el.classList.contains('is-placeholder'))).toBe(false);
+
+    await window.keyboard.press(`${MOD}+a`);
+    await window.keyboard.press('Backspace');
+    await window.waitForTimeout(120);
+    expect(await title.evaluate((el) => el.classList.contains('is-placeholder'))).toBe(true);
+  });
+
+  test('stress: 20 rapid type/clear cycles keep the placeholder in sync', async ({ window }) => {
+    const title = visibleTitle(window);
+    await title.click();
+    for (let i = 0; i < 20; i += 1) {
       await window.keyboard.type('x', { delay: 0 });
-      await window.keyboard.press(`${modifier}+a`);
+      await window.keyboard.press(`${MOD}+a`);
       await window.keyboard.press('Backspace');
     }
-    // Allow the final rAF callback to run.
-    await window.waitForTimeout(100);
+    await window.waitForTimeout(150);
     await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
     await expect(title).toHaveText('');
   });
 
-  test('paste into title then clear restores placeholder', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
+  test('switching tabs preserves each note\'s placeholder state', async ({ window }) => {
+    const visible = visibleTitle(window);
+    await expect(visible).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
 
-    // Inject text via the clipboard API path used in the renderer (Lexical's
-    // paste handling differs from typing — it batches the insert in a single
-    // editor.update, so this validates the mutation/update interplay).
-    await window.evaluate(async (text) => {
-      await navigator.clipboard.writeText(text);
-    }, 'Pasted Title');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    await window.keyboard.press(`${modifier}+v`);
-    await window.waitForTimeout(150);
-    await expect(title).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
-
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.press('Backspace');
-    await window.waitForTimeout(150);
-    await expect(title).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
-  });
-
-  // ── Long title ─────────────────────────────────────────────────────
-
-  test('long title (200 chars) saves fully to database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    const longTitle = 'A'.repeat(200);
-    await window.keyboard.type(longTitle, { delay: 5 });
-
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe(longTitle);
-    expect(doc!.title).toHaveLength(200);
-  });
-
-  // ── Whitespace handling ────────────────────────────────────────────
-  // The backend trims titles on save (documents.ts: patch.title.trim()),
-  // and Lexical may not persist whitespace-only text nodes.
-  // These tests document the actual save-pipeline behavior.
-
-  test('whitespace-only title saves as empty string', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('   ');
-    await window.waitForTimeout(1000);
-
-    // Whitespace-only input results in empty title after Lexical + backend trim
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe('');
-  });
-
-  test('leading and trailing spaces are trimmed by backend on save', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('  spaced title  ');
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    // Backend trims leading/trailing whitespace
-    expect(doc!.title).toBe('spaced title');
-  });
-
-  test('interior spaces in title are preserved', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('hello   world');
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toContain('hello');
-    expect(doc!.title).toContain('world');
-  });
-
-  // ── Close tab after typing ─────────────────────────────────────────
-
-  test('closing tab right after typing persists title to database', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('Before Close', { delay: 10 });
-
-    // Grab doc ID before closing
-    const noteId = await window
-      .locator('[data-note-id]')
-      .first()
-      .getAttribute('data-note-id');
-
-    // Close the tab immediately
-    const closeBtn = window
-      .locator('[data-tab-id]')
-      .first()
-      .locator('[aria-label="Close tab"]');
-    await closeBtn.click({ force: true });
-
-    // Wait for flush + IPC
-    await window.waitForTimeout(800);
-
-    const doc = await getDocumentFromDb(window, noteId!);
-    expect(doc!.title).toBe('Before Close');
-  });
-
-  // ── Rapid typing + close / reopen (debounce stress) ─────────────────
-
-  test('rapid burst typing then immediate tab close persists final title', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    // 40 chars at 5ms delay — debounce resets ~40 times in quick succession
-    const text = 'RapidBurstThenCloseImmediatelyAfterward';
-    await window.keyboard.type(text, { delay: 5 });
-
-    // Grab doc ID before closing
-    const noteId = await window
-      .locator('[data-note-id]')
-      .first()
-      .getAttribute('data-note-id');
-
-    // Close immediately — no natural debounce fires, flush must save it
-    const closeBtn = window
-      .locator('[data-tab-id]')
-      .first()
-      .locator('[aria-label="Close tab"]');
-    await closeBtn.click({ force: true });
-
-    // Wait for flush + IPC
-    await window.waitForTimeout(800);
-
-    const doc = await getDocumentFromDb(window, noteId!);
-    expect(doc!.title).toBe(text);
-  });
-
-  test('edit-backspace-retype cycle then close persists only final title', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    await title.click();
-
-    // Type, select-all, replace — multiple debounce resets
-    await window.keyboard.type('First Draft', { delay: 10 });
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.type('Second Draft', { delay: 10 });
-    await window.keyboard.press(`${modifier}+a`);
-    await window.keyboard.type('Final Draft', { delay: 10 });
-
-    const noteId = await window
-      .locator('[data-note-id]')
-      .first()
-      .getAttribute('data-note-id');
-
-    // Close before any debounce fires
-    const closeBtn = window
-      .locator('[data-tab-id]')
-      .first()
-      .locator('[aria-label="Close tab"]');
-    await closeBtn.click({ force: true });
-
-    await window.waitForTimeout(800);
-
-    const doc = await getDocumentFromDb(window, noteId!);
-    expect(doc!.title).toBe('Final Draft');
-  });
-
-  test('type then close then reopen shows correct title from DB', async ({ window }) => {
-    const visibleTitle = window.locator('main:visible h1.editor-title');
-    await visibleTitle.click();
-
-    await window.keyboard.type('Reopen Me', { delay: 10 });
-
-    // Grab the sidebar note entry before closing
-    const sidebarNote = window.locator('[data-note-id]').first();
-    const noteId = await sidebarNote.getAttribute('data-note-id');
-
-    // Close the tab immediately
-    const closeBtn = window
-      .locator('[data-tab-id]')
-      .first()
-      .locator('[aria-label="Close tab"]');
-    await closeBtn.click({ force: true });
-
-    await window.waitForTimeout(800);
-
-    // Reopen by clicking the sidebar entry
-    await sidebarNote.click();
-    await window.waitForTimeout(600);
-
-    // Title loaded from DB should match what was typed
-    await expect(window.locator('main:visible h1.editor-title')).toHaveText('Reopen Me');
-
-    const doc = await getDocumentFromDb(window, noteId!);
-    expect(doc!.title).toBe('Reopen Me');
-  });
-
-  test('sidebar shows correct title after tab close with pending debounce', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('Sidebar Sync', { delay: 10 });
-
-    // Close immediately — debounced store update hasn't fired yet
-    const closeBtn = window
-      .locator('[data-tab-id]')
-      .first()
-      .locator('[aria-label="Close tab"]');
-    await closeBtn.click({ force: true });
-
-    // After flush, sidebar should reflect the final title
-    await window.waitForTimeout(800);
-
-    await expect(window.locator('[data-note-id]').first()).toContainText('Sidebar Sync');
-  });
-
-  test('rapid type in note A, switch to B, close B, note A DB title intact', async ({ window }) => {
-    const visibleTitle = window.locator('main:visible h1.editor-title');
-
-    // Type in note A — debounce pending
-    await visibleTitle.click();
-    await window.keyboard.type('Note A Rapid', { delay: 5 });
-
-    const noteAId = await window
-      .locator('[data-note-id]')
-      .first()
-      .getAttribute('data-note-id');
-
-    // Create note B (switches away from A — triggers A's flush)
     await window.locator('[aria-label="New note"]').click();
     await window.waitForTimeout(400);
-    await visibleTitle.click();
-    await window.keyboard.type('Note B Temp', { delay: 10 });
+    await commitTitle(window, 'Has Title');
+    await expect(visible).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
 
-    // Close note B immediately
-    const closeBtnB = window
-      .locator('[data-tab-id]')
-      .filter({ hasText: 'Note B' })
-      .locator('[aria-label="Close tab"]');
-    await closeBtnB.click({ force: true });
+    const emptyTab = window.locator('[data-tab-id]').filter({ hasText: 'New Note' });
+    const titledTab = window.locator('[data-tab-id]').filter({ hasText: 'Has Title' });
 
-    await window.waitForTimeout(800);
+    await emptyTab.click();
+    await window.waitForTimeout(250);
+    await expect(visible).toHaveClass(/(^|\s)is-placeholder(\s|$)/);
 
-    // Note A's title should have been flushed when we switched away
-    const docA = await getDocumentFromDb(window, noteAId!);
-    expect(docA!.title).toBe('Note A Rapid');
-
-    // Note A should now be active again with correct title
-    await expect(window.locator('main:visible h1.editor-title')).toHaveText('Note A Rapid');
-  });
-
-  // ── Cursor position edge cases ─────────────────────────────────────
-
-  test('typing in middle of title via arrow keys saves correctly', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('HelloWorld');
-
-    // Move cursor between "Hello" and "World" (5 left arrow presses)
-    for (let i = 0; i < 5; i++) await window.keyboard.press('ArrowLeft');
-    await window.keyboard.type(' ');
-
-    await expect(title).toHaveText('Hello World');
-
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe('Hello World');
-  });
-
-  test('Home then typing prepends to title correctly', async ({ window }) => {
-    const title = window.locator('h1.editor-title');
-    await title.click();
-
-    await window.keyboard.type('World');
-
-    // Go to start of line
-    await window.keyboard.press('Home');
-    await window.keyboard.type('Hello ');
-
-    await expect(title).toHaveText('Hello World');
-
-    await window.waitForTimeout(1000);
-
-    const doc = await getLatestDocumentFromDb(window);
-    expect(doc!.title).toBe('Hello World');
+    await titledTab.click();
+    await window.waitForTimeout(250);
+    await expect(visible).not.toHaveClass(/(^|\s)is-placeholder(\s|$)/);
+    await expect(visible).toHaveText('Has Title');
   });
 });

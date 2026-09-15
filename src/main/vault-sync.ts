@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import type { DocumentRow, NoteMetadata } from "../shared/documents";
 import { CONTENT_SCHEMA_VERSION } from "../shared/documents";
 import { parseFrontmatter, serializeFrontmatter } from "../shared/frontmatter";
-import { stripLeadingTitle, resolveTitle, resolveNewTitle } from "../shared/markdown-title";
+import { stripLeadingTitle, resolveNewTitle } from "../shared/markdown-title";
 import { revisionOf } from "../shared/hash";
 import { conflictCopyPath, markdownStem, parentMarkdownPath, planVaultPaths } from "../shared/vault-path";
 import {
@@ -29,6 +29,7 @@ import {
 import { getSetting } from "./repos/settings";
 import { appendTombstones, compactTombstones, readTombstones } from "./tombstones";
 import { exportAssetsToVault, importAssetsFromVault } from "./assets";
+import { deriveEntry } from "./vault-entry";
 import { resolveVaultRoot } from "./mcp-config";
 import {
   writeVaultFile,
@@ -108,6 +109,14 @@ export class VaultSync {
    */
   private reconciled = false;
 
+  /**
+   * Depth of in-progress structural mutations (move/trash/restore/purge). While
+   * > 0, file events are queued instead of applied, so a file-first operation
+   * cannot be mis-read as an external edit before its index projection lands.
+   * The queued paths are re-read once the operation completes.
+   */
+  private structuralDepth = 0;
+
   constructor(private readonly send: (event: VaultFileChangedEvent) => void) {
     this.watcher = new VaultWatcher(
       (event) => this.onFileEvent(event),
@@ -122,6 +131,24 @@ export class VaultSync {
   markReconciled(): void {
     if (this.reconciled) return;
     this.reconciled = true;
+    const queued = [...this.queued];
+    this.queued.clear();
+    for (const relativePath of queued) this.watcher.refresh(relativePath);
+  }
+
+  /**
+   * Start a structural mutation. File events that arrive before the matching
+   * `endStructuralChange()` are queued and re-read afterwards, so the index
+   * projection (which lands at the end of the operation) is authoritative.
+   */
+  beginStructuralChange(): void {
+    this.structuralDepth += 1;
+  }
+
+  /** End a structural mutation; re-read anything that changed while guarded. */
+  endStructuralChange(): void {
+    this.structuralDepth = Math.max(0, this.structuralDepth - 1);
+    if (this.structuralDepth > 0) return;
     const queued = [...this.queued];
     this.queued.clear();
     for (const relativePath of queued) this.watcher.refresh(relativePath);
@@ -475,6 +502,12 @@ export class VaultSync {
       this.queued.add(event.relativePath);
       return;
     }
+    if (this.structuralDepth > 0) {
+      // A structural mutation is in flight; re-read this path once its index
+      // projection has landed so we don't treat our own move as an external edit.
+      this.queued.add(event.relativePath);
+      return;
+    }
     const directory = this.watcher.getDirectory();
     if (!directory) return;
     if (!event.exists || event.contents == null) {
@@ -733,10 +766,21 @@ export class VaultSync {
         metadata.contentSchemaVersion = request.contentSchemaVersion;
       }
       if (request.bookmarkedAt) metadata.bookmarkedAt = request.bookmarkedAt;
+      // Same file→index derivation the reconcile and service use; the renderer's
+      // canonical content is the authoritative projection input.
+      const derived = deriveEntry({
+        vault: directory,
+        relativePath: request.relativePath,
+        frontmatterTitle: request.title,
+        body: "",
+        mode: "import",
+        id,
+        contentOverride: request.content,
+      });
       importDocument({
         id,
-        title: request.title,
-        content: stripLeadingTitle(request.content, request.title),
+        title: derived.title,
+        content: derived.content ?? "",
         parentId: request.parentId,
         emoji: request.emoji ?? null,
         sortOrder: request.sortOrder,
@@ -774,11 +818,19 @@ export class VaultSync {
       // can also re-parent (folder move).
       const previousPath = existing.metadata.vaultRelativePath;
       const pathChanged = previousPath !== undefined && previousPath !== request.relativePath;
-      const title = resolveTitle({
+      // Shared file→index derivation (title + content); the renderer's canonical
+      // content is the authoritative projection input.
+      const derived = deriveEntry({
+        vault: directory,
+        relativePath: request.relativePath,
         frontmatterTitle: request.title,
-        stemTitle: markdownStem(request.relativePath),
+        body: "",
+        mode: "update",
         currentTitle: existing.title,
+        id: request.id,
+        contentOverride: request.content,
       });
+      const title = derived.title;
       const parentId =
         pathChanged && directory
           ? this.resolveParentIdByActualPath(directory, request.relativePath)
@@ -792,7 +844,7 @@ export class VaultSync {
       updateDocument(request.id, {
         title,
         parentId,
-        content: stripLeadingTitle(request.content, title),
+        content: derived.content ?? "",
         // Adopt the file's own timestamp so ordering/tombstones stay truthful.
         updatedAt: request.updatedAt,
         ...(request.emoji !== undefined ? { emoji: request.emoji } : {}),
