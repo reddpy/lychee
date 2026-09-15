@@ -24,6 +24,15 @@ await build({
   banner: { js: '#!/usr/bin/env node' },
   sourcemap: true,
   logLevel: 'info',
+  // The MCP peer reuses the headless editor/sync modules, which import via the
+  // app's `@/` alias.
+  alias: {
+    '@': resolve(repo, 'src'),
+    // Pin Yjs to ONE build. `@lexical/yjs` (ESM) and `y-protocols` (CJS) would
+    // otherwise bundle separate copies, breaking `instanceof` checks across them
+    // (yjs/yjs#438).
+    yjs: resolve(repo, 'node_modules/yjs/dist/yjs.cjs'),
+  },
 });
 
 console.log(`[build:mcp] wrote ${resolve(outDir, 'lychee-mcp.mjs')}`);

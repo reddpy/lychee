@@ -14,6 +14,7 @@ import {
   trashNote,
   updateNote,
 } from "./vault-tools";
+import { editNoteLive } from "./live-edit";
 
 /**
  * Lychee MCP server over a vault directory.
@@ -40,7 +41,11 @@ function asText(value: unknown) {
   };
 }
 
-export function createServer(vault: string): McpServer {
+export function createServer(
+  vault: string,
+  options: { syncSocket?: string } = {},
+): McpServer {
+  const syncSocket = options.syncSocket;
   const server = new McpServer({ name: "lychee", version: "1.0.0" });
 
   // The SDK's zod-typed overloads blow up TypeScript's instantiation depth with
@@ -127,8 +132,19 @@ export function createServer(vault: string): McpServer {
         .optional()
         .describe("Set true to intentionally add/remove lychee-* encoded blocks"),
     },
-    async ({ id, markdown, expectedRevision, allowFenceChanges }) =>
-      asText(updateNote(vault, id, markdown, expectedRevision, allowFenceChanges ?? false)),
+    async ({ id, markdown, expectedRevision, allowFenceChanges }) => {
+      if (syncSocket) {
+        const live = await editNoteLive({
+          vault,
+          socket: syncSocket,
+          idOrPath: id,
+          transform: () => markdown,
+          allowFenceChanges: allowFenceChanges ?? false,
+        });
+        if (live) return asText({ ok: true, live: true, relativePath: live.relativePath });
+      }
+      return asText(updateNote(vault, id, markdown, expectedRevision, allowFenceChanges ?? false));
+    },
   );
 
   registerTool(
@@ -140,8 +156,19 @@ export function createServer(vault: string): McpServer {
       replace: z.string().describe("Replacement text"),
       expectedRevision: z.string().optional().describe("Revision returned by get_note"),
     },
-    async ({ id, find, replace, expectedRevision }) =>
-      asText(replaceInNote(vault, id, find, replace, expectedRevision)),
+    async ({ id, find, replace, expectedRevision }) => {
+      if (syncSocket) {
+        const live = await editNoteLive({
+          vault,
+          socket: syncSocket,
+          idOrPath: id,
+          transform: (current) => (current.includes(find) ? current.split(find).join(replace) : null),
+          allowFenceChanges: true,
+        });
+        if (live) return asText({ ok: true, live: true, relativePath: live.relativePath });
+      }
+      return asText(replaceInNote(vault, id, find, replace, expectedRevision));
+    },
   );
 
   registerTool(
@@ -152,8 +179,18 @@ export function createServer(vault: string): McpServer {
       text: z.string().describe("Markdown to append"),
       expectedRevision: z.string().optional().describe("Revision returned by get_note"),
     },
-    async ({ id, text, expectedRevision }) =>
-      asText(appendToNote(vault, id, text, expectedRevision)),
+    async ({ id, text, expectedRevision }) => {
+      if (syncSocket) {
+        const live = await editNoteLive({
+          vault,
+          socket: syncSocket,
+          idOrPath: id,
+          transform: (current) => `${current.replace(/\s+$/, "")}\n\n${text.trim()}\n`,
+        });
+        if (live) return asText({ ok: true, live: true, relativePath: live.relativePath });
+      }
+      return asText(appendToNote(vault, id, text, expectedRevision));
+    },
   );
 
   registerTool(

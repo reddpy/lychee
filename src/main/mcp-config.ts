@@ -40,22 +40,33 @@ export function resolveVaultRoot(directory: string): string {
   return path.join(directory, "Lychee");
 }
 
-export function buildServerConfig(vaultPath: string): McpServerConfig {
+export function buildServerConfig(
+  vaultPath: string,
+  syncSocket?: string,
+): McpServerConfig {
   return {
     command: process.execPath,
     args: [serverPath(), "--vault", vaultPath],
-    env: { ELECTRON_RUN_AS_NODE: "1" },
+    env: {
+      ELECTRON_RUN_AS_NODE: "1",
+      // When the app is running in Yjs mode, the MCP server joins live docs.
+      ...(syncSocket ? { LYCHEE_SYNC_SOCKET: syncSocket } : {}),
+    },
   };
 }
 
 /** The `mcpServers` JSON a client that reads a config file can use. */
-export function manualMcpConfig(vaultPath: string): string {
-  return JSON.stringify({ mcpServers: { lychee: buildServerConfig(vaultPath) } }, null, 2);
+export function manualMcpConfig(vaultPath: string, syncSocket?: string): string {
+  return JSON.stringify(
+    { mcpServers: { lychee: buildServerConfig(vaultPath, syncSocket) } },
+    null,
+    2,
+  );
 }
 
 /** The field values a manual client's UI asks for. */
-export function mcpSetupFields(vaultPath: string): McpSetupFields {
-  const config = buildServerConfig(vaultPath);
+export function mcpSetupFields(vaultPath: string, syncSocket?: string): McpSetupFields {
+  const config = buildServerConfig(vaultPath, syncSocket);
   return {
     name: "Lychee",
     type: "STDIO",

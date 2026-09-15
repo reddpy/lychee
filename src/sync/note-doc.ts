@@ -3,10 +3,12 @@ import { createHeadlessEditor } from "@lexical/headless";
 import {
   createBinding,
   createUndoManager,
+  syncCursorPositions,
   syncLexicalUpdateToYjs,
   syncYjsChangesToLexical,
   type Binding,
 } from "@lexical/yjs";
+import type { Awareness } from "y-protocols/awareness";
 import type { LexicalEditor } from "lexical";
 import { $createParagraphNode, $getRoot, $isElementNode, $isTextNode } from "lexical";
 import { nodes } from "@/components/editor/nodes";
@@ -33,15 +35,18 @@ import { exportDocumentMarkdown, $importDocumentMarkdown } from "@/components/ed
 /** Origin tag for updates that arrived from a peer, so we never echo them back. */
 export const REMOTE_ORIGIN = "lychee-remote";
 
-/** Minimal provider stub — awareness/cursors are added in the presence stage. */
-function createHeadlessProvider(): never {
-  const awareness = {
-    getLocalState: (): null => null,
-    setLocalState: () => {},
-    getStates: () => new Map<number, unknown>(),
-    on: () => {},
-    off: () => {},
-  };
+/** Minimal provider stub — used when no real awareness is supplied. */
+const STUB_AWARENESS = {
+  getLocalState: (): null => null,
+  setLocalState: () => {},
+  setLocalStateField: () => {},
+  getStates: () => new Map<number, unknown>(),
+  on: () => {},
+  off: () => {},
+};
+
+/** Minimal CollaborationProvider object the binding accepts. */
+function createProvider(awareness: unknown): never {
   return {
     awareness,
     connect: () => {},
@@ -116,8 +121,14 @@ export function bindEditorToDoc(args: {
   id: string;
   editor: LexicalEditor;
   doc: Y.Doc;
-}): { binding: Binding; undoManager: Y.UndoManager; dispose: () => void } {
-  const provider = createHeadlessProvider();
+  awareness?: Awareness;
+}): {
+  binding: Binding;
+  undoManager: Y.UndoManager;
+  provider: unknown;
+  dispose: () => void;
+} {
+  const provider = createProvider(args.awareness ?? STUB_AWARENESS);
   const docMap = new Map([[args.id, args.doc]]);
   const binding = createBinding(args.editor, provider, args.id, args.doc, docMap);
   // Per-origin undo: only this device's edits are undone (spike research sec 3).
@@ -156,7 +167,7 @@ export function bindEditorToDoc(args: {
   const observer = (events: unknown, transaction: { origin: unknown }) => {
     if (transaction.origin === binding) return;
     try {
-      syncYjsChangesToLexical(binding, provider, events as never, false, () => {});
+      syncYjsChangesToLexical(binding, provider, events as never, false, syncCursorPositions);
     } catch (error) {
       console.error("[sync] yjs→lexical sync failed:", error);
     }
@@ -166,6 +177,7 @@ export function bindEditorToDoc(args: {
   return {
     binding,
     undoManager,
+    provider,
     dispose() {
       unregister();
       sharedType.unobserveDeep(observer as never);
@@ -177,7 +189,7 @@ export function bindEditorToDoc(args: {
 /** Bind a headless editor to a Y.Doc and return a disposable handle. */
 export function createNoteDoc(
   id: string,
-  options: { markdown?: string; doc?: Y.Doc } = {},
+  options: { markdown?: string; doc?: Y.Doc; awareness?: Awareness } = {},
 ): NoteDocHandle {
   const editor = createHeadlessNoteEditor();
   // A joining peer must receive the document state *before* the binding is
@@ -185,7 +197,12 @@ export function createNoteDoc(
   // a later state merge would duplicate rather than merge. Pass `doc` to join.
   const doc = options.doc ?? new Y.Doc();
   const ownsDoc = options.doc === undefined;
-  const { binding, dispose } = bindEditorToDoc({ id, editor, doc });
+  const { binding, dispose } = bindEditorToDoc({
+    id,
+    editor,
+    doc,
+    awareness: options.awareness,
+  });
 
   if (options.markdown !== undefined) bootstrapFromMarkdown(editor, options.markdown);
 

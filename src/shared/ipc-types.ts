@@ -183,6 +183,15 @@ export type IpcContract = {
     req: { id: string };
     res: { ok: true };
   };
+  // ── Cross-process Yjs bridge (app ↔ MCP/sync peers) ────────────────
+  'bridge.publish': {
+    req: { docId: string; update: string };
+    res: { ok: true };
+  };
+  'bridge.publishAwareness': {
+    req: { docId: string; update: string };
+    res: { ok: true };
+  };
   'vault.importDocuments': {
     req: { directory?: string; documents: VaultImportRequest[] };
     res: { created: number; skipped: number };
@@ -398,6 +407,9 @@ export type IpcEvents = {
   'keybindings:changed': KeybindingMap;
   'preferences:changed': GeneralPreferences;
   'vault:file-changed': VaultFileChangedEvent;
+  'bridge:update': { docId: string; update: string };
+  'bridge:awareness': { docId: string; update: string };
+  'bridge:peer-joined': { docId: string };
 };
 
 export type IpcEventChannel = keyof IpcEvents;

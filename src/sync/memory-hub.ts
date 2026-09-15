@@ -11,15 +11,30 @@ import { REMOTE_ORIGIN } from "./note-doc";
  * this same interface.
  */
 export interface SyncAdapter {
-  subscribe(docId: string, onUpdate: (update: Uint8Array) => void): () => void;
+  /**
+   * Subscribe to a doc's peer updates. `onPeerJoined` (when supported) fires
+   * when a new peer joins so the caller can publish its current state.
+   */
+  subscribe(
+    docId: string,
+    onUpdate: (update: Uint8Array) => void,
+    onPeerJoined?: () => void,
+  ): () => void;
   publish(docId: string, update: Uint8Array): void;
+  /** Presence: peer awareness updates (ephemeral cursor/name/color state). */
+  subscribeAwareness(docId: string, onAwareness: (update: Uint8Array) => void): () => void;
+  publishAwareness(docId: string, update: Uint8Array): void;
 }
 
 /** In-process pub/sub hub: lets a local "agent" peer join a note's doc. */
 export class MemoryHub implements SyncAdapter {
   private readonly listeners = new Map<string, Set<(update: Uint8Array) => void>>();
 
-  subscribe(docId: string, onUpdate: (update: Uint8Array) => void): () => void {
+  subscribe(
+    docId: string,
+    onUpdate: (update: Uint8Array) => void,
+    _onPeerJoined?: () => void,
+  ): () => void {
     const set = this.listeners.get(docId) ?? new Set();
     set.add(onUpdate);
     this.listeners.set(docId, set);
@@ -32,6 +47,25 @@ export class MemoryHub implements SyncAdapter {
   publish(docId: string, update: Uint8Array): void {
     for (const callback of this.listeners.get(docId) ?? []) callback(update);
   }
+
+  private readonly awarenessListeners = new Map<
+    string,
+    Set<(update: Uint8Array) => void>
+  >();
+
+  subscribeAwareness(docId: string, onAwareness: (update: Uint8Array) => void): () => void {
+    const set = this.awarenessListeners.get(docId) ?? new Set();
+    set.add(onAwareness);
+    this.awarenessListeners.set(docId, set);
+    return () => {
+      set.delete(onAwareness);
+      if (set.size === 0) this.awarenessListeners.delete(docId);
+    };
+  }
+
+  publishAwareness(docId: string, update: Uint8Array): void {
+    for (const callback of this.awarenessListeners.get(docId) ?? []) callback(update);
+  }
 }
 
 /**
@@ -40,13 +74,18 @@ export class MemoryHub implements SyncAdapter {
  * connect so a late joiner catches up.
  */
 export function connectDoc(adapter: SyncAdapter, docId: string, doc: Y.Doc): () => void {
-  const offRemote = adapter.subscribe(docId, (update) => {
-    try {
-      Y.applyUpdate(doc, update, REMOTE_ORIGIN);
-    } catch (error) {
-      console.error("[sync] remote apply failed:", error);
-    }
-  });
+  const offRemote = adapter.subscribe(
+    docId,
+    (update) => {
+      try {
+        Y.applyUpdate(doc, update, REMOTE_ORIGIN);
+      } catch (error) {
+        console.error("[sync] remote apply failed:", error);
+      }
+    },
+    // A peer joined: publish everything we have so it can catch up.
+    () => adapter.publish(docId, Y.encodeStateAsUpdate(doc)),
+  );
 
   const onUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === REMOTE_ORIGIN) return; // don't rebroadcast peer updates

@@ -39,6 +39,12 @@ import {
 } from './spellcheck';
 import { createDatabaseBackup } from './db';
 import { appendDocumentUpdate, compactDocument, loadDocumentUpdates, removeDocumentCrdt } from './repos/crdt';
+import {
+  isNoteBridgeRunning,
+  noteBridgeSocketPath,
+  publishAwarenessToBridge,
+  publishToBridge,
+} from './bridge';
 import { scanVaultDirectory, writeVaultEntries } from './vault';
 import { exportAssetsToVault, importAssetsFromVault } from './assets';
 import { buildServerConfig, defaultVaultPath, manualMcpConfig, mcpSetupFields, resolveVaultRoot } from './mcp-config';
@@ -279,7 +285,8 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
     const vaultPath = configured && fs.existsSync(configured) ? configured : '';
     const fallback = defaultVaultPath();
     const effectiveVault = vaultPath || fallback;
-    const config = buildServerConfig(effectiveVault);
+    const syncSocket = isNoteBridgeRunning() ? noteBridgeSocketPath() : undefined;
+    const config = buildServerConfig(effectiveVault, syncSocket);
     const importedCount = listAllDocumentTitles().filter((row) =>
       isNonMarkdownFileTitle(row.title),
     ).length;
@@ -290,8 +297,8 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
       command: config.command,
       args: config.args,
       env: config.env ?? {},
-      config: manualMcpConfig(effectiveVault),
-      setup: mcpSetupFields(effectiveVault),
+      config: manualMcpConfig(effectiveVault, syncSocket),
+      setup: mcpSetupFields(effectiveVault, syncSocket),
       importedCount,
     };
   });
@@ -401,6 +408,20 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
   handle('crdt.remove', (payload) => {
     if (!payload?.id) throw new Error('Missing required field: id');
     removeDocumentCrdt(payload.id);
+    return { ok: true };
+  });
+
+  handle('bridge.publish', (payload) => {
+    if (!payload?.docId) throw new Error('Missing required field: docId');
+    if (typeof payload.update !== 'string') throw new Error('update must be a string');
+    publishToBridge(payload.docId, payload.update);
+    return { ok: true };
+  });
+
+  handle('bridge.publishAwareness', (payload) => {
+    if (!payload?.docId) throw new Error('Missing required field: docId');
+    if (typeof payload.update !== 'string') throw new Error('update must be a string');
+    publishAwarenessToBridge(payload.docId, payload.update);
     return { ok: true };
   });
 

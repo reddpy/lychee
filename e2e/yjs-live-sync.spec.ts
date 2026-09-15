@@ -1,5 +1,9 @@
 import path from 'path';
+import fs from 'fs';
+import { $createParagraphNode, $createTextNode, $getRoot } from 'lexical';
 import { test, expect, launchLychee, firstWindowReady } from './electron-app';
+import { joinNoteAsPeer } from '../src/mcp/bridge-peer';
+import { editNoteLive } from '../src/mcp/live-edit';
 import { createNote, noteItem, waitForContent } from './vault-helpers';
 
 /**
@@ -149,5 +153,102 @@ test.describe('Yjs CRDT persistence', () => {
       timeout: 10_000,
     });
     await second.close();
+  });
+});
+
+test.describe('Yjs cross-process peer (socket bridge)', () => {
+  test('an external process edits over the socket and the app reflects it', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    await createNote(window, 'Socket Doc');
+    const docId = await noteItem(window, 'Socket Doc').getAttribute('data-note-id');
+    await expect
+      .poll(() =>
+        window.evaluate(
+          (id) => Boolean((window as any).__lycheeNoteSync?.isReady(id)),
+          docId as string,
+        ),
+      )
+      .toBe(true);
+
+    const socketPath = path.join(testDir, 'userdata', 'lychee-sync.sock');
+    await expect.poll(() => fs.existsSync(socketPath), { timeout: 10_000 }).toBe(true);
+
+    const peer = await joinNoteAsPeer(socketPath, docId as string, {
+      settleMs: 300,
+      name: 'Playwright Peer',
+    });
+    expect(peer).not.toBeNull();
+    if (!peer) return;
+
+    peer.editor.update(
+      () => {
+        $getRoot().append($createParagraphNode().append($createTextNode('FROM SOCKET PEER')));
+      },
+      { discrete: true },
+    );
+    peer.publish();
+
+    await expect(window.locator('main:visible .ContentEditable__root')).toContainText(
+      'FROM SOCKET PEER',
+      { timeout: 10_000 },
+    );
+    await waitForContent(vaultDir, 'Socket Doc.md', 'FROM SOCKET PEER');
+
+    // Presence: the peer's awareness (name) reached the app.
+    await expect
+      .poll(
+        () =>
+          window.evaluate(
+            (id) => {
+              const states = (window as any).__lycheeNoteSync?.awareness(id) as
+                | Array<{ state?: { name?: string } }>
+                | null;
+              return states ? states.some((s) => s.state?.name === 'Playwright Peer') : false;
+            },
+            docId as string,
+          ),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+
+    peer.close();
+  });
+});
+
+test.describe('MCP live tool path', () => {
+  test('editNoteLive applies a tool-style edit to the open note', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    await createNote(window, 'Live Tool Doc');
+    const docId = await noteItem(window, 'Live Tool Doc').getAttribute('data-note-id');
+    await expect
+      .poll(() =>
+        window.evaluate(
+          (id) => Boolean((window as any).__lycheeNoteSync?.isReady(id)),
+          docId as string,
+        ),
+      )
+      .toBe(true);
+
+    const socket = path.join(testDir, 'userdata', 'lychee-sync.sock');
+    await expect.poll(() => fs.existsSync(socket), { timeout: 10_000 }).toBe(true);
+
+    const result = await editNoteLive({
+      vault: vaultDir,
+      socket,
+      idOrPath: docId as string,
+      transform: (current) => `${current.replace(/\s+$/, '')}\n\nFROM TOOL\n`,
+    });
+    expect(result).not.toBeNull();
+
+    await expect(window.locator('main:visible .ContentEditable__root')).toContainText('FROM TOOL', {
+      timeout: 10_000,
+    });
+    await waitForContent(vaultDir, 'Live Tool Doc.md', 'FROM TOOL');
   });
 });

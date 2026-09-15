@@ -1,5 +1,7 @@
 import type { LexicalEditor } from "lexical";
 import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
+import { syncCursorPositions } from "@lexical/yjs";
+import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as Y from "yjs";
 import {
   applyRemoteUpdate,
@@ -39,38 +41,68 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
-class BroadcastChannelAdapter implements SyncAdapter {
-  private readonly channel: BroadcastChannel | null = null;
-  private readonly listeners = new Map<string, Set<(update: Uint8Array) => void>>();
+/**
+ * Renderer side of the cross-process bridge: updates are relayed through the
+ * main process to/from local socket peers (the MCP server, sync helpers).
+ */
+class IpcBridgeAdapter implements SyncAdapter {
+  private readonly listeners = new Map<
+    string,
+    { onUpdate: (update: Uint8Array) => void; onPeerJoined?: () => void }
+  >();
+  private readonly awarenessListeners = new Map<string, Set<(update: Uint8Array) => void>>();
+  private readonly offUpdate: () => void;
+  private readonly offAwareness: () => void;
+  private readonly offPeer: () => void;
 
   constructor() {
-    if (typeof BroadcastChannel === "undefined") return;
-    this.channel = new BroadcastChannel("lychee-note-sync");
-    this.channel.onmessage = (event: MessageEvent) => {
-      const data = event.data as { docId?: string; update?: Uint8Array } | undefined;
-      if (!data?.docId || !(data.update instanceof Uint8Array)) return;
-      for (const callback of this.listeners.get(data.docId) ?? []) callback(data.update);
-    };
+    this.offUpdate = window.lychee.on("bridge:update", ({ docId, update }) => {
+      this.listeners.get(docId)?.onUpdate(base64ToBytes(update));
+    });
+    this.offAwareness = window.lychee.on("bridge:awareness", ({ docId, update }) => {
+      for (const cb of this.awarenessListeners.get(docId) ?? []) cb(base64ToBytes(update));
+    });
+    this.offPeer = window.lychee.on("bridge:peer-joined", ({ docId }) => {
+      this.listeners.get(docId)?.onPeerJoined?.();
+    });
   }
 
-  subscribe(docId: string, onUpdate: (update: Uint8Array) => void): () => void {
-    const set = this.listeners.get(docId) ?? new Set();
-    set.add(onUpdate);
-    this.listeners.set(docId, set);
+  subscribe(
+    docId: string,
+    onUpdate: (update: Uint8Array) => void,
+    onPeerJoined?: () => void,
+  ): () => void {
+    this.listeners.set(docId, { onUpdate, onPeerJoined });
     return () => {
-      set.delete(onUpdate);
-      if (set.size === 0) this.listeners.delete(docId);
+      this.listeners.delete(docId);
     };
   }
 
   publish(docId: string, update: Uint8Array): void {
-    this.channel?.postMessage({ docId, update });
+    void window.lychee
+      .invoke("bridge.publish", { docId, update: bytesToBase64(update) })
+      .catch(() => {});
+  }
+
+  subscribeAwareness(docId: string, onAwareness: (update: Uint8Array) => void): () => void {
+    const set = this.awarenessListeners.get(docId) ?? new Set();
+    set.add(onAwareness);
+    this.awarenessListeners.set(docId, set);
+    return () => {
+      set.delete(onAwareness);
+    };
+  }
+
+  publishAwareness(docId: string, update: Uint8Array): void {
+    void window.lychee
+      .invoke("bridge.publishAwareness", { docId, update: bytesToBase64(update) })
+      .catch(() => {});
   }
 }
 
-let adapter: BroadcastChannelAdapter | null = null;
-function getAdapter(): BroadcastChannelAdapter {
-  if (!adapter) adapter = new BroadcastChannelAdapter();
+let adapter: IpcBridgeAdapter | null = null;
+function getAdapter(): IpcBridgeAdapter {
+  if (!adapter) adapter = new IpcBridgeAdapter();
   return adapter;
 }
 
@@ -78,6 +110,8 @@ interface BoundNote {
   doc: Y.Doc;
   editor: LexicalEditor;
   undoManager: Y.UndoManager;
+  awareness: Awareness;
+  setCursorsContainer(el: HTMLElement | null): void;
   ready: boolean;
   dispose(): void;
 }
@@ -100,10 +134,19 @@ export function bindLiveNote(args: {
   unbindLiveNote(args.documentId);
 
   const doc = new Y.Doc();
-  const { undoManager, dispose: disposeBinding } = bindEditorToDoc({
+  const awareness = new Awareness(doc);
+  // Local presence. (A real user profile / display name arrives with accounts.)
+  awareness.setLocalState({
+    name: "You",
+    color: "#0ea5e9",
+    focusing: false,
+  });
+
+  const { binding, undoManager, provider, dispose: disposeBinding } = bindEditorToDoc({
     id: args.documentId,
     editor: args.editor,
     doc,
+    awareness,
   });
 
   const pending: Uint8Array[] = [];
@@ -127,6 +170,34 @@ export function bindLiveNote(args: {
   };
   doc.on("update", onUpdate);
 
+  // ── Presence / awareness ──────────────────────────────────────────
+  const adapter = getAdapter();
+  const REMOTE_AWARENESS = "lychee-remote-awareness";
+  const publishLocalAwareness = (): void => {
+    try {
+      adapter.publishAwareness(
+        args.documentId,
+        encodeAwarenessUpdate(awareness, [awareness.clientID]),
+      );
+    } catch {
+      // best-effort
+    }
+  };
+  const onAwarenessUpdate = (_changes: unknown, origin: unknown): void => {
+    if (origin === REMOTE_AWARENESS) return;
+    publishLocalAwareness();
+  };
+  awareness.on("update", onAwarenessUpdate);
+  const offAwareness = adapter.subscribeAwareness(args.documentId, (update) => {
+    applyAwarenessUpdate(awareness, update, REMOTE_AWARENESS);
+  });
+  const onAwarenessChange = (): void => {
+    syncCursorPositions(binding, provider as never);
+  };
+  awareness.on("change", onAwarenessChange);
+  // Periodic heartbeat so peers joining later (and stale-state expiry) converge.
+  const awarenessHeartbeat = setInterval(publishLocalAwareness, 5000);
+
   let disconnect: (() => void) | null = null;
   let disposed = false;
 
@@ -134,10 +205,19 @@ export function bindLiveNote(args: {
     doc,
     editor: args.editor,
     undoManager,
+    awareness,
+    setCursorsContainer(el) {
+      binding.cursorsContainer = el;
+      syncCursorPositions(binding, provider as never);
+    },
     ready: false,
     dispose() {
       disposed = true;
       flush();
+      clearInterval(awarenessHeartbeat);
+      awareness.off("update", onAwarenessUpdate);
+      awareness.off("change", onAwarenessChange);
+      offAwareness();
       doc.off("update", onUpdate);
       disposeBinding();
       disconnect?.();
@@ -152,6 +232,7 @@ export function bindLiveNote(args: {
       } catch {
         // best-effort
       }
+      awareness.destroy();
       doc.destroy();
     },
   };
@@ -184,6 +265,7 @@ export function bindLiveNote(args: {
     if (disposed) return;
     disconnect = connectDoc(getAdapter(), args.documentId, doc);
     entry.ready = true;
+    publishLocalAwareness();
     installNoteSyncTestHook();
   })();
 }
@@ -212,6 +294,25 @@ export function getNoteUndoManager(documentId: string): Y.UndoManager | null {
   return bound.get(documentId)?.undoManager ?? null;
 }
 
+/** Attach the DOM container the binding renders remote cursors into. */
+export function setNoteCursorsContainer(documentId: string, el: HTMLElement | null): void {
+  bound.get(documentId)?.setCursorsContainer(el);
+}
+
+/** Peer presence states for a bound note (excluding the local client). */
+export function getRemoteAwareness(
+  documentId: string,
+): Array<{ clientID: number; state: Record<string, unknown> }> | null {
+  const note = bound.get(documentId);
+  if (!note) return null;
+  const out: Array<{ clientID: number; state: Record<string, unknown> }> = [];
+  for (const [clientID, state] of note.awareness.getStates()) {
+    if (clientID === note.awareness.clientID) continue;
+    out.push({ clientID, state: state as Record<string, unknown> });
+  }
+  return out;
+}
+
 /**
  * E2E hook: simulate an external peer (agent/MCP) that joins the live doc,
  * edits, and sends its update back — exactly what a real peer adapter does.
@@ -223,6 +324,7 @@ export function installNoteSyncTestHook(): void {
   (window as unknown as Record<string, unknown>).__lycheeNoteSync = {
     isBound: (documentId: string): boolean => isNoteBound(documentId),
     isReady: (documentId: string): boolean => bound.get(documentId)?.ready ?? false,
+    awareness: (documentId: string) => getRemoteAwareness(documentId),
     /** The live doc's markdown projection (diagnostics). */
     snapshot: (documentId: string): string | null => {
       const note = bound.get(documentId);
