@@ -7,6 +7,7 @@ import { LinkClickPlugin } from "@/components/editor/plugins/link-click-plugin"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
 import { YjsUndoPlugin } from "@/components/editor/plugins/yjs-undo-plugin"
+import { AgentHighlightPlugin } from "@/components/editor/plugins/agent-highlight-plugin"
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin"
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin"
 import { TabIndentationPlugin } from "@lexical/react/LexicalTabIndentationPlugin"
@@ -97,6 +98,7 @@ export function Plugins({
 
       {/* Core plugins */}
       {yjsEnabled ? <YjsUndoPlugin documentId={documentId} /> : <HistoryPlugin />}
+      {yjsEnabled && <AgentHighlightPlugin documentId={documentId} />}
       <MenuHistoryPlugin isActive={isActive} />
       <ListPlugin />
       <CheckListPlugin />

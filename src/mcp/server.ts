@@ -16,6 +16,9 @@ import {
 } from "./vault-tools";
 import { editNoteLive } from "./live-edit";
 
+/** Build timestamp injected by the esbuild bundle config (see scripts/build-mcp.mjs). */
+declare const __LYCHEE_MCP_BUILD__: string;
+
 /**
  * Lychee MCP server over a vault directory.
  *
@@ -58,6 +61,24 @@ export function createServer(
     cb: (args: Record<string, any>) => Promise<unknown>,
   ) => unknown;
   const registerTool = server.tool.bind(server) as unknown as LooseTool;
+
+  // Build stamp injected by scripts/build-mcp.mjs, so a client can confirm which
+  // bundle it is actually running (stale MCP processes have wasted a lot of time).
+  const build = typeof __LYCHEE_MCP_BUILD__ === 'undefined' ? 'dev' : __LYCHEE_MCP_BUILD__;
+
+  registerTool(
+    'server_info',
+    'Report this MCP server build + connection state. Use to confirm the running bundle.',
+    {},
+    async () =>
+      asText({
+        build,
+        pid: process.pid,
+        vault,
+        syncSocket: syncSocket ?? null,
+        liveSyncEnabled: Boolean(syncSocket),
+      }),
+  );
 
   server.tool("list_notes", "List the notes in the Lychee vault (id, title, path).", async () =>
     asText(listNotes(vault)),

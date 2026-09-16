@@ -300,6 +300,11 @@ export function isNoteBound(documentId: string): boolean {
   return bound.has(documentId);
 }
 
+/** Whether a bound note has finished its initial load (its doc is live). */
+export function isNoteReady(documentId: string): boolean {
+  return bound.get(documentId)?.ready ?? false;
+}
+
 /** The per-origin undo manager for a bound note, or null. */
 export function getNoteUndoManager(documentId: string): Y.UndoManager | null {
   return bound.get(documentId)?.undoManager ?? null;

@@ -43,7 +43,7 @@ function hostServer(socketPath: string) {
     server.close();
     host.dispose();
   });
-  return { host, hostAwareness };
+  return { host, hostAwareness, server };
 }
 
 function agentState(hostAwareness: Awareness): Record<string, unknown> | undefined {
@@ -78,6 +78,68 @@ describe('bridge-peer presence', () => {
     // The cursor position is what makes a caret render (null until placed).
     expect(state?.anchorPos).toBeTruthy();
     expect(state?.focusPos).toBeTruthy();
+
+    peer.close();
+  });
+
+  it('drops the cursor position (but keeps presence) after the idle debounce', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-peer-idle-'));
+    const socket = path.join(dir, 'sync.sock');
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const { hostAwareness } = hostServer(socket);
+
+    const peer = await joinNoteAsPeer(socket, 'note-1', {
+      settleMs: 100,
+      name: 'Test Agent',
+      color: '#7c3aed',
+      cursorIdleMs: 60,
+    });
+    expect(peer).not.toBeNull();
+    if (!peer) return;
+    peer.publish();
+
+    // While active, the cursor position is present.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(agentState(hostAwareness)?.anchorPos).toBeTruthy();
+
+    // After the idle debounce it is cleared, but the agent is still present.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const state = agentState(hostAwareness);
+    expect(state).toBeDefined();
+    expect(state?.focusing).toBe(true);
+    expect(state?.anchorPos).toBeFalsy();
+
+    peer.close();
+  });
+
+  it('withdraws the caret when the app publishes a local edit', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-peer-hostedit-'));
+    const socket = path.join(dir, 'sync.sock');
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const { host, hostAwareness, server } = hostServer(socket);
+
+    const peer = await joinNoteAsPeer(socket, 'note-1', {
+      settleMs: 100,
+      name: 'Test Agent',
+      color: '#7c3aed',
+      cursorIdleMs: 100_000,
+    });
+    expect(peer).not.toBeNull();
+    if (!peer) return;
+    peer.publish();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(agentState(hostAwareness)?.anchorPos).toBeTruthy();
+
+    // Past the echo window, the host (user) publishes a change: the agent caret
+    // must step aside rather than stick to a position the user just edited.
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    server.publish('note-1', b64(Y.encodeStateAsUpdate(host.doc)));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const state = agentState(hostAwareness);
+    expect(state).toBeDefined();
+    expect(state?.focusing).toBe(true);
+    expect(state?.anchorPos).toBeFalsy();
 
     peer.close();
   });

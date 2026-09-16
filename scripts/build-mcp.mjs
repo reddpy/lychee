@@ -24,6 +24,10 @@ await build({
   banner: { js: '#!/usr/bin/env node' },
   sourcemap: true,
   logLevel: 'info',
+  // Stamp the build so `server_info` can prove which bundle a client is running.
+  define: {
+    __LYCHEE_MCP_BUILD__: JSON.stringify(new Date().toISOString()),
+  },
   // The MCP peer reuses the headless editor/sync modules, which import via the
   // app's `@/` alias.
   alias: {

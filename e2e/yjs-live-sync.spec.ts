@@ -255,6 +255,45 @@ test.describe('Yjs cross-process peer (socket bridge)', () => {
     });
     peer.close();
   });
+
+  test('the agent caret auto-hides after the agent goes idle', async ({ window, testDir }) => {
+    await createNote(window, 'Idle Cursor Doc');
+    const docId = await noteItem(window, 'Idle Cursor Doc').getAttribute('data-note-id');
+    await expect
+      .poll(() =>
+        window.evaluate(
+          (id) => Boolean((window as any).__lycheeNoteSync?.isReady(id)),
+          docId as string,
+        ),
+      )
+      .toBe(true);
+
+    const socketPath = path.join(testDir, 'userdata', 'lychee-sync.sock');
+    await expect.poll(() => fs.existsSync(socketPath), { timeout: 10_000 }).toBe(true);
+
+    const peer = await joinNoteAsPeer(socketPath, docId as string, {
+      settleMs: 300,
+      name: 'Idle Agent',
+      cursorIdleMs: 700,
+    });
+    expect(peer).not.toBeNull();
+    if (!peer) return;
+
+    peer.editor.update(
+      () => {
+        $getRoot().append($createParagraphNode().append($createTextNode('idle target')));
+      },
+      { discrete: true },
+    );
+    peer.publish();
+
+    const overlay = window.locator('[data-yjs-cursors]');
+    await expect(overlay).toContainText('Idle Agent', { timeout: 5_000 });
+    // After the idle debounce the caret is withdrawn (the overlay empties).
+    await expect(overlay).not.toContainText('Idle Agent', { timeout: 5_000 });
+
+    peer.close();
+  });
 });
 
 test.describe('MCP live tool path', () => {
@@ -330,5 +369,91 @@ test.describe('MCP live tool path', () => {
     expect(result).not.toBeNull();
 
     await expect(body).toContainText('AFTER CLEAR', { timeout: 10_000 });
+  });
+
+  test('a live agent edit is highlighted, and clicking dismisses it', async ({
+    window,
+    testDir,
+  }) => {
+    await createNote(window, 'Highlight Doc');
+    const docId = await noteItem(window, 'Highlight Doc').getAttribute('data-note-id');
+    await expect
+      .poll(() =>
+        window.evaluate(
+          (id) => Boolean((window as any).__lycheeNoteSync?.isReady(id)),
+          docId as string,
+        ),
+      )
+      .toBe(true);
+
+    const socket = path.join(testDir, 'userdata', 'lychee-sync.sock');
+    await expect.poll(() => fs.existsSync(socket), { timeout: 10_000 }).toBe(true);
+
+    const peer = await joinNoteAsPeer(socket, docId as string, {
+      settleMs: 300,
+      name: 'Highlighter',
+    });
+    expect(peer).not.toBeNull();
+    if (!peer) return;
+
+    peer.editor.update(
+      () => {
+        $getRoot().append($createParagraphNode().append($createTextNode('HIGHLIGHT ME')));
+      },
+      { discrete: true },
+    );
+    peer.publish();
+
+    const body = window.locator('main:visible .ContentEditable__root');
+    const highlighted = window.locator('main:visible .lychee-agent-added');
+    await expect(highlighted).toHaveCount(1, { timeout: 10_000 });
+    await expect(highlighted).toContainText('HIGHLIGHT ME');
+
+    // Clicking the editor dismisses the highlight.
+    await body.click();
+    await expect(window.locator('main:visible .lychee-agent-added')).toHaveCount(0, {
+      timeout: 5_000,
+    });
+
+    peer.close();
+  });
+
+  test('editNoteLive (full-replace edit) highlights only the changed block', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    await createNote(window, 'Tool Highlight Doc');
+    const docId = await noteItem(window, 'Tool Highlight Doc').getAttribute('data-note-id');
+    await expect
+      .poll(() =>
+        window.evaluate(
+          (id) => Boolean((window as any).__lycheeNoteSync?.isReady(id)),
+          docId as string,
+        ),
+      )
+      .toBe(true);
+
+    // Seed existing content so the note has blocks that must NOT be highlighted.
+    const body = window.locator('main:visible .ContentEditable__root');
+    await body.click();
+    await window.keyboard.type('existing line');
+    await window.waitForTimeout(800);
+
+    const socket = path.join(testDir, 'userdata', 'lychee-sync.sock');
+    await expect.poll(() => fs.existsSync(socket), { timeout: 10_000 }).toBe(true);
+
+    const result = await editNoteLive({
+      vault: vaultDir,
+      socket,
+      idOrPath: docId as string,
+      transform: (current) => `${current.replace(/\s+$/, '')}\n\nTOOL ADDED\n`,
+    });
+    expect(result).not.toBeNull();
+
+    const highlighted = window.locator('main:visible .lychee-agent-added');
+    await expect(highlighted).toHaveCount(1, { timeout: 10_000 });
+    await expect(highlighted).toContainText('TOOL ADDED');
+    await expect(highlighted).not.toContainText('existing line');
   });
 });
