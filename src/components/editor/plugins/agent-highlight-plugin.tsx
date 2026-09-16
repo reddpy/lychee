@@ -45,6 +45,8 @@ export function AgentHighlightPlugin({ documentId }: { documentId: string }): nu
   useEffect(() => {
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
     const pending = new Set<string>();
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryAttempts = 0;
 
     if (typeof window !== "undefined") {
       window.__lycheeAgentHighlight = {
@@ -63,13 +65,16 @@ export function AgentHighlightPlugin({ documentId }: { documentId: string }): nu
 
     const clearAll = (): void => {
       pending.clear();
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = null;
+      retryAttempts = 0;
       for (const key of [...timers.keys()]) clearOne(key);
     };
 
     const applyOne = (key: string): void => {
       const element = editor.getElementByKey(key);
       if (!element) {
-        pending.add(key); // element not committed yet; retry on the next update
+        pending.add(key); // element not committed yet; retried below
         return;
       }
       pending.delete(key);
@@ -83,13 +88,27 @@ export function AgentHighlightPlugin({ documentId }: { documentId: string }): nu
       );
     };
 
+    // Decorator nodes (images, bookmarks, media) can commit their DOM a tick
+    // after the collaboration update, so retry pending keys for a short while.
+    const scheduleRetry = (): void => {
+      if (pending.size === 0 || retryTimer !== null || retryAttempts >= 20) return;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        retryAttempts += 1;
+        for (const key of [...pending]) applyOne(key);
+        scheduleRetry();
+      }, 50);
+    };
+
     const mark = (keys: string[]): void => {
       if (keys.length === 0) return;
       if (window.__lycheeAgentHighlight) {
         window.__lycheeAgentHighlight.marks += 1;
         window.__lycheeAgentHighlight.lastKeys = keys;
       }
+      retryAttempts = 0;
       for (const key of keys) applyOne(key);
+      scheduleRetry();
     };
 
     const unregisterUpdate = editor.registerUpdateListener(

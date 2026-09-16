@@ -1,5 +1,10 @@
 import { findEntry } from "../main/vault-store";
-import { bootstrapFromMarkdown, projectDocMarkdown, projectMarkdown } from "../sync/note-doc";
+import {
+  appendMarkdown,
+  bootstrapFromMarkdown,
+  projectDocMarkdown,
+  projectMarkdown,
+} from "../sync/note-doc";
 import { getNotePeerSession } from "./bridge-peer";
 
 /**
@@ -64,7 +69,15 @@ export async function editNoteLive(args: {
   // and report failure otherwise — a tool that says "success" while the note is
   // unchanged is worse than falling back to the file writer.
   const before = safeProjection(session.doc);
-  bootstrapFromMarkdown(session.editor, next);
+  // Pure appends apply incrementally. A full clear+reimport replaces every
+  // block, which duplicated/dropped/reordered decorator nodes (images, media)
+  // across repeated edits.
+  const base = current.replace(/\s+$/, "");
+  if (next.startsWith(base) && next.length > base.length) {
+    appendMarkdown(session.editor, next.slice(base.length).replace(/^\n+/, ""));
+  } else {
+    bootstrapFromMarkdown(session.editor, next);
+  }
   const after = safeProjection(session.doc);
   if (after === before && next.trim() !== before.trim()) {
     console.error("[mcp] live edit did not reach the shared doc; falling back");

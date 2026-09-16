@@ -79,7 +79,6 @@ export async function joinNoteAsPeer(
   const awareness = new Awareness(doc);
   const handle: NoteDocHandle = createNoteDoc(docId, { doc, awareness });
   let live = false;
-  let lastPublishAt = 0;
 
   /** Withdraw the cursor position (keep presence): used when the human edits. */
   const clearCursorPosition = (): void => {
@@ -96,10 +95,11 @@ export async function joinNoteAsPeer(
       live = true;
       Y.applyUpdate(handle.doc, Buffer.from(update, "base64"));
       flushEditor(handle.editor);
-      // A host-originated change (not the immediate echo of our own publish)
-      // means the user is editing — the agent's caret should not linger on a
-      // position that has since been deleted, so hide it.
-      if (Date.now() - lastPublishAt > 300) clearCursorPosition();
+      // A host-originated change means the user is editing — the agent's caret
+      // should not linger on a position that has since been deleted, so hide it.
+      // (The app never echoes our own updates back, so any update here is the
+      // user's.)
+      clearCursorPosition();
     },
     () => client.publish(docId, b64(Y.encodeStateAsUpdate(handle.doc))),
   );
@@ -173,7 +173,6 @@ export async function joinNoteAsPeer(
         { discrete: true },
       );
       client.publish(docId, b64(Y.encodeStateAsUpdate(handle.doc)));
-      lastPublishAt = Date.now();
     },
     reseed() {
       reseedBindingFromEditor(handle.editor, handle.binding);

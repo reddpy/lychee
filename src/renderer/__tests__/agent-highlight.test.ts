@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { $createParagraphNode, $createTextNode, $getRoot } from 'lexical';
 import { bootstrapFromMarkdown, createNoteDoc, type NoteDocHandle } from '@/sync/note-doc';
 import { changedTopLevelKeys } from '../agent-highlight';
+import { $createReferenceNode } from '@/components/editor/nodes/reference-node';
 
 const handles: NoteDocHandle[] = [];
 afterEach(() => {
@@ -70,5 +71,68 @@ describe('changedTopLevelKeys', () => {
     const changed = changedTopLevelKeys(prev, note.editor.getEditorState());
     expect(changed).toHaveLength(1);
     expect(textOfKey(note, changed[0])).toBe('added');
+  });
+
+  it('does not flag unchanged media across a full replace (volatile fields ignored)', () => {
+    const note = createNoteDoc('img', {});
+    handles.push(note);
+    note.editor.update(
+      () => {
+        $getRoot().append(
+          $createReferenceNode({
+            displayMode: 'image',
+            url: 'https://example.com/a.png',
+            altText: 'a',
+          }),
+        );
+      },
+      { discrete: true },
+    );
+    const prev = note.editor.getEditorState();
+
+    // Re-imports the same image (now with `loading` set by the importer) plus a
+    // new text block. Only the text block should be flagged.
+    bootstrapFromMarkdown(note.editor, '![a](https://example.com/a.png)\n\nnew text\n');
+    const changed = changedTopLevelKeys(prev, note.editor.getEditorState());
+
+    expect(changed).toHaveLength(1);
+    expect(textOfKey(note, changed[0])).toBe('new text');
+  });
+
+  it('flags an added image block', () => {
+    const note = createNoteDoc('img2', { markdown: 'hello\n' });
+    handles.push(note);
+    const prev = note.editor.getEditorState();
+
+    note.editor.update(
+      () => {
+        $getRoot().append(
+          $createReferenceNode({
+            displayMode: 'image',
+            url: 'https://example.com/b.png',
+            altText: 'b',
+          }),
+        );
+      },
+      { discrete: true },
+    );
+
+    const changed = changedTopLevelKeys(prev, note.editor.getEditorState());
+    expect(changed).toHaveLength(1);
+  });
+
+  it('flags added structural blocks (heading, list, quote, table, code)', () => {
+    const note = createNoteDoc('struct', { markdown: 'base\n' });
+    handles.push(note);
+    const prev = note.editor.getEditorState();
+
+    bootstrapFromMarkdown(
+      note.editor,
+      'base\n\n## Heading\n\n- a\n- b\n\n> quoted\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```\ncode\n```\n',
+    );
+
+    const changed = changedTopLevelKeys(prev, note.editor.getEditorState());
+    // `base` is unchanged; the five new blocks are all flagged.
+    expect(changed).toHaveLength(5);
   });
 });

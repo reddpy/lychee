@@ -12,13 +12,26 @@ import { $getRoot } from "lexical";
  * blocks whose content actually changed.
  */
 
+/**
+ * Per-device / transient fields that must not count as a content change.
+ * Decorator nodes (images, bookmarks, media) carry these; after a full replace
+ * they can differ from the previous node even when the visible content is
+ * identical, which would falsely flag unchanged media as changed.
+ */
+const VOLATILE_KEYS = new Set(["loading", "hydrationAttempted", "autoResolve", "src", "__src"]);
+
 /** Content fingerprint of a block, independent of its node key. */
 function signature(node: LexicalNode): string {
-  const text = node.getTextContent();
+  const type = node.getType();
   try {
-    return `${node.getType()}\u0000${text}\u0000${JSON.stringify(node.exportJSON())}`;
+    const json = JSON.stringify(node.exportJSON(), (key, value) =>
+      VOLATILE_KEYS.has(key) ? undefined : value,
+    );
+    // Text content is always included so two decorators with the same JSON
+    // still compare by what they render.
+    return `${type}\u0000${node.getTextContent()}\u0000${json}`;
   } catch {
-    return `${node.getType()}\u0000${text}`;
+    return `${type}\u0000${node.getTextContent()}`;
   }
 }
 

@@ -11,7 +11,7 @@ import {
 } from "@lexical/yjs";
 import type { Awareness } from "y-protocols/awareness";
 import type { LexicalEditor } from "lexical";
-import { $createParagraphNode, $getRoot, $isElementNode, $isTextNode } from "lexical";
+import { $createParagraphNode, $getRoot, $isElementNode, $isTextNode, $parseSerializedNode } from "lexical";
 import { nodes } from "@/components/editor/nodes";
 import { ReferenceNode } from "@/components/editor/nodes/reference-node";
 import { exportDocumentMarkdown, $importDocumentMarkdown } from "@/components/editor/markdown-io";
@@ -39,12 +39,21 @@ export const REMOTE_ORIGIN = "lychee-remote";
 
 /**
  * Fields that must never cross the wire (spike findings part 2). They are
- * per-device hydration bookkeeping, not content: syncing them would let one
- * device's failed hydration suppress another device's retry, and would create
- * spurious conflict churn. Everything else on the node is real content.
+ * per-device bookkeeping/derived state, not content:
+ * - `__hydrationAttempted` / `__autoResolve`: one device's failed hydration must
+ *   not suppress another device's retry.
+ * - `__src` (runtime-only local file path, re-derived from `imageId`/`url`) and
+ *   `__loading` (transient). Syncing them also corrupted the decorator tree under
+ *   a live binding: appending a second image (whose synced `__loading`/`__src`
+ *   differed) dropped the references in the app's editor. Excluding them fixes
+ *   multi-image live appends.
+ * Everything else on the node is real content.
  */
 const EXCLUDED_PROPERTIES: ExcludedProperties = new Map([
-  [ReferenceNode, new Set(["__hydrationAttempted", "__autoResolve"])],
+  [
+    ReferenceNode,
+    new Set(["__hydrationAttempted", "__autoResolve", "__loading", "__src"]),
+  ],
 ]);
 
 /** Minimal provider stub — used when no real awareness is supplied. */
@@ -274,6 +283,33 @@ export function bootstrapFromMarkdown(editor: LexicalEditor, markdown: string): 
         root.append($createParagraphNode());
       } else {
         $importDocumentMarkdown(markdown);
+      }
+    },
+    { discrete: true },
+  );
+}
+
+/**
+ * Append `markdown` to the end of the document WITHOUT clearing first.
+ *
+ * This exists because clearing and re-importing the whole body replaces every
+ * block (delete + reinsert). For decorator nodes (images, bookmarks, media)
+ * that repeatedly under a live binding caused duplication / dropped nodes /
+ * reordering. Appending only the new blocks leaves existing content untouched.
+ *
+ * The markdown is converted in a scratch headless editor, then its blocks are
+ * parsed into fresh nodes and appended.
+ */
+export function appendMarkdown(editor: LexicalEditor, markdown: string): void {
+  if (markdown.trim().length === 0) return;
+  const scratch = createHeadlessNoteEditor("lychee-append");
+  bootstrapFromMarkdown(scratch, markdown);
+  const children = scratch.getEditorState().toJSON().root.children as never[];
+  editor.update(
+    () => {
+      const root = $getRoot();
+      for (const child of children) {
+        root.append($parseSerializedNode(child));
       }
     },
     { discrete: true },
