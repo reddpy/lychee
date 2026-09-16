@@ -183,6 +183,10 @@ export type IpcContract = {
     req: { id: string };
     res: { ok: true };
   };
+  'crdt.syncLoad': {
+    req: { id: string };
+    res: { updates: string[] };
+  };
   // ── Cross-process Yjs bridge (app ↔ MCP/sync peers) ────────────────
   'bridge.publish': {
     req: { docId: string; update: string };

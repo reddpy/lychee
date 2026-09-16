@@ -45,6 +45,11 @@ import {
   publishAwarenessToBridge,
   publishToBridge,
 } from './bridge';
+import {
+  publishVaultCrdt,
+  readVaultCrdtUpdates,
+  removeVaultCrdt,
+} from './vault-crdt-peer';
 import { scanVaultDirectory, writeVaultEntries } from './vault';
 import { exportAssetsToVault, importAssetsFromVault } from './assets';
 import { buildServerConfig, defaultVaultPath, manualMcpConfig, mcpSetupFields, resolveVaultRoot } from './mcp-config';
@@ -408,13 +413,24 @@ export function registerIpcHandlers(options: { onKeybindingsChanged?: () => void
   handle('crdt.remove', (payload) => {
     if (!payload?.id) throw new Error('Missing required field: id');
     removeDocumentCrdt(payload.id);
+    removeVaultCrdt(payload.id);
     return { ok: true };
+  });
+
+  // Cross-device updates from the vault folder. The renderer loads these before
+  // binding a note so a fresh device adopts a peer's lineage instead of
+  // re-bootstrapping a divergent document.
+  handle('crdt.syncLoad', (payload) => {
+    if (!payload?.id) throw new Error('Missing required field: id');
+    return { updates: readVaultCrdtUpdates(payload.id) };
   });
 
   handle('bridge.publish', (payload) => {
     if (!payload?.docId) throw new Error('Missing required field: docId');
     if (typeof payload.update !== 'string') throw new Error('update must be a string');
     publishToBridge(payload.docId, payload.update);
+    // Mirror the update into the cross-device folder transport when enabled.
+    publishVaultCrdt(payload.docId, payload.update);
     return { ok: true };
   });
 

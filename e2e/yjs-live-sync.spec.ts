@@ -216,6 +216,45 @@ test.describe('Yjs cross-process peer (socket bridge)', () => {
 
     peer.close();
   });
+
+  test('the peer\u2019s cursor and name render in the open editor', async ({ window, testDir }) => {
+    await createNote(window, 'Cursor Doc');
+    const docId = await noteItem(window, 'Cursor Doc').getAttribute('data-note-id');
+    await expect
+      .poll(() =>
+        window.evaluate(
+          (id) => Boolean((window as any).__lycheeNoteSync?.isReady(id)),
+          docId as string,
+        ),
+      )
+      .toBe(true);
+
+    const socketPath = path.join(testDir, 'userdata', 'lychee-sync.sock');
+    await expect.poll(() => fs.existsSync(socketPath), { timeout: 10_000 }).toBe(true);
+
+    const peer = await joinNoteAsPeer(socketPath, docId as string, {
+      settleMs: 300,
+      name: 'Cursor Agent',
+      color: '#7c3aed',
+    });
+    expect(peer).not.toBeNull();
+    if (!peer) return;
+
+    // The agent writes something, which also places its cursor.
+    peer.editor.update(
+      () => {
+        $getRoot().append($createParagraphNode().append($createTextNode('cursor target')));
+      },
+      { discrete: true },
+    );
+    peer.publish();
+
+    // The agent's presence renders in the cursor overlay inside the editor.
+    await expect(window.locator('[data-yjs-cursors]')).toContainText('Cursor Agent', {
+      timeout: 10_000,
+    });
+    peer.close();
+  });
 });
 
 test.describe('MCP live tool path', () => {
@@ -250,5 +289,46 @@ test.describe('MCP live tool path', () => {
       timeout: 10_000,
     });
     await waitForContent(vaultDir, 'Live Tool Doc.md', 'FROM TOOL');
+  });
+
+  test('live append still lands after the user clears the body', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    await createNote(window, 'Cleared Doc');
+    const docId = await noteItem(window, 'Cleared Doc').getAttribute('data-note-id');
+    await expect
+      .poll(() =>
+        window.evaluate(
+          (id) => Boolean((window as any).__lycheeNoteSync?.isReady(id)),
+          docId as string,
+        ),
+      )
+      .toBe(true);
+
+    // Type content, then select-all + delete (leaving the title).
+    const body = window.locator('main:visible .ContentEditable__root');
+    await body.click();
+    await window.keyboard.type('content to remove');
+    await expect(body).toContainText('content to remove');
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await window.keyboard.press(`${mod}+a`);
+    await window.keyboard.press('Backspace');
+    await window.waitForTimeout(900);
+    await expect(body).not.toContainText('content to remove');
+
+    const socket = path.join(testDir, 'userdata', 'lychee-sync.sock');
+    await expect.poll(() => fs.existsSync(socket), { timeout: 10_000 }).toBe(true);
+
+    const result = await editNoteLive({
+      vault: vaultDir,
+      socket,
+      idOrPath: docId as string,
+      transform: (current) => `${current.replace(/\s+$/, '')}\n\nAFTER CLEAR\n`,
+    });
+    expect(result).not.toBeNull();
+
+    await expect(body).toContainText('AFTER CLEAR', { timeout: 10_000 });
   });
 });

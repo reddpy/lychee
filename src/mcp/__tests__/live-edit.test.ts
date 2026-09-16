@@ -7,9 +7,11 @@ import { startBridgeServer, type BridgeServer } from '../../sync/bridge';
 import { createNoteDoc, flushEditor, projectDocMarkdown } from '../../sync/note-doc';
 import { serializeFrontmatter } from '../../shared/frontmatter';
 import { editNoteLive } from '../live-edit';
+import { closeAllPeerSessions } from '../bridge-peer';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
+  closeAllPeerSessions();
   for (const fn of cleanups.splice(0)) fn();
 });
 

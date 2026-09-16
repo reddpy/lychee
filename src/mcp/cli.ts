@@ -1,6 +1,7 @@
 import path from "path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./server";
+import { closeAllPeerSessions } from "./bridge-peer";
 
 /**
  * stdio entry point for the Lychee MCP server.
@@ -31,6 +32,18 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const vault = resolveVault(argv);
   const server = createServer(vault, { syncSocket: resolveSyncSocket(argv) });
+  // Cached live-edit sessions must not keep the process alive after the client
+  // disconnects.
+  const shutdown = (): void => closeAllPeerSessions();
+  process.on("exit", shutdown);
+  process.on("SIGINT", () => {
+    shutdown();
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    shutdown();
+    process.exit(0);
+  });
   await server.connect(new StdioServerTransport());
   console.error(`[lychee-mcp] serving vault: ${vault}`);
 }

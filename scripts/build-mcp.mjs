@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,7 +32,24 @@ await build({
     // otherwise bundle separate copies, breaking `instanceof` checks across them
     // (yjs/yjs#438).
     yjs: resolve(repo, 'node_modules/yjs/dist/yjs.cjs'),
+    // Pin Lexical to ONE build too. The editor's custom nodes import the ESM
+    // build while some `@lexical/*` packages resolve the CJS build, so
+    // registering them throws "_TitleNode ... does not subclass LexicalNode".
+    lexical: resolve(repo, 'node_modules/lexical/Lexical.mjs'),
   },
 });
 
 console.log(`[build:mcp] wrote ${resolve(outDir, 'lychee-mcp.mjs')}`);
+
+// Guard against the dual-copy hazard coming back: if lexical appears twice, the
+// editor's custom nodes subclass a different `LexicalNode` than the headless
+// editor uses, and every live-edit tool call throws
+// "_TitleNode ... does not subclass LexicalNode".
+const output = readFileSync(resolve(outDir, 'lychee-mcp.mjs'), 'utf8');
+const lexicalCopies = (output.match(/class LexicalNode\b/g) ?? []).length;
+if (lexicalCopies > 1) {
+  throw new Error(
+    `[build:mcp] bundled ${lexicalCopies} copies of lexical. @lexical/* and the ` +
+      'editor must share ONE build; check the esbuild aliases in this script.',
+  );
+}

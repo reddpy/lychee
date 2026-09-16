@@ -7,11 +7,13 @@ import {
   syncLexicalUpdateToYjs,
   syncYjsChangesToLexical,
   type Binding,
+  type ExcludedProperties,
 } from "@lexical/yjs";
 import type { Awareness } from "y-protocols/awareness";
 import type { LexicalEditor } from "lexical";
 import { $createParagraphNode, $getRoot, $isElementNode, $isTextNode } from "lexical";
 import { nodes } from "@/components/editor/nodes";
+import { ReferenceNode } from "@/components/editor/nodes/reference-node";
 import { exportDocumentMarkdown, $importDocumentMarkdown } from "@/components/editor/markdown-io";
 
 /**
@@ -34,6 +36,16 @@ import { exportDocumentMarkdown, $importDocumentMarkdown } from "@/components/ed
 
 /** Origin tag for updates that arrived from a peer, so we never echo them back. */
 export const REMOTE_ORIGIN = "lychee-remote";
+
+/**
+ * Fields that must never cross the wire (spike findings part 2). They are
+ * per-device hydration bookkeeping, not content: syncing them would let one
+ * device's failed hydration suppress another device's retry, and would create
+ * spurious conflict churn. Everything else on the node is real content.
+ */
+const EXCLUDED_PROPERTIES: ExcludedProperties = new Map([
+  [ReferenceNode, new Set(["__hydrationAttempted", "__autoResolve"])],
+]);
 
 /** Minimal provider stub — used when no real awareness is supplied. */
 const STUB_AWARENESS = {
@@ -114,6 +126,35 @@ function seedBindingFromEditor(
 }
 
 /**
+ * Re-adopt the editor's current content into its Y.Doc. Repairs a binding whose
+ * editor holds nodes the doc never received — e.g. Lexical normalizes an emptied
+ * root by adding a paragraph inside a `collaboration`-tagged remote apply, which
+ * `syncLexicalUpdateToYjs` deliberately ignores, leaving editor and doc diverged.
+ */
+export function reseedBindingFromEditor(editor: LexicalEditor, binding: Binding): void {
+  try {
+    seedBindingFromEditor(editor, binding, createProvider(STUB_AWARENESS));
+  } catch (error) {
+    console.error("[sync] reseed failed:", error);
+  }
+}
+
+/**
+ * `syncCursorPositions` renders remote cursors into the DOM, which a headless
+ * editor cannot do — it throws "getRootElement is not supported in headless
+ * mode" from a deferred update callback, crashing the whole process. Skip it for
+ * headless bindings (the app renderer keeps the real one).
+ */
+function syncCursorPositionsSafe(binding: Binding, provider: unknown): void {
+  if ((binding.editor as { _headless?: boolean })._headless) return;
+  try {
+    syncCursorPositions(binding, provider as never);
+  } catch (error) {
+    console.error("[sync] cursor sync failed:", error);
+  }
+}
+
+/**
  * Bind a (headless or live) Lexical editor to a Y.Doc bidirectionally, with both
  * sync directions wrapped defensively. Returns a disposable binding.
  */
@@ -130,7 +171,7 @@ export function bindEditorToDoc(args: {
 } {
   const provider = createProvider(args.awareness ?? STUB_AWARENESS);
   const docMap = new Map([[args.id, args.doc]]);
-  const binding = createBinding(args.editor, provider, args.id, args.doc, docMap);
+  const binding = createBinding(args.editor, provider, args.id, args.doc, docMap, EXCLUDED_PROPERTIES);
   // Per-origin undo: only this device's edits are undone (spike research sec 3).
   const undoManager = createNoteUndoManager(binding);
 
@@ -167,7 +208,7 @@ export function bindEditorToDoc(args: {
   const observer = (events: unknown, transaction: { origin: unknown }) => {
     if (transaction.origin === binding) return;
     try {
-      syncYjsChangesToLexical(binding, provider, events as never, false, syncCursorPositions);
+      syncYjsChangesToLexical(binding, provider, events as never, false, syncCursorPositionsSafe);
     } catch (error) {
       console.error("[sync] yjs→lexical sync failed:", error);
     }

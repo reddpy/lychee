@@ -49,6 +49,14 @@ export function publishToBridge(docId: string, update: string): void {
   server?.publish(docId, update);
 }
 
+/**
+ * Deliver an update discovered by another transport (e.g. the vault folder
+ * sync) to every renderer, exactly as a socket peer's update would arrive.
+ */
+export function deliverBridgeUpdate(docId: string, update: string): void {
+  broadcast("bridge:update", { docId, update });
+}
+
 /** Send an app-originated awareness update out to connected peers. */
 export function publishAwarenessToBridge(docId: string, update: string): void {
   server?.publishAwareness(docId, update);

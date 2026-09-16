@@ -13,6 +13,11 @@ import {
   type NoteDocHandle,
 } from '../note-doc';
 import { MemoryHub, connectDoc } from '../memory-hub';
+import {
+  $createReferenceNode,
+  $isReferenceNode,
+  ReferenceNode,
+} from '@/components/editor/nodes/reference-node';
 
 /**
  * Custom-binding + transport tests. These prove the pieces the local
@@ -118,11 +123,57 @@ describe('note-doc — peer exchange (agent ↔ app)', () => {
     expect(projectMarkdown(note.editor)).toContain('safe');
   });
 
+  it('applies a remote update in a headless peer without touching the DOM', async () => {
+    // Remote applies run a deferred `onUpdate` that renders cursors; in a
+    // headless editor `getRootElement()` throws, which used to crash the MCP
+    // server right after every live edit.
+    const app = track(createNoteDoc('headless', { markdown: 'hello\n' }));
+    const peer = track(createNoteDoc('headless'));
+    applyRemoteUpdate(peer.doc, encodeNoteUpdate(app.doc));
+    expect(() => flushEditor(peer.editor)).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(projectMarkdown(peer.editor)).toContain('hello');
+  });
+
   it('re-bootstrapping replaces content on an existing doc', () => {
     const note = track(createNoteDoc('re', { markdown: 'first\n' }));
     bootstrapFromMarkdown(note.editor, 'completely different\n');
     const markdown = projectMarkdown(note.editor);
     expect(markdown).toContain('completely different');
     expect(markdown).not.toContain('first');
+  });
+});
+
+describe('note-doc — excluded properties do not cross the wire', () => {
+  it('keeps per-device reference hydration fields out of the shared doc', () => {
+    const app = track(createNoteDoc('ref'));
+    app.editor.update(
+      () => {
+        $getRoot().append(
+          $createReferenceNode({
+            url: 'https://example.com',
+            title: 'Example',
+            autoResolve: true,
+            hydrationAttempted: true,
+          }),
+        );
+      },
+      { discrete: true },
+    );
+
+    const peer = track(createNoteDoc('ref'));
+    joinPeer(peer, app);
+
+    peer.editor.getEditorState().read(() => {
+      const node = $getRoot().getFirstChild();
+      expect($isReferenceNode(node)).toBe(true);
+      const reference = node as ReferenceNode;
+      // Real content syncs...
+      expect(reference.__url).toBe('https://example.com');
+      expect(reference.__title).toBe('Example');
+      // ...but this device's hydration bookkeeping must not (spike part 2).
+      expect(reference.__autoResolve).toBe(false);
+      expect(reference.__hydrationAttempted).toBe(false);
+    });
   });
 });

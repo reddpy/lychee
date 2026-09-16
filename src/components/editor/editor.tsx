@@ -76,7 +76,7 @@ export function Editor({
     typeof window !== "undefined" && window.lychee?.flags?.yjs === true
   const useYjs = yjsEnabled && noteMarkdown !== undefined
   return (
-    <div className="bg-background overflow-hidden">
+    <div className="bg-background relative overflow-hidden">
       <LexicalComposer
         initialConfig={
           useYjs

@@ -15,6 +15,7 @@ import {
 import { closeDatabase, initDatabase } from './main/db';
 import { getVaultSync } from './main/vault-sync';
 import { startNoteBridge, stopNoteBridge } from './main/bridge';
+import { startVaultCrdtPeer, stopVaultCrdtPeer } from './main/vault-crdt-peer';
 import { cleanupImportedArtifacts } from './main/cleanup';
 import { resolveImagePath } from './main/image-protocol';
 import { registerClipboardIpcHandler, registerIpcHandlers } from './main/ipc';
@@ -420,6 +421,8 @@ app.whenReady().then(() => {
   // Cross-process Yjs bridge (app ↔ MCP peers). Only when Yjs mode is enabled.
   if (process.env.LYCHEE_YJS === '1') {
     startNoteBridge();
+    // Tier-1 cross-device sync through the vault folder (append-only updates).
+    startVaultCrdtPeer();
   }
 
   // One-time self-heal for notes a buggy watcher imported from arbitrary files.
@@ -467,6 +470,7 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   getVaultSync().stop();
+  stopVaultCrdtPeer();
   stopNoteBridge();
 });
 

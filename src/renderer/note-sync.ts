@@ -239,13 +239,24 @@ export function bindLiveNote(args: {
   bound.set(args.documentId, entry);
 
   void (async () => {
-    let updates: string[] = [];
+    // Two sources, both CRDT updates: this device's local log, and the
+    // cross-device log in the vault folder. Loading both *before* binding the
+    // content means a fresh device adopts a peer's lineage (same client ids /
+    // common ancestor) instead of bootstrapping a divergent document.
+    let localUpdates: string[] = [];
+    let sharedUpdates: string[] = [];
     try {
-      updates = (await window.lychee.invoke("crdt.load", { id: args.documentId })).updates;
+      localUpdates = (await window.lychee.invoke("crdt.load", { id: args.documentId })).updates;
     } catch {
-      updates = [];
+      localUpdates = [];
+    }
+    try {
+      sharedUpdates = (await window.lychee.invoke("crdt.syncLoad", { id: args.documentId })).updates;
+    } catch {
+      sharedUpdates = [];
     }
     if (disposed) return;
+    const updates = [...localUpdates, ...sharedUpdates];
 
     if (updates.length > 0) {
       // Drop the editor's pre-binding default paragraph, then hydrate from the

@@ -222,6 +222,28 @@ assets, and making the files the source of truth (Phase 3). The app-write path
 still needs its own optimistic check wired to `writeVaultEntryGuarded` for the
 future MCP writer.
 
+### Phase 4 status (in progress — Tier-1 CRDT sync)
+
+The CRDT merge layer now travels with the vault, behind `LYCHEE_YJS=1`:
+
+- **Folder transport** (`sync/folder-store.ts`, `sync/folder-adapter.ts`): each
+  local Yjs update is appended as an immutable per-device file under
+  `<vault>/.lychee/sync/<docId>/<deviceId>-<seq>.bin` (dot-directory: the markdown
+  watcher ignores it). On subscribe, every not-yet-seen file is replayed; Yjs
+  updates are idempotent, so no cross-device acknowledgement is needed. Each
+  device's own files compact into one losslessly (`Y.mergeUpdates`).
+- **Main peer** (`main/vault-crdt-peer.ts`): mirrors renderer updates published
+  over the existing bridge into the folder, and replays folder updates (from
+  other devices) into the renderer over `bridge:update`. `crdt.syncLoad` lets the
+  renderer load folder updates *before* binding, so a fresh device adopts a
+  peer's lineage instead of bootstrapping a divergent document.
+- **Hardening** (`sync/note-doc.ts`): `excludedProperties` keeps the reference
+  node's per-device hydration fields (`__hydrationAttempted`, `__autoResolve`)
+  out of the shared doc (spike findings part 2).
+
+Still open: real cloud-folder validation, conflict/latency UX, and the same
+unresolved structural hazard from the spike (concurrent reorder vs sibling edit).
+
 
 ## Known gaps / unresolved
 
@@ -234,7 +256,9 @@ source of truth.
 - **Same-note concurrent edits are downgraded, not solved.** Per-note granularity
   merges cleanly *across* notes, but two devices editing the *same* note offline
   produce a conflict copy. Undefined: who detects it, how the app surfaces it, and
-  how a user merges. LWW hides the loss rather than resolving it.
+  how a user merges. LWW hides the loss rather than resolving it. *(A CRDT merge
+  layer now addresses this when `LYCHEE_YJS=1` — see Phase 4 — but it is opt-in
+  and not yet the default.)*
 - **Assets — resolved for images.** Binaries are content-addressed under
   `<vault>/assets/<sha256>.<ext>` and referenced by relative path; the editor's
   `lychee-asset://<id>` token is rewritten at the vault boundary. Video/arbitrary

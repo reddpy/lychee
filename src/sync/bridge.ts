@@ -176,6 +176,9 @@ export function connectBridge(socketPath: string): Promise<BridgeClient> {
   return new Promise((resolve, reject) => {
     const socket = net.connect(socketPath);
     socket.setEncoding("utf8");
+    // A connected peer must not, by itself, keep the host process alive (the
+    // MCP server exits when its stdio client goes away).
+    socket.unref();
 
     const handlers = new Map<
       string,

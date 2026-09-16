@@ -827,3 +827,41 @@ blockquote.is-placeholder,
   opacity: 1;
 }
 
+
+/* ── Collaboration cursors (remote users / AI agents) ──── */
+
+/* Positioned by @lexical/yjs within the `[data-yjs-cursors]` overlay. The
+   caret color is supplied inline as `--lexical-cursor-color`. */
+.lychee-collab-cursor {
+  position: absolute;
+  z-index: 10;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background-color: var(--lexical-cursor-color, #0ea5e9);
+  pointer-events: none;
+}
+
+.lychee-collab-cursor-name {
+  position: absolute;
+  top: -1.15em;
+  left: -1px;
+  padding: 1px 5px;
+  border-radius: 4px 4px 4px 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: #fff;
+  background-color: var(--lexical-cursor-color, #0ea5e9);
+  user-select: none;
+}
+
+.lychee-collab-selection {
+  pointer-events: none;
+}
+
+.lychee-collab-selection-bg {
+  opacity: 0.25;
+}

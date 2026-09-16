@@ -107,4 +107,10 @@ export const editorTheme: EditorThemeClasses = {
   hr: "",
   indent: "[--lexical-indent-base-value:40px]",
   markOverlap: "",
+  collaboration: {
+    cursor: "lychee-collab-cursor",
+    cursorName: "lychee-collab-cursor-name",
+    selection: "lychee-collab-selection",
+    selectionBg: "lychee-collab-selection-bg",
+  },
 }
