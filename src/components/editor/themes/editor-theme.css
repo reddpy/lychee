@@ -870,20 +870,10 @@ blockquote.is-placeholder,
 
 /* Applied to top-level blocks a live agent just inserted. A subtle primary
    tint (same token/convention as .heading-highlight) that adapts to the theme;
-   dismissed on click / Escape / typing / timeout by AgentHighlightPlugin. */
+   dismissed on click / Escape / typing / timeout by AgentHighlightPlugin. The
+   fade/rise-in is driven from JS (Web Animations API) so it does not depend on
+   CSS keyframes surviving the build pipeline. */
 .lychee-agent-added {
   background-color: hsl(var(--primary) / 0.16);
-  animation: lychee-agent-added-in 700ms ease-out;
   transition: background-color 500ms ease;
-}
-
-/* A brief, stronger flash on appear so a new block is obvious, then it settles
-   to the subtle tint. */
-@keyframes lychee-agent-added-in {
-  from {
-    background-color: hsl(var(--primary) / 0.32);
-  }
-  to {
-    background-color: hsl(var(--primary) / 0.16);
-  }
 }

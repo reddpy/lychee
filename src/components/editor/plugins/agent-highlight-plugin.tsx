@@ -8,6 +8,15 @@ const AGENT_ADDED_CLASS = "lychee-agent-added";
 /** How long an "added by agent" highlight lingers before it clears itself. */
 const HIGHLIGHT_MS = 10_000;
 
+/** Softly fade a freshly-inserted block in (Claude-style: opacity only). */
+function animateIn(element: HTMLElement): void {
+  if (typeof element.animate !== "function") return;
+  element.animate([{ opacity: 0 }, { opacity: 1 }], {
+    duration: 650,
+    easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+  });
+}
+
 /** Lightweight diagnostics surface (safe to inspect from the console). */
 interface HighlightDebug {
   mountedAt: string;
@@ -65,6 +74,7 @@ export function AgentHighlightPlugin({ documentId }: { documentId: string }): nu
       }
       pending.delete(key);
       element.classList.add(AGENT_ADDED_CLASS);
+      animateIn(element);
       const existing = timers.get(key);
       if (existing) clearTimeout(existing);
       timers.set(
