@@ -1,15 +1,20 @@
-import { test, expect } from './electron-app';
+import path from 'path';
+import { $createParagraphNode, $createTextNode, $getRoot } from 'lexical';
+import { test, expect, firstWindowReady, launchLychee } from './electron-app';
+import { joinNoteAsPeer } from '../src/mcp/bridge-peer';
 import {
   appendLive,
   editorBlocks,
   imageCount,
+  INLINE_IMAGE,
   openLiveNote,
+  renderedImageCount,
   replaceLive,
   syncSocketPath,
   updateLive,
   waitForSyncSocket,
 } from './mcp-live-helpers';
-import { typeInBody, readRaw, waitForContent, writeNote } from './vault-helpers';
+import { noteItem, typeInBody, readRaw, waitForContent, writeNote } from './vault-helpers';
 
 /**
  * Live MCP editing, end to end through a real app instance.
@@ -166,6 +171,25 @@ test.describe('MCP live editing — image ordering (regression)', () => {
     expect(md.indexOf('example.com/1.png')).toBeLessThan(md.indexOf('example.com/2.png'));
     expect(md.indexOf('example.com/2.png')).toBeLessThan(md.indexOf('example.com/3.png'));
   });
+});
+
+test.describe('MCP live editing — regression guards', () => {
+  test('update_note that re-sends the title as a heading strips the duplicate', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId, body } = await openLiveNote(window, 'Title Guard');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    expect(await updateLive(vaultDir, socket, docId, '# Title Guard\n\nnew body text')).not.toBeNull();
+
+    await expect(body).toContainText('new body text');
+    // The title is frontmatter/filename, never a body heading.
+    await expect(body.locator('h1')).toHaveCount(0);
+  });
+
 });
 
 test.describe('MCP live editing — replace and update', () => {
@@ -401,5 +425,341 @@ test.describe('MCP live editing — presence and highlight', () => {
     await expect(highlighted).toHaveCount(1, { timeout: 10_000 });
     await expect(highlighted).toContainText('brand new block');
     await expect(highlighted).not.toContainText('pre-existing text');
+  });
+});
+
+
+test.describe('MCP live editing — images are viewable and durable', () => {
+  test('an appended inline image renders a real <img> and its source persists', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId } = await openLiveNote(window, 'Viewable Image');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    expect(await appendLive(vaultDir, socket, docId, `![dot](${INLINE_IMAGE})`)).not.toBeNull();
+
+    // Actually rendered (not just an image block with an error placeholder).
+    await expect.poll(() => renderedImageCount(window), { timeout: 10_000 }).toBe(1);
+    // And the source survives into the durable markdown.
+    await waitForContent(vaultDir, 'Viewable Image.md', INLINE_IMAGE);
+  });
+
+  test('update_note preserves an image source', async ({ window, vaultDir, testDir }) => {
+    const { docId } = await openLiveNote(window, 'Update Image');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    expect(await updateLive(vaultDir, socket, docId, `![dot](${INLINE_IMAGE})`)).not.toBeNull();
+
+    await expect.poll(() => renderedImageCount(window), { timeout: 10_000 }).toBe(1);
+    await waitForContent(vaultDir, 'Update Image.md', INLINE_IMAGE);
+  });
+
+  test('mixed text / image / heading / list keeps document order', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId } = await openLiveNote(window, 'Mixed Order');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    await appendLive(vaultDir, socket, docId, 'intro text');
+    await appendLive(vaultDir, socket, docId, `![one](${INLINE_IMAGE})`);
+    await appendLive(vaultDir, socket, docId, '## Mid heading');
+    await appendLive(vaultDir, socket, docId, `![two](${INLINE_IMAGE})`);
+    await appendLive(vaultDir, socket, docId, '- list item');
+
+    await expect.poll(() => renderedImageCount(window), { timeout: 10_000 }).toBe(2);
+    const blocks = await editorBlocks(window);
+    const intro = blocks.indexOf('intro text');
+    const firstImg = blocks.indexOf('img');
+    const heading = blocks.indexOf('h2');
+    const secondImg = blocks.lastIndexOf('img');
+    const list = blocks.indexOf('ul');
+    expect(intro).toBeGreaterThanOrEqual(0);
+    expect(firstImg).toBeGreaterThan(intro);
+    expect(heading).toBeGreaterThan(firstImg);
+    expect(secondImg).toBeGreaterThan(heading);
+    expect(list).toBeGreaterThan(secondImg);
+  });
+
+  test('two appended images render and survive an app relaunch', async ({ testDir, vaultDir }) => {
+    const userDataDir = path.join(testDir, 'userdata');
+    const first = await launchLychee({ userDataDir, vaultDir, yjsFlag: true });
+    const w1 = await firstWindowReady(first);
+    const { docId } = await openLiveNote(w1, 'Relaunch Images');
+    const socket = path.join(userDataDir, 'lychee-sync.sock');
+    await waitForSyncSocket(socket);
+
+    expect(await appendLive(vaultDir, socket, docId, `![one](${INLINE_IMAGE})`)).not.toBeNull();
+    expect(await appendLive(vaultDir, socket, docId, `![two](${INLINE_IMAGE})`)).not.toBeNull();
+    await expect.poll(() => renderedImageCount(w1), { timeout: 10_000 }).toBe(2);
+    await first.close();
+
+    const second = await launchLychee({ userDataDir, vaultDir, yjsFlag: true });
+    const w2 = await firstWindowReady(second);
+    await noteItem(w2, 'Relaunch Images').click();
+    await expect.poll(() => renderedImageCount(w2), { timeout: 10_000 }).toBe(2);
+    await second.close();
+  });
+});
+
+test.describe('MCP live editing — highlight covers non-text blocks', () => {
+  test('an appended image block is highlighted', async ({ window, vaultDir, testDir }) => {
+    const { docId } = await openLiveNote(window, 'Highlight Image');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    expect(await appendLive(vaultDir, socket, docId, `![dot](${INLINE_IMAGE})`)).not.toBeNull();
+
+    await expect(window.locator('main:visible .lychee-agent-added.editor-image')).toHaveCount(1, {
+      timeout: 10_000,
+    });
+  });
+
+  test('an appended table is highlighted', async ({ window, vaultDir, testDir }) => {
+    const { docId } = await openLiveNote(window, 'Highlight Table');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    expect(
+      await appendLive(vaultDir, socket, docId, '| A | B |\n| --- | --- |\n| 1 | 2 |'),
+    ).not.toBeNull();
+
+    await expect(
+      window.locator('main:visible .lychee-agent-added').filter({ has: window.locator('table') }),
+    ).toHaveCount(1, { timeout: 10_000 });
+  });
+});
+
+test.describe('MCP live editing — undo, fences, concurrency', () => {
+  test('user undo does not remove an agent edit (per-origin undo)', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId, body } = await openLiveNote(window, 'Per Origin Undo');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+    await typeInBody(window, 'user typed this');
+    await expect(body).toContainText('user typed this');
+
+    expect(await appendLive(vaultDir, socket, docId, 'AGENT ADDITION')).not.toBeNull();
+    await expect(body).toContainText('AGENT ADDITION');
+
+    // Undo tracks only this device's edits, so it must not remove the agent's.
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await body.click();
+    await window.keyboard.press(`${mod}+z`);
+    await window.waitForTimeout(500);
+    await expect(body).toContainText('AGENT ADDITION');
+  });
+
+  test('replace_in_note near a lychee block keeps the block', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId } = await openLiveNote(window, 'Fence Replace');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    expect(await appendLive(vaultDir, socket, docId, `![dot](${INLINE_IMAGE})`)).not.toBeNull();
+    await expect.poll(() => renderedImageCount(window), { timeout: 10_000 }).toBe(1);
+
+    // A targeted replacement (allowFenceChanges) must not drop the image block.
+    expect(await replaceLive(vaultDir, socket, docId, 'dot', 'renamed dot')).not.toBeNull();
+
+    await expect.poll(() => renderedImageCount(window), { timeout: 10_000 }).toBe(1);
+    await waitForContent(vaultDir, 'Fence Replace.md', 'lychee-reference');
+    await waitForContent(vaultDir, 'Fence Replace.md', 'renamed dot');
+  });
+
+  test('a user edit and a simultaneous agent edit both survive', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId, body } = await openLiveNote(window, 'Concurrent Edit');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    await typeInBody(window, 'base line');
+    await body.click();
+    await window.keyboard.type(' USER-TYPED');
+    const agent = appendLive(vaultDir, socket, docId, 'AGENT-CONCURRENT');
+    expect(await agent).not.toBeNull();
+
+    await expect(body).toContainText('AGENT-CONCURRENT', { timeout: 10_000 });
+    await expect(body).toContainText('USER-TYPED');
+    await waitForContent(vaultDir, 'Concurrent Edit.md', 'USER-TYPED');
+    await waitForContent(vaultDir, 'Concurrent Edit.md', 'AGENT-CONCURRENT');
+  });
+});
+
+test.describe('MCP live editing — multi-note isolation', () => {
+  test('editing one note never touches another', async ({ window, vaultDir, testDir }) => {
+    const a = await openLiveNote(window, 'Isolation A');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+    expect(await appendLive(vaultDir, socket, a.docId, 'A-ONLY')).not.toBeNull();
+    await waitForContent(vaultDir, 'Isolation A.md', 'A-ONLY');
+
+    // Opening B leaves A mounted in its (hidden) tab.
+    const b = await openLiveNote(window, 'Isolation B');
+    expect(await appendLive(vaultDir, socket, b.docId, 'B-ONLY')).not.toBeNull();
+    await expect(b.body).toContainText('B-ONLY');
+    await expect(b.body).not.toContainText('A-ONLY');
+
+    await waitForContent(vaultDir, 'Isolation B.md', 'B-ONLY');
+    expect(readRaw(vaultDir, 'Isolation A.md')).not.toContain('B-ONLY');
+    expect(readRaw(vaultDir, 'Isolation B.md')).not.toContain('A-ONLY');
+
+    // Switching back shows A's own content, not B's.
+    await noteItem(window, 'Isolation A').click();
+    const active = window.locator('main:visible .ContentEditable__root');
+    await expect(active).toContainText('A-ONLY');
+    await expect(active).not.toContainText('B-ONLY');
+  });
+
+  test('a background note receives a live edit and shows it on return', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const a = await openLiveNote(window, 'Background A');
+    await typeInBody(window, 'A base');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    await openLiveNote(window, 'Foreground B');
+    await typeInBody(window, 'B base');
+
+    // A is hidden but still bound, so the edit is live, not a file fallback.
+    const result = await appendLive(vaultDir, socket, a.docId, 'A-BACKGROUND');
+    expect(result).not.toBeNull();
+    await waitForContent(vaultDir, 'Background A.md', 'A-BACKGROUND');
+
+    // B (the visible note) is unaffected.
+    const visibleB = window.locator('main:visible .ContentEditable__root');
+    await expect(visibleB).toContainText('B base');
+    await expect(visibleB).not.toContainText('A-BACKGROUND');
+
+    await noteItem(window, 'Background A').click();
+    const visibleA = window.locator('main:visible .ContentEditable__root');
+    await expect(visibleA).toContainText('A-BACKGROUND');
+    await expect(visibleA).not.toContainText('B base');
+  });
+
+  test('the agent cursor is scoped to the note it edits', async ({ window, vaultDir, testDir }) => {
+    const a = await openLiveNote(window, 'Cursor Scope A');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+    await appendLive(vaultDir, socket, a.docId, 'A cursor target');
+    await expect(window.locator('main:visible [data-yjs-cursors]')).toContainText('Lychee Agent', {
+      timeout: 10_000,
+    });
+
+    // Switching to B (edited by nobody) shows no agent cursor.
+    await openLiveNote(window, 'Cursor Scope B');
+    await expect(window.locator('main:visible [data-yjs-cursors]')).not.toContainText(
+      'Lychee Agent',
+      { timeout: 5_000 },
+    );
+  });
+});
+
+test.describe('MCP live editing — many notes and shared notes', () => {
+  test('an agent edits several open notes with no cross-talk', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const socket = syncSocketPath(testDir);
+    const a = await openLiveNote(window, 'Multi A');
+    await waitForSyncSocket(socket);
+    const b = await openLiveNote(window, 'Multi B');
+    const c = await openLiveNote(window, 'Multi C');
+
+    expect(await appendLive(vaultDir, socket, a.docId, 'A-DATA')).not.toBeNull();
+    expect(await appendLive(vaultDir, socket, b.docId, 'B-DATA')).not.toBeNull();
+    expect(await appendLive(vaultDir, socket, c.docId, 'C-DATA')).not.toBeNull();
+
+    const notes: Array<[string, string]> = [
+      ['Multi A', 'A-DATA'],
+      ['Multi B', 'B-DATA'],
+      ['Multi C', 'C-DATA'],
+    ];
+    for (const [title, own] of notes) {
+      await noteItem(window, title).click();
+      const active = window.locator('main:visible .ContentEditable__root');
+      await expect(active).toContainText(own);
+      for (const [otherTitle, other] of notes) {
+        if (otherTitle !== title) await expect(active).not.toContainText(other);
+      }
+      await waitForContent(vaultDir, `${title}.md`, own);
+    }
+  });
+
+  test('two collaborators on the same live note both appear and both edits land', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId, body } = await openLiveNote(window, 'Shared Live');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+
+    const one = await joinNoteAsPeer(socket, docId, { name: 'Agent One', settleMs: 250 });
+    const two = await joinNoteAsPeer(socket, docId, { name: 'Agent Two', settleMs: 250 });
+    expect(one && two).toBeTruthy();
+    if (!one || !two) return;
+
+    one.editor.update(
+      () => {
+        $getRoot().append($createParagraphNode().append($createTextNode('FROM-ONE')));
+      },
+      { discrete: true },
+    );
+    one.publish();
+    await expect(body).toContainText('FROM-ONE', { timeout: 10_000 });
+
+    two.editor.update(
+      () => {
+        $getRoot().append($createParagraphNode().append($createTextNode('FROM-TWO')));
+      },
+      { discrete: true },
+    );
+    two.publish();
+
+    // Both edits land in the shared note, and both collaborators are present.
+    await expect(body).toContainText('FROM-TWO', { timeout: 10_000 });
+    await expect(body).toContainText('FROM-ONE');
+    await waitForContent(vaultDir, 'Shared Live.md', 'FROM-ONE');
+    await waitForContent(vaultDir, 'Shared Live.md', 'FROM-TWO');
+
+    const overlay = window.locator('main:visible [data-yjs-cursors]');
+    await expect(overlay).toContainText('Agent Two', { timeout: 10_000 });
+
+    // Both collaborators are present on the note (awareness lists every peer,
+    // independent of whether a caret happens to be rendered right now).
+    await expect
+      .poll(() =>
+        window.evaluate(
+          (id) =>
+            ((window as any).__lycheeNoteSync?.awareness(id) ?? []).map(
+              (state: { state?: { name?: string } }) => state.state?.name,
+            ),
+          docId,
+        ),
+      )
+      .toEqual(expect.arrayContaining(['Agent One', 'Agent Two']));
+
+    one.close();
+    two.close();
   });
 });

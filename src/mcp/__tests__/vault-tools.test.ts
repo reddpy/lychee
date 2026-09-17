@@ -113,6 +113,20 @@ describe('vault tools — write', () => {
     expect(updateNote(vault, 'nope', 'x')).toMatchObject({ ok: false, reason: 'note_not_found' });
   });
 
+  it('strips a redundant leading heading that duplicates the title', () => {
+    writeNote('Hello.md', { id: 'note-1', title: 'Hello' }, 'body');
+    expect(updateNote(vault, 'note-1', '# Hello\n\nfresh text').ok).toBe(true);
+    const body = getNote(vault, 'note-1')!.body;
+    expect(body).not.toMatch(/^#\s*Hello\s*$/m);
+    expect(body).toContain('fresh text');
+  });
+
+  it('keeps a leading heading that is not the title', () => {
+    writeNote('Hello.md', { id: 'note-1', title: 'Hello' }, 'body');
+    updateNote(vault, 'note-1', '# Something else\n\ntext');
+    expect(getNote(vault, 'note-1')!.body).toContain('# Something else');
+  });
+
   it('appends to a note', () => {
     writeNote('Hello.md', { id: 'note-1', title: 'Hello' }, 'first');
     const result = appendToNote(vault, 'note-1', 'second');

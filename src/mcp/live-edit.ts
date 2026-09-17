@@ -1,4 +1,5 @@
-import { findEntry } from "../main/vault-store";
+import { findEntry, getNote } from "../main/vault-store";
+import { stripLeadingTitle } from "../shared/markdown-title";
 import {
   appendMarkdown,
   bootstrapFromMarkdown,
@@ -39,10 +40,22 @@ export async function editNoteLive(args: {
   transform: (currentMarkdown: string) => string | null;
   /** Permit changes to `lychee-*` encoded blocks (default: refuse → fallback). */
   allowFenceChanges?: boolean;
+  /**
+   * The file revision the caller last read. When supplied it is enforced here
+   * too, so a live edit can't bypass the optimistic-concurrency guard the file
+   * tools apply. A mismatch declines (falls back to the file tool, which also
+   * refuses).
+   */
+  expectedRevision?: string;
   settleMs?: number;
 }): Promise<LiveEditResult | null> {
   const entry = findEntry(args.vault, args.idOrPath);
   if (!entry || !entry.id) return null;
+
+  if (args.expectedRevision !== undefined) {
+    const note = getNote(args.vault, entry.relativePath);
+    if (!note || note.revision !== args.expectedRevision) return null;
+  }
 
   // A cached, kept-alive peer session: the agent's cursor stays visible across
   // a burst of tool calls instead of closing the moment one returns.
@@ -51,8 +64,11 @@ export async function editNoteLive(args: {
   if (!session.live) return null;
 
   const current = projectMarkdown(session.editor);
-  const next = args.transform(current);
-  if (next === null) return null;
+  const transformed = args.transform(current);
+  if (transformed === null) return null;
+  // The title lives in frontmatter/the filename, not the body. Agents often
+  // re-send it as a leading `# Title`; drop it so it isn't duplicated live.
+  const next = entry.title ? stripLeadingTitle(transformed, entry.title) : transformed;
   if (!args.allowFenceChanges && fenceKey(current) !== fenceKey(next)) return null;
 
   // Repair editor/doc divergence before editing. An emptied note can leave the

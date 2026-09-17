@@ -1,9 +1,15 @@
 import fs from 'fs';
 import path from 'path';
-import { spawn, execFileSync, type ChildProcess } from 'child_process';
-import { test, expect, PROJECT_ROOT } from './electron-app';
-import { openLiveNote, syncSocketPath, waitForSyncSocket } from './mcp-live-helpers';
-import { waitForContent, writeNote } from './vault-helpers';
+import { test, expect } from './electron-app';
+import { connectMcp, callTool, ensureMcpBundle } from './mcp-client';
+import {
+  INLINE_IMAGE,
+  openLiveNote,
+  renderedImageCount,
+  syncSocketPath,
+  waitForSyncSocket,
+} from './mcp-live-helpers';
+import { readNote, waitForContent, writeNote } from './vault-helpers';
 
 /**
  * Drives the ACTUAL built MCP server binary over stdio JSON-RPC — the same way
@@ -11,85 +17,9 @@ import { waitForContent, writeNote } from './vault-helpers';
  * server_info build stamp, and both the live and file-fallback write paths.
  */
 
-const BUNDLE = path.join(PROJECT_ROOT, 'out', 'mcp', 'lychee-mcp.mjs');
-
-function ensureBundle(): void {
-  if (!fs.existsSync(BUNDLE)) {
-    execFileSync('node', ['scripts/build-mcp.mjs'], { cwd: PROJECT_ROOT, stdio: 'ignore' });
-  }
-}
-
-interface McpClient {
-  request: (method: string, params?: unknown) => Promise<any>;
-  notify: (method: string, params?: unknown) => void;
-  close: () => void;
-}
-
-function startMcp(args: string[]): McpClient {
-  const child: ChildProcess = spawn(process.execPath, [BUNDLE, ...args], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-  let buffer = '';
-  const pending = new Map<number, (message: any) => void>();
-  let nextId = 1;
-
-  child.stdout!.setEncoding('utf8');
-  child.stdout!.on('data', (chunk: string) => {
-    buffer += chunk;
-    let newline = buffer.indexOf('\n');
-    while (newline >= 0) {
-      const line = buffer.slice(0, newline);
-      buffer = buffer.slice(newline + 1);
-      newline = buffer.indexOf('\n');
-      if (!line.trim()) continue;
-      try {
-        const message = JSON.parse(line);
-        if (message.id != null && pending.has(message.id)) {
-          pending.get(message.id)!(message);
-          pending.delete(message.id);
-        }
-      } catch {
-        // partial/non-JSON line
-      }
-    }
-  });
-
-  const request = (method: string, params: unknown = {}): Promise<any> =>
-    new Promise((resolve, reject) => {
-      const id = nextId++;
-      pending.set(id, (message) => {
-        if (message.error) reject(new Error(JSON.stringify(message.error)));
-        else resolve(message.result);
-      });
-      child.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
-    });
-
-  const notify = (method: string, params: unknown = {}): void => {
-    child.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`);
-  };
-
-  return { request, notify, close: () => child.kill() };
-}
-
-async function connectMcp(args: string[]): Promise<McpClient> {
-  const client = startMcp(args);
-  await client.request('initialize', {
-    protocolVersion: '2024-11-05',
-    capabilities: {},
-    clientInfo: { name: 'e2e', version: '0.0.0' },
-  });
-  client.notify('notifications/initialized');
-  return client;
-}
-
-function callTool(result: unknown): any {
-  const content = (result as { content: Array<{ type: string; text: string }> }).content;
-  return JSON.parse(content.map((part) => part.text).join('\n'));
-}
-
 test.use({ yjsFlag: true });
 
-test.beforeAll(() => ensureBundle());
+test.beforeAll(() => ensureMcpBundle());
 
 test.describe('MCP server process', () => {
   test('advertises tools and reports a build stamp', async ({ vaultDir, testDir }) => {
@@ -198,5 +128,129 @@ test.describe('MCP server process', () => {
     } finally {
       client.close();
     }
+  });
+
+  test('create_note strips a redundant leading title heading', async ({ vaultDir, testDir }) => {
+    const socket = syncSocketPath(testDir);
+    const client = await connectMcp([`--vault`, vaultDir, `--sync-socket`, socket]);
+    try {
+      const result = callTool(
+        await client.request('tools/call', {
+          name: 'create_note',
+          arguments: { title: 'Bird Notes', markdown: '# Bird Notes\n\nbody text' },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      const raw = fs.readFileSync(path.join(vaultDir, result.relativePath), 'utf8');
+      expect(raw).toContain('body text');
+      expect(raw).not.toMatch(/^#\s*Bird Notes\s*$/m);
+    } finally {
+      client.close();
+    }
+  });
+
+  test('update_note strips a leading title heading', async ({ vaultDir, testDir }) => {
+    writeNote(vaultDir, 'Plain.md', { id: 'plain', title: 'Plain' }, 'seed');
+    const socket = syncSocketPath(testDir);
+    const client = await connectMcp([`--vault`, vaultDir, `--sync-socket`, socket]);
+    try {
+      const result = callTool(
+        await client.request('tools/call', {
+          name: 'update_note',
+          arguments: { id: 'plain', markdown: '# Plain\n\nnew text' },
+        }),
+      );
+      expect(result.ok).toBe(true);
+    } finally {
+      client.close();
+    }
+    const note = readNote(vaultDir, 'Plain.md');
+    expect(note.body).toContain('new text');
+    expect(note.body).not.toMatch(/^#\s*Plain\s*$/m);
+  });
+
+  test('appending several images keeps every source, in order', async ({ vaultDir, testDir }) => {
+    writeNote(vaultDir, 'Birds.md', { id: 'birds', title: 'Birds' }, '');
+    const socket = syncSocketPath(testDir);
+    const client = await connectMcp([`--vault`, vaultDir, `--sync-socket`, socket]);
+    try {
+      for (const alt of ['robin', 'heron', 'owl']) {
+        const result = callTool(
+          await client.request('tools/call', {
+            name: 'append_to_note',
+            arguments: { id: 'birds', text: `![${alt}](${INLINE_IMAGE})` },
+          }),
+        );
+        expect(result.ok).toBe(true);
+      }
+    } finally {
+      client.close();
+    }
+    const raw = fs.readFileSync(path.join(vaultDir, 'Birds.md'), 'utf8');
+    expect((raw.match(/data:image\/gif;base64/g) ?? []).length).toBe(3);
+    expect(raw.indexOf('![robin]')).toBeLessThan(raw.indexOf('![heron]'));
+    expect(raw.indexOf('![heron]')).toBeLessThan(raw.indexOf('![owl]'));
+  });
+
+  test('the real server appends two images live and both render', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId } = await openLiveNote(window, 'MCP Images');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+    const client = await connectMcp([`--vault`, vaultDir, `--sync-socket`, socket]);
+    try {
+      for (const alt of ['one', 'two']) {
+        const result = callTool(
+          await client.request('tools/call', {
+            name: 'append_to_note',
+            arguments: { id: docId, text: `![${alt}](${INLINE_IMAGE})` },
+          }),
+        );
+        expect(result).toMatchObject({ ok: true, live: true });
+      }
+    } finally {
+      client.close();
+    }
+    await expect.poll(() => renderedImageCount(window), { timeout: 10_000 }).toBe(2);
+    await waitForContent(vaultDir, 'MCP Images.md', INLINE_IMAGE);
+  });
+
+  test('server_info reports live sync disabled without a socket', async ({ vaultDir }) => {
+    const client = await connectMcp([`--vault`, vaultDir]);
+    try {
+      const info = callTool(
+        await client.request('tools/call', { name: 'server_info', arguments: {} }),
+      );
+      expect(info.liveSyncEnabled).toBe(false);
+      expect(info.syncSocket).toBeNull();
+    } finally {
+      client.close();
+    }
+  });
+
+  test('a live update is refused when expectedRevision is stale', async ({
+    window,
+    vaultDir,
+    testDir,
+  }) => {
+    const { docId, body } = await openLiveNote(window, 'Live Guard');
+    const socket = syncSocketPath(testDir);
+    await waitForSyncSocket(socket);
+    const client = await connectMcp([`--vault`, vaultDir, `--sync-socket`, socket]);
+    try {
+      const result = callTool(
+        await client.request('tools/call', {
+          name: 'update_note',
+          arguments: { id: docId, markdown: 'STALE WRITE', expectedRevision: 'not-the-revision' },
+        }),
+      );
+      expect(result).toMatchObject({ ok: false, reason: 'revision_mismatch' });
+    } finally {
+      client.close();
+    }
+    await expect(body).not.toContainText('STALE WRITE');
   });
 });

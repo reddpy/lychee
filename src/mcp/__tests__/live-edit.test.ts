@@ -8,6 +8,7 @@ import { createNoteDoc, flushEditor, projectDocMarkdown } from '../../sync/note-
 import { serializeFrontmatter } from '../../shared/frontmatter';
 import { editNoteLive } from '../live-edit';
 import { closeAllPeerSessions } from '../bridge-peer';
+import { getNote } from '../vault-tools';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -112,5 +113,49 @@ describe('editNoteLive', () => {
       transform: (current) => current,
     });
     expect(result).toBeNull();
+  });
+
+  it('strips a leading heading that duplicates the note title', async () => {
+    const vault = makeVault();
+    const socket = path.join(vault, 'sync.sock');
+    const { host } = hostServer(socket);
+
+    const result = await editNoteLive({
+      vault,
+      socket,
+      idOrPath: 'note-1',
+      transform: () => '# Live\n\nbrand new body\n',
+    });
+    expect(result).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    flushEditor(host.editor);
+    const projection = projectDocMarkdown(host.doc);
+    expect(projection).toContain('brand new body');
+    expect(projection).not.toMatch(/# Live/);
+  });
+
+  it('declines a stale expectedRevision and accepts the current one', async () => {
+    const vault = makeVault();
+    const socket = path.join(vault, 'sync.sock');
+    hostServer(socket);
+
+    const stale = await editNoteLive({
+      vault,
+      socket,
+      idOrPath: 'note-1',
+      transform: () => 'changed body\n',
+      expectedRevision: 'not-the-current-revision',
+    });
+    expect(stale).toBeNull();
+
+    const current = getNote(vault, 'Live.md')!.revision;
+    const accepted = await editNoteLive({
+      vault,
+      socket,
+      idOrPath: 'note-1',
+      transform: () => 'changed body\n',
+      expectedRevision: current,
+    });
+    expect(accepted).not.toBeNull();
   });
 });

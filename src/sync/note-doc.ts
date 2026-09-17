@@ -42,18 +42,15 @@ export const REMOTE_ORIGIN = "lychee-remote";
  * per-device bookkeeping/derived state, not content:
  * - `__hydrationAttempted` / `__autoResolve`: one device's failed hydration must
  *   not suppress another device's retry.
- * - `__src` (runtime-only local file path, re-derived from `imageId`/`url`) and
- *   `__loading` (transient). Syncing them also corrupted the decorator tree under
- *   a live binding: appending a second image (whose synced `__loading`/`__src`
- *   differed) dropped the references in the app's editor. Excluding them fixes
- *   multi-image live appends.
+ * - `__loading`: transient spinner state. Syncing it also corrupted the
+ *   decorator tree under a live binding — appending a second image dropped the
+ *   references in the app's editor. Excluding it fixes multi-image live appends.
+ * `__src` is deliberately NOT excluded: for a locally-referenced image
+ * (`_assets/...`) with no `imageId`/`url`, it is the only carrier of the source.
  * Everything else on the node is real content.
  */
 const EXCLUDED_PROPERTIES: ExcludedProperties = new Map([
-  [
-    ReferenceNode,
-    new Set(["__hydrationAttempted", "__autoResolve", "__loading", "__src"]),
-  ],
+  [ReferenceNode, new Set(["__hydrationAttempted", "__autoResolve", "__loading"])],
 ]);
 
 /** Minimal provider stub — used when no real awareness is supplied. */
@@ -298,18 +295,35 @@ export function bootstrapFromMarkdown(editor: LexicalEditor, markdown: string): 
  * reordering. Appending only the new blocks leaves existing content untouched.
  *
  * The markdown is converted in a scratch headless editor, then its blocks are
- * parsed into fresh nodes and appended.
+ * parsed into fresh nodes and appended. `exportJSON` deliberately omits
+ * runtime-only fields (e.g. `ReferenceNode.src`), so those are copied across
+ * explicitly or images whose source lives only in `src` would be lost.
  */
 export function appendMarkdown(editor: LexicalEditor, markdown: string): void {
   if (markdown.trim().length === 0) return;
   const scratch = createHeadlessNoteEditor("lychee-append");
   bootstrapFromMarkdown(scratch, markdown);
-  const children = scratch.getEditorState().toJSON().root.children as never[];
+  // `toJSON()` is the reliable structural serialization (per-node `exportJSON()`
+  // returns empty `children` for some element nodes, e.g. lists).
+  const children = scratch.getEditorState().toJSON().root.children as Array<Record<string, unknown>>;
+  // `exportJSON`/`toJSON` omit runtime-only fields; copy `ReferenceNode.src`
+  // across by index so images whose source lives only in `src` (data URIs,
+  // relative `_assets/...`) survive the transfer instead of becoming `![]()`.
+  scratch.getEditorState().read(() => {
+    $getRoot()
+      .getChildren()
+      .forEach((node, index) => {
+        const candidate = node as unknown as { getSrc?: () => string };
+        if (children[index] && typeof candidate.getSrc === "function") {
+          children[index].src = candidate.getSrc();
+        }
+      });
+  });
   editor.update(
     () => {
       const root = $getRoot();
       for (const child of children) {
-        root.append($parseSerializedNode(child));
+        root.append($parseSerializedNode(child as never));
       }
     },
     { discrete: true },

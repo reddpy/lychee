@@ -125,3 +125,19 @@ export async function editorBlocks(window: Page): Promise<string[]> {
 export async function imageCount(window: Page): Promise<number> {
   return window.locator('main:visible .editor-image').count();
 }
+
+/**
+ * Number of images that actually rendered an `<img>` (i.e. are *viewable*),
+ * not just an image block. Remote URLs that fail to load show a placeholder
+ * instead, so this is the assertion that distinguishes "present" from "usable".
+ */
+export async function renderedImageCount(window: Page): Promise<number> {
+  return window.locator('main:visible .editor-image img').count();
+}
+
+/**
+ * A tiny inline image. Unlike a remote URL this loads synchronously (no
+ * network / hydration), so it renders a real `<img>` regardless of connectivity.
+ */
+export const INLINE_IMAGE =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";

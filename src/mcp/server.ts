@@ -161,6 +161,7 @@ export function createServer(
           idOrPath: id,
           transform: () => markdown,
           allowFenceChanges: allowFenceChanges ?? false,
+          expectedRevision,
         });
         if (live) return asText({ ok: true, live: true, relativePath: live.relativePath });
       }
@@ -185,6 +186,7 @@ export function createServer(
           idOrPath: id,
           transform: (current) => (current.includes(find) ? current.split(find).join(replace) : null),
           allowFenceChanges: true,
+          expectedRevision,
         });
         if (live) return asText({ ok: true, live: true, relativePath: live.relativePath });
       }
@@ -207,6 +209,7 @@ export function createServer(
           socket: syncSocket,
           idOrPath: id,
           transform: (current) => `${current.replace(/\s+$/, "")}\n\n${text.trim()}\n`,
+          expectedRevision,
         });
         if (live) return asText({ ok: true, live: true, relativePath: live.relativePath });
       }

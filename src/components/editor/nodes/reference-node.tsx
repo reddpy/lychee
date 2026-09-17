@@ -36,6 +36,7 @@ export type SerializedReferenceNode = Spread<
     faviconUrl: string
     // ── image mode ──
     imageId: string
+    src?: string
     altText: string
     width?: number
     height?: number
@@ -172,6 +173,10 @@ export class ReferenceNode extends DecoratorNode<ReactElement | null> {
       imageUrl: serializedNode.imageUrl,
       faviconUrl: serializedNode.faviconUrl,
       imageId: serializedNode.imageId,
+      // `src` is runtime-only and omitted by exportJSON, but the live-append
+      // transfer path injects it so images whose source lives only in `src`
+      // (data URIs, relative `_assets/...` paths) are not lost.
+      src: serializedNode.src ?? "",
       altText: serializedNode.altText,
       width: serializedNode.width,
       height: serializedNode.height,

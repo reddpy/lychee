@@ -85,4 +85,30 @@ describe('vault-crdt-peer', () => {
     stopVaultCrdtPeer();
     expect(readVaultCrdtUpdates('doc1')).toEqual([]);
   });
+
+  it('merges updates written by several devices for one note', () => {
+    publishVaultCrdt('doc1', b64(1));
+    for (const [device, value] of [
+      ['device-b', 2],
+      ['device-c', 3],
+    ] as const) {
+      const other = new FolderAdapter(syncDir(), device);
+      other.publish('doc1', new Uint8Array([value]));
+      other.close();
+    }
+
+    const updates = readVaultCrdtUpdates('doc1');
+    expect(updates).toHaveLength(3);
+    expect(new Set(updates)).toEqual(new Set([b64(1), b64(2), b64(3)]));
+  });
+
+  it('removing one note leaves other notes\u2019 updates intact', () => {
+    publishVaultCrdt('doc1', b64(1));
+    publishVaultCrdt('doc2', b64(2));
+
+    removeVaultCrdt('doc1');
+
+    expect(readVaultCrdtUpdates('doc1')).toEqual([]);
+    expect(readVaultCrdtUpdates('doc2')).toEqual([b64(2)]);
+  });
 });

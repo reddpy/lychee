@@ -5,6 +5,7 @@ import { parseFrontmatter, serializeFrontmatter } from "../shared/frontmatter";
 import { revisionOf } from "../shared/hash";
 import { CONTENT_SCHEMA_VERSION } from "../shared/documents";
 import { markdownStem, sanitizeFileStem, siblingFileStem } from "../shared/vault-path";
+import { stripLeadingTitle } from "../shared/markdown-title";
 import { isDeletedState, tombstoneSupersedes, type TombstoneState } from "../shared/tombstone";
 import {
   resolveWithinVault,
@@ -275,7 +276,10 @@ export function createNote(
     contentSchemaVersion: CONTENT_SCHEMA_VERSION,
     order: normalizeOrder(input.order),
   });
-  const contents = `${frontmatter}\n${(input.body ?? "").replace(/^\n+/, "")}`;
+  const contents = `${frontmatter}\n${stripLeadingTitle(
+    (input.body ?? "").replace(/^\n+/, ""),
+    title,
+  )}`;
   const base = sanitizeFileStem(title);
 
   const targetFor = (suffix: number): string =>
@@ -403,7 +407,12 @@ export function updateNote(
   expectedRevision?: string,
   allowFenceChanges = false,
 ): WriteResult {
-  return updateNoteFields(vault, idOrPath, { body }, { expectedRevision, allowFenceChanges });
+  // A note's title lives in frontmatter/the filename, never in the body. Agents
+  // (and older files) often re-send it as a leading `# Title`; drop it so the
+  // title isn't duplicated in the note.
+  const note = getNote(vault, idOrPath);
+  const cleaned = note ? stripLeadingTitle(body, note.title) : body;
+  return updateNoteFields(vault, idOrPath, { body: cleaned }, { expectedRevision, allowFenceChanges });
 }
 
 /**
