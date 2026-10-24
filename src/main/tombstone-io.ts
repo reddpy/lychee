@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import {
   effectiveTombstones,
+  mergeTombstoneState,
   parseTombstoneLog,
   serializeTombstone,
   type TombstoneAction,
@@ -98,14 +99,8 @@ export function compactTombstones(vault: string): number {
 
     const latest = new Map<string, TombstoneRecord>();
     for (const record of records) {
-      const current = latest.get(record.id);
-      if (
-        !current ||
-        record.at > current.at ||
-        (record.at === current.at && record.device > current.device)
-      ) {
-        latest.set(record.id, record);
-      }
+      const merged = mergeTombstoneState(latest.get(record.id), record);
+      if (merged) latest.set(record.id, { ...record, ...merged });
     }
     if (latest.size >= records.length) continue; // already compact
 

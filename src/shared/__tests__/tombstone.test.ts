@@ -41,6 +41,22 @@ describe('effectiveTombstones', () => {
     expect(states.get('a')?.action).toBe('restore');
   });
 
+  it('treats purge as absorbing across later restores and trashes', () => {
+    const purged = effectiveTombstones([
+      record('a', 'purge', '2026-01-01T00:00:00.000Z', 'dev-a'),
+      record('a', 'restore', '2026-02-01T00:00:00.000Z', 'dev-b'),
+      record('a', 'trash', '2026-03-01T00:00:00.000Z', 'dev-c'),
+    ]);
+    expect(purged.get('a')).toMatchObject({ action: 'purge', device: 'dev-a' });
+
+    // A purge that arrives after a restore still wins.
+    const latePurge = effectiveTombstones([
+      record('b', 'restore', '2026-02-01T00:00:00.000Z', 'dev-a'),
+      record('b', 'purge', '2026-01-01T00:00:00.000Z', 'dev-b'),
+    ]);
+    expect(latePurge.get('b')?.action).toBe('purge');
+  });
+
   it('breaks equal timestamps deterministically by device', () => {
     const at = '2026-01-01T00:00:00.000Z';
     const states = effectiveTombstones([

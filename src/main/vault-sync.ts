@@ -542,6 +542,28 @@ export class VaultSync {
       storedPath !== undefined &&
       storedPath.toLowerCase() !== event.relativePath.toLowerCase();
 
+    // Two devices retitled concurrently: the shared folder can briefly contain
+    // both files. Keep the newer retitle and discard the stale copy instead of
+    // letting sync order decide. A genuine OS rename removed the old path, so
+    // only treat this as a duplicate when the stored file is still present.
+    if (externalRename && note && storedPath) {
+      let storedStillExists = false;
+      try {
+        storedStillExists = fs.existsSync(resolveWithinVault(directory, storedPath));
+      } catch {
+        storedStillExists = false;
+      }
+      const incomingUpdated = typeof data.updated === "string" ? data.updated : "";
+      if (storedStillExists && incomingUpdated && incomingUpdated < note.updatedAt) {
+        try {
+          trashVaultEntry(directory, event.relativePath);
+        } catch {
+          // Best-effort; the next boot reconcile also collapses duplicates.
+        }
+        return;
+      }
+    }
+
     const action = externalRename
       ? "apply"
       : classifyVaultChange({

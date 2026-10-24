@@ -272,7 +272,7 @@ describe('vault store — lifecycle round-trip and stress', () => {
       expect(fs.existsSync(path.join(vault, note.relativePath))).toBe(true);
       expect(getNote(vault, note.id)).not.toBeNull();
     }
-  });
+  }, 15_000);
 
   it('keeps a child with its parent when the parent is renamed', () => {
     const parent = createNote(vault, { title: 'P' });

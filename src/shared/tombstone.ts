@@ -76,14 +76,35 @@ function isNewer(a: { at: string; device: string }, b: { at: string; device: str
   return a.device > b.device;
 }
 
+/**
+ * Fold one record into the effective state. `purge` is absorbing: a permanent
+ * delete cannot be undone by a later restore/trash from a device that had not
+ * seen it (mirrors `isPurged` blocking re-import). Returns the state to store,
+ * or null when the record is superseded.
+ */
+export function mergeTombstoneState(
+  current: TombstoneState | undefined,
+  record: TombstoneRecord,
+): TombstoneState | null {
+  const next: TombstoneState = {
+    action: record.action,
+    at: record.at,
+    device: record.device,
+  };
+  if (current?.action === 'purge') {
+    return record.action === 'purge' && isNewer(record, current) ? next : null;
+  }
+  if (record.action === 'purge') return next;
+  if (!current || isNewer(record, current)) return next;
+  return null;
+}
+
 /** Union-merge records into the effective state per note id. */
 export function effectiveTombstones(records: TombstoneRecord[]): Map<string, TombstoneState> {
   const map = new Map<string, TombstoneState>();
   for (const record of records) {
-    const current = map.get(record.id);
-    if (!current || isNewer(record, current)) {
-      map.set(record.id, { action: record.action, at: record.at, device: record.device });
-    }
+    const merged = mergeTombstoneState(map.get(record.id), record);
+    if (merged) map.set(record.id, merged);
   }
   return map;
 }

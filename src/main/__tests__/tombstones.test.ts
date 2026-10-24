@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { readTombstones, appendTombstone } from '../tombstones';
+import { compactTombstones } from '../tombstone-io';
 
 let vault: string;
 
@@ -41,6 +42,27 @@ describe('tombstones', () => {
     appendTombstone(vault, 'a', 'trash', 'device-a', '2026-01-01T00:00:00.000Z');
     appendTombstone(vault, 'a', 'restore', 'device-b', '2026-02-01T00:00:00.000Z');
     expect(readTombstones(vault).get('a')?.action).toBe('restore');
+  });
+
+  it('a purge is permanent even when a newer restore arrives', () => {
+    appendTombstone(vault, 'a', 'purge', 'device-a', '2026-01-01T00:00:00.000Z');
+    appendTombstone(vault, 'a', 'restore', 'device-b', '2026-02-01T00:00:00.000Z');
+    expect(readTombstones(vault).get('a')).toMatchObject({
+      action: 'purge',
+      device: 'device-a',
+    });
+  });
+
+  it('compaction keeps an older purge over a newer restore', () => {
+    appendTombstone(vault, 'a', 'purge', 'device-a', '2026-01-01T00:00:00.000Z');
+    appendTombstone(vault, 'a', 'restore', 'device-a', '2026-02-01T00:00:00.000Z');
+
+    compactTombstones(vault);
+
+    expect(readTombstones(vault).get('a')).toMatchObject({
+      action: 'purge',
+      at: '2026-01-01T00:00:00.000Z',
+    });
   });
 
   it('appends without rewriting prior lines', () => {

@@ -7,10 +7,12 @@ Remaining gap batches. Baseline before each: `pnpm test` green; `pnpm test:e2e:b
 - [x] Same-note concurrent edit → vault path produces a **conflict copy** in the running app (watcher), canonical preserved. (`cross-device-reconcile`, `vault-conflicts`)
 - [x] Interleaved: user edits locally while a remote device's folder update lands. (`mcp-cross-device` mid-typing test)
 
-## 2. Structure propagation via tombstones / files
-- Cross-device `rename` (title changes → file rename) and `move` (reparent) reflected in the app.
-- Conflict on a concurrent rename (both devices retitle).
-- Parent trashed on device A → subtree trashed on device B.
+## 2. Structure propagation via tombstones / files — done
+- [x] Cross-device `rename` (title changes → file rename) and `move` (reparent) reflected in the app. (`mcp-cross-device-structure`, `cross-device-structure`)
+- [x] Conflict on a concurrent rename (both devices retitle): newest wins; live apply dedupes the loser into `.trash`, and a relaunch reconcile converges to one file. An **older** retitle arriving late no longer overrides a newer local rename (`vault-sync` stale-duplicate guard).
+- [x] Parent trashed on device A → subtree trashed on device B (parent-only tombstone is enough), and restore brings the subtree back.
+- [x] Edge cases: rename to blank sentinel, unicode/punctuation names, rename+body edit together, nested/deep moves, move to root, move parent with subtree, missing-parent folder, three duplicate-id files, conflict copies ignored, empty-body duplicate never wipes content, winner's parent wins, child-only tombstone, idempotent double-trash, older delete vs newer edit, three-level subtree, stale duplicate retitle.
+- [x] Tombstones: `purge` is now absorbing (a later restore/trash cannot un-purge), including through log compaction.
 
 ## 3. Assets across devices — partial
 - [x] CRDT sync preserves every media link form unchanged: remote URLs, `lychee-asset://<id>` tokens, vault-relative `assets/<hash>.<ext>` paths (including `./`), and data URIs (`cross-device-media` unit + e2e).
@@ -37,5 +39,5 @@ Remaining gap batches. Baseline before each: `pnpm test` green; `pnpm test:e2e:b
 
 ## Process / hygiene
 - After every batch: **mutation-test** each new test (break the primitive, expect failure, revert, rebuild package).
-- Watch for the known flake (1/73 observed once) — harden if reproducible.
+- The `vault-store-hardening` 200-note stress test now has an explicit 15s timeout (it can exceed 5s under a full parallel run).
 
