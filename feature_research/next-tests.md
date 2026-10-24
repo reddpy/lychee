@@ -14,10 +14,12 @@ Remaining gap batches. Baseline before each: `pnpm test` green; `pnpm test:e2e:b
 - [x] Edge cases: rename to blank sentinel, unicode/punctuation names, rename+body edit together, nested/deep moves, move to root, move parent with subtree, missing-parent folder, three duplicate-id files, conflict copies ignored, empty-body duplicate never wipes content, winner's parent wins, child-only tombstone, idempotent double-trash, older delete vs newer edit, three-level subtree, stale duplicate retitle.
 - [x] Tombstones: `purge` is now absorbing (a later restore/trash cannot un-purge), including through log compaction.
 
-## 3. Assets across devices — partial
+## 3. Assets across devices — done
 - [x] CRDT sync preserves every media link form unchanged: remote URLs, `lychee-asset://<id>` tokens, vault-relative `assets/<hash>.<ext>` paths (including `./`), and data URIs (`cross-device-media` unit + e2e).
-- [ ] Device A's binary asset is materialized on device B (needs the vault asset boundary on the live path, not just markdown load/export).
-- [ ] Same asset referenced by two notes/dedup across devices (single-device dedup is covered by `vault-assets`).
+- [x] Device A's binary is materialized on device B through the shared vault: at startup, for notes/binary arriving live, and for an already-open note that picks up a remote asset. (`mcp-cross-device-assets`)
+- [x] Same asset referenced by two notes resolves to one local image and one content-addressed vault file, across devices. (`mcp-cross-device-assets`)
+- [x] Missing binaries preserve the relative link; video/PDF/ZIP and nested asset paths are left untouched; uppercase extensions import correctly; images mixed with video import only the image. (`assets.test`, `mcp-cross-device-assets`)
+- Note: a pure CRDT-first token (an open note receiving only a remote Yjs update, before the markdown projection applies) still relies on the vault file projection to resolve bytes. File/watcher paths are covered end to end.
 
 ## Media matrix (done)
 `src/sync/__tests__/cross-device-media.test.ts` + `e2e/mcp-cross-device-media.spec.ts` cover:
@@ -28,9 +30,10 @@ Remaining gap batches. Baseline before each: `pnpm test` green; `pnpm test:e2e:b
 - transport: duplicate delivery, out-of-order updates, compaction then late join, five devices, permanent delete, empty-note start
 
 
-## 4. Agent + device interplay
-- Agent live edit is later persisted to the folder and picked up by a "third device".
-- Agent edit while the vault watcher applies an external change (ordering/serialization).
+## 4. Agent + device interplay — done
+- [x] Agent live edit is persisted to the folder and picked up by a "third device" (late joiner, already-joined peer, and after relaunch). Socket-sourced agent updates are now mirrored into the shared folder; folder-sourced updates are not rebroadcast (`origin-isolation` prevents echo loops). (`live-edit` unit, `mcp-cross-device-agent`)
+- [x] Agent edit while the vault watcher applies an external change: external body applied first then agent builds on it; agent edit lands on the renamed path; agent edit survives relaunch. (`mcp-cross-device-agent`)
+- [x] A third-device edit and an agent edit on the same note both survive; a fourth device reading only the folder agrees. (`mcp-cross-device-agent`)
 
 ## 5. Live-path edges
 - Very large single line / 1000-paragraph note via live append.

@@ -4,7 +4,15 @@ import os from 'os';
 import path from 'path';
 import * as Y from 'yjs';
 import { startBridgeServer, type BridgeServer } from '../../sync/bridge';
-import { createNoteDoc, flushEditor, projectDocMarkdown } from '../../sync/note-doc';
+import {
+  appendMarkdown,
+  createNoteDoc,
+  flushEditor,
+  noteStateVector,
+  projectDocMarkdown,
+} from '../../sync/note-doc';
+import { FolderAdapter } from '../../sync/folder-adapter';
+import { connectDoc } from '../../sync/memory-hub';
 import { serializeFrontmatter } from '../../shared/frontmatter';
 import { editNoteLive } from '../live-edit';
 import { closeAllPeerSessions } from '../bridge-peer';
@@ -157,5 +165,126 @@ describe('editNoteLive', () => {
       expectedRevision: current,
     });
     expect(accepted).not.toBeNull();
+  });
+});
+
+async function waitUntil(predicate: () => boolean, timeoutMs = 4000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitUntil timed out');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+/** A folder-syncing "app" host plus a third device on the same shared folder. */
+function folderPeers(root: string, markdown = 'Original body\n') {
+  const host = createNoteDoc('note-1', { markdown });
+  const hostAdapter = new FolderAdapter(root, 'host-app', { pollMs: 20 });
+  const hostOff = connectDoc(hostAdapter, 'note-1', host.doc);
+
+  const third = createNoteDoc('note-1', {});
+  const thirdAdapter = new FolderAdapter(root, 'third-device', { pollMs: 20 });
+  const thirdOff = connectDoc(thirdAdapter, 'note-1', third.doc);
+
+  cleanups.push(() => {
+    hostOff();
+    hostAdapter.close();
+    host.dispose();
+    thirdOff();
+    thirdAdapter.close();
+    third.dispose();
+  });
+  return { host, third };
+}
+
+function projection(handle: ReturnType<typeof createNoteDoc>): string {
+  flushEditor(handle.editor);
+  return projectDocMarkdown(handle.doc);
+}
+
+/** A folder-syncing host behind the bridge socket (the app side). */
+function folderBridge(socket: string, root: string) {
+  const { host, third } = folderPeers(root);
+  const server = startBridgeServer(
+    socket,
+    (docId, update) => {
+      Y.applyUpdate(host.doc, Buffer.from(update, 'base64'));
+      flushEditor(host.editor);
+    },
+    (docId) => server.publish(docId, Buffer.from(Y.encodeStateAsUpdate(host.doc)).toString('base64')),
+  );
+  cleanups.push(() => server.close());
+  return { host, third };
+}
+
+describe('editNoteLive — agent + device interplay through the folder', () => {
+  it('an agent edit is persisted to the folder and read by a third device', async () => {
+    const vault = makeVault();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-agent-device-'));
+    cleanups.push(() => fs.rmSync(root, { recursive: true, force: true }));
+    const socket = path.join(vault, 'sync.sock');
+    const { host, third } = folderBridge(socket, root);
+
+    await waitUntil(() => projection(third).includes('Original body'));
+
+    const result = await editNoteLive({
+      vault,
+      socket,
+      idOrPath: 'note-1',
+      transform: (current) => `${current.replace(/\s+$/, '')}\n\nAGENT-TO-FOLDER\n`,
+    });
+    expect(result).not.toBeNull();
+
+    await waitUntil(() => projection(third).includes('AGENT-TO-FOLDER'));
+    await waitUntil(() => fs.existsSync(path.join(root, 'note-1')));
+    expect(projection(host)).toContain('AGENT-TO-FOLDER');
+    expect(
+      Array.from(noteStateVector(third.doc)).join(','),
+    ).toBe(Array.from(noteStateVector(host.doc)).join(','));
+  });
+
+  it('a third device edit and an agent edit merge, both surviving', async () => {
+    const vault = makeVault();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-agent-device-'));
+    cleanups.push(() => fs.rmSync(root, { recursive: true, force: true }));
+    const socket = path.join(vault, 'sync.sock');
+    const { host, third } = folderBridge(socket, root);
+    await waitUntil(() => projection(third).includes('Original body'));
+
+    appendMarkdown(third.editor, 'THIRD-DEVICE-EDIT\n');
+    const agent = editNoteLive({
+      vault,
+      socket,
+      idOrPath: 'note-1',
+      transform: (current) => `${current.replace(/\s+$/, '')}\n\nAGENT-EDIT\n`,
+    });
+
+    expect(await agent).not.toBeNull();
+    await waitUntil(
+      () => projection(third).includes('AGENT-EDIT') && projection(host).includes('THIRD-DEVICE-EDIT'),
+    );
+    expect(projection(host)).toContain('AGENT-EDIT');
+    expect(projection(third)).toContain('THIRD-DEVICE-EDIT');
+  });
+
+  it('an agent-appended image reaches a third device', async () => {
+    const vault = makeVault();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lychee-agent-device-'));
+    cleanups.push(() => fs.rmSync(root, { recursive: true, force: true }));
+    const socket = path.join(vault, 'sync.sock');
+    const { host, third } = folderBridge(socket, root);
+    await waitUntil(() => projection(third).includes('Original body'));
+
+    const result = await editNoteLive({
+      vault,
+      socket,
+      idOrPath: 'note-1',
+      transform: (current) =>
+        `${current.replace(/\s+$/, '')}\n\n![pic](https://cdn.example.com/to-third.png)\n`,
+    });
+    expect(result).not.toBeNull();
+
+    await waitUntil(() => projection(third).includes('to-third.png'));
+    expect(projection(host)).toContain('to-third.png');
   });
 });

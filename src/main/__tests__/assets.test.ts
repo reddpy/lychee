@@ -90,6 +90,94 @@ describe('asset vault boundary', () => {
     expect(importAssetsFromVault(vault, markdown)).toBe(markdown);
   });
 
+  it('imports an uppercase image extension and re-exports lowercase', () => {
+    fs.mkdirSync(path.join(vault, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(vault, 'assets', 'PIC.PNG'), PNG);
+
+    const imported = importAssetsFromVault(vault, '![Pic](assets/PIC.PNG)');
+    expect(imported).toMatch(/^!\[Pic\]\(lychee-asset:\/\//);
+    const id = imported.match(/lychee-asset:\/\/([A-Za-z0-9._-]+)/)![1];
+    expect(getImage(id)?.mimeType).toBe('image/png');
+
+    const exported = exportAssetsToVault(vault, imported);
+    expect(exported).toMatch(/^!\[Pic\]\(assets\/[a-f0-9]{64}\.png\)$/);
+  });
+
+  it('imports an asset referenced with a ./ prefix', () => {
+    fs.mkdirSync(path.join(vault, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(vault, 'assets', 'dot.png'), PNG);
+
+    expect(importAssetsFromVault(vault, '![Pic](./assets/dot.png)')).toMatch(
+      /^!\[Pic\]\(lychee-asset:\/\//,
+    );
+  });
+
+  it('preserves a link title on import', () => {
+    fs.mkdirSync(path.join(vault, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(vault, 'assets', 'titled.png'), PNG);
+
+    const imported = importAssetsFromVault(vault, '![Pic](assets/titled.png "A caption")');
+    expect(imported).toContain('lychee-asset://');
+    expect(imported).toContain('"A caption"');
+  });
+
+  it('leaves video, audio, and document assets as paths', () => {
+    fs.mkdirSync(path.join(vault, 'assets'), { recursive: true });
+    for (const extension of ['mp4', 'webm', 'mov', 'pdf', 'zip']) {
+      fs.writeFileSync(path.join(vault, 'assets', `file.${extension}`), Buffer.from('payload'));
+      const markdown = `![File](assets/file.${extension})`;
+      expect(importAssetsFromVault(vault, markdown)).toBe(markdown);
+    }
+  });
+
+  it('imports the image but preserves the video in a mixed note', () => {
+    fs.mkdirSync(path.join(vault, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(vault, 'assets', 'pic.png'), PNG);
+    fs.writeFileSync(path.join(vault, 'assets', 'clip.mp4'), Buffer.from('video'));
+
+    const imported = importAssetsFromVault(
+      vault,
+      '![Pic](assets/pic.png)\n\n![Clip](assets/clip.mp4)',
+    );
+    expect(imported).toMatch(/lychee-asset:\/\//);
+    expect(imported).toContain('![Clip](assets/clip.mp4)');
+  });
+
+  it('dedups one vault asset across two notes on import', () => {
+    fs.mkdirSync(path.join(vault, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(vault, 'assets', 'shared.png'), PNG);
+
+    const first = importAssetsFromVault(vault, '![A](assets/shared.png)');
+    const second = importAssetsFromVault(vault, '![B](assets/shared.png)');
+    const id = (markdown: string) =>
+      markdown.match(/lychee-asset:\/\/([A-Za-z0-9._-]+)/)![1];
+    expect(id(first)).toBe(id(second));
+  });
+
+  it('leaves a nested assets path untouched', () => {
+    fs.mkdirSync(path.join(vault, 'assets', 'sub'), { recursive: true });
+    fs.writeFileSync(path.join(vault, 'assets', 'sub', 'deep.png'), PNG);
+
+    const markdown = '![Deep](assets/sub/deep.png)';
+    expect(importAssetsFromVault(vault, markdown)).toBe(markdown);
+  });
+
+  it('exports two distinct images to two content-addressed files', () => {
+    const other = Buffer.concat([PNG, Buffer.from('other')]);
+    const first = saveImageBuffer(PNG, 'image/png');
+    const second = saveImageBuffer(other, 'image/png');
+
+    const markdown = exportAssetsToVault(
+      vault,
+      `![A](lychee-asset://${first.id})\n\n![B](lychee-asset://${second.id})`,
+    );
+    const paths = [...markdown.matchAll(/assets\/([a-f0-9]{64}\.png)/g)].map((match) => match[1]);
+    expect(new Set(paths).size).toBe(2);
+    for (const asset of paths) {
+      expect(fs.existsSync(path.join(vault, 'assets', asset))).toBe(true);
+    }
+  });
+
   it('preserves an optional link title', () => {
     const { id } = saveImageBuffer(PNG, 'image/png');
     const hash = contentHashOf(PNG);

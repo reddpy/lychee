@@ -1,5 +1,5 @@
 import * as Y from "yjs";
-import { REMOTE_ORIGIN } from "./note-doc";
+import { REMOTE_FOLDER_ORIGIN, REMOTE_ORIGIN } from "./note-doc";
 
 /**
  * Transport seam for note Y.Docs.
@@ -17,7 +17,7 @@ export interface SyncAdapter {
    */
   subscribe(
     docId: string,
-    onUpdate: (update: Uint8Array) => void,
+    onUpdate: (update: Uint8Array, source?: "socket" | "folder") => void,
     onPeerJoined?: () => void,
   ): () => void;
   publish(docId: string, update: Uint8Array): void;
@@ -32,7 +32,7 @@ export class MemoryHub implements SyncAdapter {
 
   subscribe(
     docId: string,
-    onUpdate: (update: Uint8Array) => void,
+    onUpdate: (update: Uint8Array, source?: "socket" | "folder") => void,
     _onPeerJoined?: () => void,
   ): () => void {
     const set = this.listeners.get(docId) ?? new Set();
@@ -76,9 +76,13 @@ export class MemoryHub implements SyncAdapter {
 export function connectDoc(adapter: SyncAdapter, docId: string, doc: Y.Doc): () => void {
   const offRemote = adapter.subscribe(
     docId,
-    (update) => {
+    (update, source) => {
       try {
-        Y.applyUpdate(doc, update, REMOTE_ORIGIN);
+        Y.applyUpdate(
+          doc,
+          update,
+          source === "folder" ? REMOTE_FOLDER_ORIGIN : REMOTE_ORIGIN,
+        );
       } catch (error) {
         console.error("[sync] remote apply failed:", error);
       }
@@ -88,7 +92,8 @@ export function connectDoc(adapter: SyncAdapter, docId: string, doc: Y.Doc): () 
   );
 
   const onUpdate = (update: Uint8Array, origin: unknown) => {
-    if (origin === REMOTE_ORIGIN) return; // don't rebroadcast peer updates
+    // Don't rebroadcast anything that arrived from a peer/transport.
+    if (origin === REMOTE_ORIGIN || origin === REMOTE_FOLDER_ORIGIN) return;
     adapter.publish(docId, update);
   };
   doc.on("update", onUpdate);

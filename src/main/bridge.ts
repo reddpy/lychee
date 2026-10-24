@@ -31,7 +31,7 @@ export function startNoteBridge(): void {
   socketPath = noteBridgeSocketPath();
   server = startBridgeServer(
     socketPath,
-    (docId, update) => broadcast("bridge:update", { docId, update }),
+    (docId, update) => broadcast("bridge:update", { docId, update, source: "socket" }),
     (docId) => broadcast("bridge:peer-joined", { docId }),
     (docId, update) => broadcast("bridge:awareness", { docId, update }),
   );
@@ -54,7 +54,7 @@ export function publishToBridge(docId: string, update: string): void {
  * sync) to every renderer, exactly as a socket peer's update would arrive.
  */
 export function deliverBridgeUpdate(docId: string, update: string): void {
-  broadcast("bridge:update", { docId, update });
+  broadcast("bridge:update", { docId, update, source: "folder" });
 }
 
 /** Send an app-originated awareness update out to connected peers. */

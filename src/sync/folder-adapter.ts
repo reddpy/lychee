@@ -36,7 +36,10 @@ export class FolderAdapter implements SyncAdapter {
   private readonly seen = new Map<string, Set<string>>();
   private readonly listeners = new Map<
     string,
-    { onUpdate: (update: Uint8Array) => void; onPeerJoined?: () => void }
+    {
+      onUpdate: (update: Uint8Array, source?: "socket" | "folder") => void;
+      onPeerJoined?: () => void;
+    }
   >();
   private readonly timers = new Map<string, ReturnType<typeof setInterval>>();
   private closed = false;
@@ -49,16 +52,16 @@ export class FolderAdapter implements SyncAdapter {
 
   subscribe(
     docId: string,
-    onUpdate: (update: Uint8Array) => void,
+    onUpdate: (update: Uint8Array, source?: "socket" | "folder") => void,
     onPeerJoined?: () => void,
   ): () => void {
     this.listeners.set(docId, { onUpdate, onPeerJoined });
     if (!this.seen.has(docId)) this.seen.set(docId, new Set());
-    this.replay(docId, onUpdate);
+    this.replay(docId, (update) => onUpdate(update, "folder"));
     if (!this.timers.has(docId)) {
       const timer = setInterval(() => {
         const listener = this.listeners.get(docId);
-        if (listener) this.replay(docId, listener.onUpdate);
+        if (listener) this.replay(docId, (update) => listener.onUpdate(update, "folder"));
       }, this.options.pollMs ?? 1000);
       // Never keep the Node process alive just for a poll.
       timer.unref?.();

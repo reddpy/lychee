@@ -411,7 +411,7 @@ export type IpcEvents = {
   'keybindings:changed': KeybindingMap;
   'preferences:changed': GeneralPreferences;
   'vault:file-changed': VaultFileChangedEvent;
-  'bridge:update': { docId: string; update: string };
+  'bridge:update': { docId: string; update: string; source?: 'socket' | 'folder' };
   'bridge:awareness': { docId: string; update: string };
   'bridge:peer-joined': { docId: string };
 };

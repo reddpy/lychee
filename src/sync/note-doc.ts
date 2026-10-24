@@ -36,6 +36,8 @@ import { exportDocumentMarkdown, $importDocumentMarkdown } from "@/components/ed
 
 /** Origin tag for updates that arrived from a peer, so we never echo them back. */
 export const REMOTE_ORIGIN = "lychee-remote";
+/** Updates discovered in the shared vault folder (already persisted there). */
+export const REMOTE_FOLDER_ORIGIN = "lychee-remote-folder";
 
 /**
  * Fields that must never cross the wire (spike findings part 2). They are

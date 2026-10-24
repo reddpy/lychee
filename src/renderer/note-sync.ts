@@ -48,7 +48,10 @@ function base64ToBytes(value: string): Uint8Array {
 class IpcBridgeAdapter implements SyncAdapter {
   private readonly listeners = new Map<
     string,
-    { onUpdate: (update: Uint8Array) => void; onPeerJoined?: () => void }
+    {
+      onUpdate: (update: Uint8Array, source?: "socket" | "folder") => void;
+      onPeerJoined?: () => void;
+    }
   >();
   private readonly awarenessListeners = new Map<string, Set<(update: Uint8Array) => void>>();
   private readonly offUpdate: () => void;
@@ -56,8 +59,8 @@ class IpcBridgeAdapter implements SyncAdapter {
   private readonly offPeer: () => void;
 
   constructor() {
-    this.offUpdate = window.lychee.on("bridge:update", ({ docId, update }) => {
-      this.listeners.get(docId)?.onUpdate(base64ToBytes(update));
+    this.offUpdate = window.lychee.on("bridge:update", ({ docId, update, source }) => {
+      this.listeners.get(docId)?.onUpdate(base64ToBytes(update), source);
     });
     this.offAwareness = window.lychee.on("bridge:awareness", ({ docId, update }) => {
       for (const cb of this.awarenessListeners.get(docId) ?? []) cb(base64ToBytes(update));
@@ -69,7 +72,7 @@ class IpcBridgeAdapter implements SyncAdapter {
 
   subscribe(
     docId: string,
-    onUpdate: (update: Uint8Array) => void,
+    onUpdate: (update: Uint8Array, source?: "socket" | "folder") => void,
     onPeerJoined?: () => void,
   ): () => void {
     this.listeners.set(docId, { onUpdate, onPeerJoined });
@@ -163,10 +166,20 @@ export function bindLiveNote(args: {
     }
   };
   const onUpdate = (update: Uint8Array, origin: unknown): void => {
-    if (origin === REMOTE_ORIGIN) return;
-    // Include peer-applied content in our local log too.
+    // Persist peer-applied content in the local log too, so an agent/remote edit
+    // is not lost on reload. Folder-sourced updates are already in the shared
+    // folder; socket-sourced (agent/MCP) updates must be mirrored into it so
+    // other devices converge even before the markdown autosave lands.
     pending.push(update);
     if (!flushTimer) flushTimer = setTimeout(flush, 300);
+    if (origin === REMOTE_ORIGIN) {
+      void window.lychee
+        .invoke("bridge.publish", {
+          docId: args.documentId,
+          update: bytesToBase64(update),
+        })
+        .catch(() => {});
+    }
   };
   doc.on("update", onUpdate);
 
